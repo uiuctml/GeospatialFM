@@ -1,0 +1,18 @@
+DATASET:
+  root: ./data/geospatial
+  name: EuroSAT
+  kwargs:
+    bands: [B01, B02, B03, B04, B05, B06, B07, B08, B08A, B09, B10, B11, B12]
+MODEL:
+  name: vit_small_patch16_224
+  load_encoder: ViTSmall16_Weights.SENTINEL2_ALL_DINO
+  in_features: 384
+  out_features: 19
+  lp: True
+TRAINER:
+  report_to: none
+
+
+
+  
+

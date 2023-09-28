@@ -1,0 +1,48 @@
+TRAINER:
+  # Training related
+  num_train_epochs: 3
+  per_device_train_batch_size: 128
+  per_device_eval_batch_size: 128
+  gradient_accumulation_steps: 1
+  learning_rate: 2e-5
+  weight_decay: 0.01
+  # dataloader
+  dataloader_num_workers: 8
+  dataloader_pin_memory: true
+  dataloader_drop_last: false
+  # optimizer
+  optim: adamw_torch
+  lr_scheduler_type: cosine
+  # Model saving & evaluation
+  save_strategy: epoch
+  evaluation_strategy: epoch
+  load_best_model_at_end: true
+  metric_for_best_model: accuracy
+  # Logging
+  logging_dir: "./outputs/logs"
+  logging_strategy: steps
+  logging_steps: 250
+  report_to: wandb
+  # Checkpoints & Output
+  output_dir: "./outputs/results"
+  save_total_limit: 5
+  overwrite_output_dir: false
+  # Other
+  seed: 0
+  fp16: true
+  push_to_hub: false
+LOGGER:
+  project: "GeoFoundation"
+  entity: "ehzoahis"
+  dir: "./outputs/wandb/"
+DATASET:
+  root: ./data/geospatial
+  name: ''
+  kwargs:
+    bands: all
+MODEL:
+  name: ''
+  load_encoder: ''
+  in_features: .
+  out_features: .
+  lp: true
