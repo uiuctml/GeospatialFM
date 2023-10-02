@@ -28,7 +28,6 @@ class ViTEncoderDecoder(nn.Module):
         logits = self.task_head(feature)
     
         if labels is not None:
-            print(logits.shape, labels.shape)
             loss = self.criterion(logits, labels)
             return loss, logits
         return logits

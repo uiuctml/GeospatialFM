@@ -10,5 +10,3 @@ def init_wandb(cfg):
                settings=wandb.Settings(_disable_stats=True, _disable_meta=True),  # disable logging of system metrics
                )
     print('W&B run name:', wandb.run.name)
-    # log_config = {key: getattr(args, key) for key in wandb_config['config']}
-    # wandb.config.update(log_config)

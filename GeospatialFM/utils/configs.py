@@ -32,9 +32,8 @@ def setup(args):
     """
     cfg = get_cfg_from_args(args)
     cfg['NAME'] = args.exp_name if args.exp_name is not None else cfg['MODEL']['name'].replace('/', '')
-    os.makedirs(args.output_dir, exist_ok=True)
+    cfg['TRAINER']['output_dir'] += f'/{cfg["NAME"]}'
+    cfg['TRAINER']['logging_dir'] += f'/{cfg["NAME"]}'
     if cfg['TRAINER']['report_to'] == 'wandb':
         init_wandb(cfg)
-    if args.save_config:
-        write_config(cfg, args.output_dir, name=f"{cfg['NAME']}-{cfg['DATASET']['name']}.yaml")
     return cfg

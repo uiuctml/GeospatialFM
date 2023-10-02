@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=1 python train.py --config_file GeospatialFM/configs/eurosat.yaml
