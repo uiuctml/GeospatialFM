@@ -153,11 +153,7 @@ dmypy.json
 cython_debug/
 
 # Output and Data folders
-data/
-outputs/
 results/
-wandb/
-DINO_exps/
 
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
