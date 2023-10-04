@@ -14,17 +14,20 @@ class ViTEncoderDecoder(nn.Module):
         super().__init__()
         self.base_model = base_model
         self.task_head = task_head
-        if criterion is not None:
-            self.criterion = criterion
-        else:
-            self.criterion = nn.CrossEntropyLoss()
+        self.lp = lp
+        self.criterion = criterion if criterion is not None else nn.CrossEntropyLoss()
         if lp:
             # base_model requires grad = False
             for param in self.base_model.parameters():
                 param.requires_grad = False
+            self.base_model.eval()
 
     def forward(self, image, labels=None):
-        feature = self.base_model(image)
+        if self.lp:
+            with torch.no_grad():
+                feature = self.base_model(image)
+        else:
+            feature = self.base_model(image)
         logits = self.task_head(feature)
     
         if labels is not None:
@@ -65,6 +68,7 @@ class ClassificationHead(nn.Linear):
                 self.bias = nn.Parameter(biases.clone())
             else:
                 self.bias = nn.Parameter(torch.zeros_like(self.bias))
+        self.weight.data.normal_(mean=0.0, std=0.01)
 
     def forward(self, x):
         logits = F.linear(x, self.weight, self.bias)

@@ -21,5 +21,8 @@ def get_args_parser(add_help: bool = True):
         nargs=argparse.REMAINDER,
     )
     parser.add_argument("--exp_name", default=None, type=str, help="Experiment name")
+    parser.add_argument("--debug", action="store_true", help="Debug mode")
+
+    # parser.add_argument("--learning_rate", type=float, default=None, help="Override the Learning Rate from config (for sweep)")
 
     return parser
