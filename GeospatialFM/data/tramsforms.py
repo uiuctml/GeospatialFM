@@ -38,23 +38,11 @@ class MaybeToTensor(transforms.ToTensor):
         return super().__call__(pic)
 
 
-# # Use timm's names
-# IMAGENET_DEFAULT_MEAN = (0.485, 0.456, 0.406)
-# IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
-
-
-# def make_normalize_transform(
-#     mean: Sequence[float] = IMAGENET_DEFAULT_MEAN,
-#     std: Sequence[float] = IMAGENET_DEFAULT_STD,
-# ) -> transforms.Normalize:
-#     return transforms.Normalize(mean=mean, std=std)
-
 def make_standardize_transform():
     return lambda x: (x / 10000.0).to(torch.float)
 
-
 class TransformSample():
-    def __init__(self, transform):
+    def __init__(self, transform,):
         self.transform = transform
 
     def transform_img(self, sample):
@@ -74,16 +62,19 @@ def make_classification_train_transform(
     crop_size: int = 224,
     interpolation=transforms.InterpolationMode.BICUBIC,
     hflip_prob: float = 0.5,
+    mean_std: tuple = (None, None),
+    normalize: bool = True,
 ):
     transforms_list = [transforms.RandomResizedCrop(crop_size, interpolation=interpolation, antialias=True)]
     if hflip_prob > 0.0:
         transforms_list.append(transforms.RandomHorizontalFlip(hflip_prob))
-    transforms_list.extend(
-        [
-            MaybeToTensor(),
-            make_standardize_transform(),
-        ]
-    )
+    transforms_list.append(MaybeToTensor())
+    if mean_std[0] is not None and normalize:
+        mean, std = mean_std
+        transforms_list.append(transforms.Normalize(mean, std))
+    else:
+        transforms_list.append(make_standardize_transform())
+    
     return transforms.Compose(transforms_list)
 
 
@@ -94,11 +85,18 @@ def make_classification_eval_transform(
     resize_size: int = 256,
     interpolation=transforms.InterpolationMode.BICUBIC,
     crop_size: int = 224,
+    mean_std: tuple = (None, None),
+    normalize: bool = True,
 ) -> transforms.Compose:
     transforms_list = [
         transforms.Resize(resize_size, interpolation=interpolation, antialias=True),
         transforms.CenterCrop(crop_size),
         MaybeToTensor(),
-        make_standardize_transform(),
     ]
+    if mean_std[0] is not None and normalize:
+        mean, std = mean_std
+        transforms_list.append(transforms.Normalize(mean, std))
+    else:
+        transforms_list.append(make_standardize_transform())
+    
     return transforms.Compose(transforms_list)

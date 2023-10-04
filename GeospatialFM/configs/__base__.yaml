@@ -21,7 +21,7 @@ TRAINER:
   # Logging
   logging_dir: "./results/logs"
   logging_strategy: steps
-  logging_steps: 250
+  logging_steps: 10
   report_to: wandb
   # Checkpoints & Output
   output_dir: "./results/models"
@@ -43,10 +43,13 @@ DATASET:
   train_transforms:
     crop_size: 224
     hflip_prob: 0.5
+    normalize: false
   eval_transforms:
     crop_size: 224
     resize_size: 256
+    normalize: false
   eval_metric: ''
+  use_train_transform: true
 MODEL:
   name: ''
   load_encoder: ''
