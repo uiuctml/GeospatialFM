@@ -51,8 +51,11 @@ DATASET:
   eval_metric: ''
   use_train_transform: true
 MODEL:
-  name: ''
-  load_encoder: ''
-  in_features: .
-  out_features: .
+  architecture: ''
+  bands: 0
+  num_classes: 0
+  pretrained_ckpt: ''
+  criterion: cross_entropy
   lp: false
+  head_extra_kwargs:
+    use_bias: true

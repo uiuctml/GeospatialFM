@@ -37,7 +37,7 @@ def setup(args):
     # setup configs
     cfg = get_cfg_from_args(args)
     # setup the experiment name
-    cfg['NAME'] = cfg['MODEL']['name'].replace('/', '')
+    cfg['NAME'] = cfg['MODEL']['architecture'].replace('/', '')
     if args.opts is not None:
         for new_attr in args.opts:
             name, val = new_attr.split('=')

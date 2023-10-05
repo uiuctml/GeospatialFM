@@ -6,11 +6,12 @@ DATASET:
   eval_metric: classification
   use_train_transform: true
 MODEL:
-  name: vit_small_patch16_224
-  load_encoder: ViTSmall16_Weights.SENTINEL2_ALL_DINO
-  in_features: 384
-  out_features: 10
-  lp: True
+  architecture: vit_small_patch16_224
+  bands: 13
+  num_classes: 10
+  load_pretrained_from: torchgeo
+  pretrained_ckpt: ViTSmall16_Weights.SENTINEL2_ALL_DINO
+  lp: false
 TRAINER:
   # Training related
   num_train_epochs: 100
