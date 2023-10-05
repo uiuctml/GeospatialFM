@@ -60,7 +60,7 @@ class TransformSample():
 def make_classification_train_transform(
     *,
     crop_size: int = 224,
-    interpolation=transforms.InterpolationMode.BICUBIC,
+    interpolation=transforms.InterpolationMode.BICUBIC, # BILINEAR
     hflip_prob: float = 0.5,
     mean_std: tuple = (None, None),
     normalize: bool = True,
@@ -83,7 +83,7 @@ def make_classification_train_transform(
 def make_classification_eval_transform(
     *,
     resize_size: int = 256,
-    interpolation=transforms.InterpolationMode.BICUBIC,
+    interpolation=transforms.InterpolationMode.BICUBIC, # BILINEAR
     crop_size: int = 224,
     mean_std: tuple = (None, None),
     normalize: bool = True,

@@ -9,18 +9,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
-class ViTEncoderDecoder(nn.Module):
+class EncoderDecoder(nn.Module):
     def __init__(self, base_model, task_head, criterion=None, lp=False):
         super().__init__()
         self.base_model = base_model
         self.task_head = task_head
         self.lp = lp
         self.criterion = criterion if criterion is not None else nn.CrossEntropyLoss()
-        if lp:
-            # base_model requires grad = False
-            for param in self.base_model.parameters():
-                param.requires_grad = False
-            self.base_model.eval()
+        # if lp:
+        #     # base_model requires grad = False
+        #     for param in self.base_model.parameters():
+        #         param.requires_grad = False
+        #     self.base_model.eval()
 
     def forward(self, image, labels=None):
         if self.lp:
@@ -84,11 +84,5 @@ class ClassificationHead(nn.Linear):
         if logger is not None:
             logger.info(f'Loading classification head from {filename}')
         return torch_load(filename)
-
-
-class ViT(nn.Module):
-    def __init__(self, model_cfg):
-        super().__init__()
-        pass
 
         

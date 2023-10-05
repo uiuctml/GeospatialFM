@@ -17,9 +17,8 @@ def torch_load(save_path, device=None):
         classifier = classifier.to(device)
     return classifier
 
-def get_tgm_model(model_cfg):
-    if model_cfg['load_encoder'] is not None:
-        weights = tgm.get_weight(model_cfg['load_encoder'])
+def get_criterion(criterion):
+    if criterion == 'cross_entropy':
+        return torch.nn.CrossEntropyLoss()
     else:
-        weights = None
-    return tgm.get_model(model_cfg['name'], weights=weights)
+        raise NotImplementedError
