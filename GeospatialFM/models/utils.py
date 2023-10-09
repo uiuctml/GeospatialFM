@@ -42,7 +42,8 @@ def consturct_encoder(model_cfg):
 
     band_ext_conv_in = nn.Conv2d(model_cfg['bands'], out_channels, kernel_size, stride, padding, bias=bias)
     band_ext_conv_in.weight.data = _weight
-    band_ext_conv_in.bias.data = _bias
+    if bias:
+        band_ext_conv_in.bias.data = _bias
 
     if model_cfg['architecture'].startswith('vit'):
         encoder.patch_embed.proj = band_ext_conv_in
