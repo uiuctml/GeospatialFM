@@ -46,6 +46,8 @@ def setup(args):
             args.exp_name = args.exp_name + f'_{name}{val}' if args.exp_name is not None else f'{name}{val}'
     if args.exp_name is not None:
         cfg['NAME'] += f"_{args.exp_name}"
+    if cfg['MODEL']['freeze_encoder']:
+        cfg['NAME'] += f"_lp"
     # setup output directory
     cfg['TRAINER']['output_dir'] += f'/{cfg["NAME"]}'
     cfg['TRAINER']['logging_dir'] += f'/{cfg["NAME"]}'

@@ -1,10 +1,15 @@
 import os.path as osp
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset, ConcatDataset
 
 import torchgeo.datasets as tgds
 import torchgeo.datamodules as tgdm
 
 from .tramsforms import make_classification_eval_transform, make_classification_train_transform, TransformSample
+from .datasets import *
+
+MY_DATASETS = {
+    "BigEarthNet": myBigEarthNet,
+}
 
 DATA_ROOT = './data'
 
@@ -16,6 +21,8 @@ def get_mean_std(data_cfg):
         return None, None
 
 def get_dataset(data_cfg, split='train', transforms=None):
+    if data_cfg['name'] in MY_DATASETS:
+        return MY_DATASETS[data_cfg['name']](split=split, **data_cfg['kwargs'], transforms=transforms)
     try:
         return getattr(tgds, data_cfg['name'])(split=split, **data_cfg['kwargs'], transforms=transforms)
     except:
@@ -43,5 +50,10 @@ def get_datasets(data_cfg):
     train_dataset = get_dataset(data_cfg, split='train', transforms=train_transform)
     val_dataset = get_dataset(data_cfg, split='val', transforms=eval_transform)
     test_dataset = get_dataset(data_cfg, split='test', transforms=eval_transform)
+    if data_cfg['train_split'] == 'trainval':
+        train_dataset = ConcatDataset([train_dataset, val_dataset])
+        val_dataset = test_dataset
+    if data_cfg['train_frac'] < 1.0:
+        train_dataset = Subset(train_dataset, torch.randperm(len(train_dataset))[:int(len(train_dataset)*data_cfg['train_frac'])])
 
     return train_dataset, val_dataset, test_dataset
