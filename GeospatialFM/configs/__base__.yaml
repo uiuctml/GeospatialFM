@@ -50,12 +50,17 @@ DATASET:
     normalize: false
   eval_metric: ''
   use_train_transform: true
+  train_frac: 1.0
+  train_split: trainval
 MODEL:
   architecture: ''
   bands: 0
-  num_classes: 0
   pretrained_ckpt: ''
   criterion: cross_entropy
-  lp: false
-  head_extra_kwargs:
+  freeze_encoder: false
+  head_kwargs:
+    head_type: linear
+    task_type: classification
     use_bias: true
+    in_features: 0
+    num_classes: 0
