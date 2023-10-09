@@ -2,7 +2,7 @@ DATASET:
   root: ./data/geospatial
   name: BigEarthNet
   kwargs:
-    bands: s2
+    bands: rgb
     num_classes: 19
     pad_s2: true
   eval_metric: classification
@@ -10,9 +10,9 @@ DATASET:
   train_frac: 0.1
 MODEL:
   architecture: resnet50
-  bands: 13
+  bands: 3
   load_pretrained_from: torchgeo
-  pretrained_ckpt: ResNet50_Weights.SENTINEL2_ALL_SECO
+  pretrained_ckpt: ResNet50_Weights.SENTINEL2_RGB_SECO
   criterion: cross_entropy
   freeze_encoder: false
   head_kwargs:

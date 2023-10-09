@@ -7,9 +7,9 @@ DATASET:
   use_train_transform: true
 MODEL:
   architecture: resnet50
-  bands: 13
+  bands: 3
   load_pretrained_from: torchgeo
-  pretrained_ckpt: ResNet50_Weights.SENTINEL2_ALL_DINO
+  pretrained_ckpt: ResNet50_Weights.SENTINEL2_RGB_SECO
   criterion: cross_entropy
   freeze_encoder: false
   head_kwargs:
