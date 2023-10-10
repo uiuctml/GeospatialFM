@@ -18,6 +18,7 @@ TRAINER:
   evaluation_strategy: epoch
   load_best_model_at_end: true
   metric_for_best_model: accuracy
+  greater_is_better: true
   # Logging
   logging_dir: "./results/logs"
   logging_strategy: steps
@@ -31,6 +32,11 @@ TRAINER:
   seed: 0
   fp16: true
   push_to_hub: false
+TRAINER_EXTRA:
+  early_stop:
+    enable: false
+    patience: 10
+    threshold: 0.0
 LOGGER:
   project: "GeoFoundation"
   entity: "ehzoahis"

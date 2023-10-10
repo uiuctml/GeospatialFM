@@ -9,6 +9,7 @@ from .datasets import *
 
 MY_DATASETS = {
     "BigEarthNet": myBigEarthNet,
+    "So2Sat": mySo2Sat,
 }
 
 DATA_ROOT = './data'

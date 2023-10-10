@@ -63,9 +63,26 @@ def construct_model(model_cfg):
     encoder = consturct_encoder(model_cfg)
 
     head_cfg = model_cfg['head_kwargs']
-    if head_cfg['head_type'] == 'linear':
+    if head_cfg['task_type'] == 'classification':
         head = ClassificationHead(out_features=head_cfg['num_classes'], in_features=head_cfg['in_features'], use_bias=head_cfg['use_bias'])
-        model = EncoderDecoder(encoder, head, lp=model_cfg['freeze_encoder'], criterion=criterion)
+        model = EncoderDecoder(encoder, head, freeze_encoder=model_cfg['freeze_encoder'], criterion=criterion)
+    elif head_cfg['task_type'] == 'segmentation':
+        if head_cfg['head_type'] == 'unet':
+            assert model_cfg['architecture'].startswith('resnet')
+            model = Unet(encoder_name = model_cfg['architecture'],
+                         in_channels = model_cfg['bands'],
+                         classes = head_cfg['num_classes'],
+                         criterion=criterion,
+                         freeze_encoder = model_cfg['freeze_encoder'],)
+            model.encoder.load_state_dict(encoder.state_dict())
+        elif head_cfg['head_type'] == '':
+            assert model_cfg['architecture'].startswith('vit')
+            model = DeepLabV3Plus(encoder_name = model_cfg['architecture'],
+                                  in_channels = model_cfg['bands'],
+                                  classes = head_cfg['num_classes'],
+                                  criterion=criterion,
+                                  freeze_encoder = model_cfg['freeze_encoder'],)
+            model.encoder.load_state_dict(encoder.state_dict())
     else:
         raise NotImplementedError
 
