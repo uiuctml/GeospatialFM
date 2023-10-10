@@ -43,7 +43,7 @@ class myBigEarthNet(BigEarthNet):
 
 class mySo2Sat(So2Sat):
     def __init__(self, pad_s2=False, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(**kwargs, download=True)
         self.pad_s2 = pad_s2
 
     def __getitem__(self, index: int) -> dict[str, Tensor]:
