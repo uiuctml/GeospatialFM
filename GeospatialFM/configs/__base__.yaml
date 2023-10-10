@@ -35,7 +35,7 @@ TRAINER:
 TRAINER_EXTRA:
   early_stop:
     enable: false
-    patience: 10
+    patience: 5
     threshold: 0.0
 LOGGER:
   project: "GeoFoundation"

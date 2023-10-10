@@ -75,14 +75,6 @@ def construct_model(model_cfg):
                          criterion=criterion,
                          freeze_encoder = model_cfg['freeze_encoder'],)
             model.encoder.load_state_dict(encoder.state_dict())
-        elif head_cfg['head_type'] == '':
-            assert model_cfg['architecture'].startswith('vit')
-            model = DeepLabV3Plus(encoder_name = model_cfg['architecture'],
-                                  in_channels = model_cfg['bands'],
-                                  classes = head_cfg['num_classes'],
-                                  criterion=criterion,
-                                  freeze_encoder = model_cfg['freeze_encoder'],)
-            model.encoder.load_state_dict(encoder.state_dict())
     else:
         raise NotImplementedError
 

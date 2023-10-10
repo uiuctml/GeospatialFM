@@ -41,4 +41,6 @@ TRAINER:
   lr_scheduler_type: cosine
   # Other
   seed: 0
-
+TRAINER_EXTRA:
+  early_stop:
+    enable: true
