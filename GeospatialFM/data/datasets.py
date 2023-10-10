@@ -4,7 +4,13 @@ from torch import Tensor
 import numpy as np
 
 class myBigEarthNet(BigEarthNet):
+    RGB_INDEX = [3, 2, 1]
     def __init__(self, pad_s2=False, **kwargs):
+        if kwargs['bands'] == 'rgb':
+            self.rgb=True
+            kwargs['bands'] = 's2'
+        else:
+            self.rgb=False
         super().__init__(**kwargs)
         self.pad_s2 = pad_s2   # pad sentinel-2 images to 13 bands
 
@@ -24,6 +30,8 @@ class myBigEarthNet(BigEarthNet):
             assert self.bands == 's2'
             img_size = image.shape[1:]
             image = torch.cat((image[:10], torch.zeros((1, *img_size)), image[10:]), dim=0)
+        if self.rgb:
+            image = image[self.RGB_INDEX]
 
         sample: dict[str, Tensor] = {"image": image, "label": torch.argmax(label)}
 

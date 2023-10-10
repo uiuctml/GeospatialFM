@@ -19,7 +19,7 @@ MODEL:
     head_type: linear
     task_type: classification
     use_bias: true
-    in_features: 384
+    in_features: 2048
     num_classes: 19
 TRAINER:
   # Training related
