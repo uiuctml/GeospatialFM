@@ -14,12 +14,11 @@ training_args = TrainingArguments(**cfg['TRAINER'])
 model = construct_model(cfg['MODEL'])
 train_ds, val_ds, test_ds = get_datasets(cfg['DATASET'])
 compute_metrics = get_eval_fn(cfg['DATASET'])
-train_val_sets = ConcatDataset([train_ds, val_ds])
 
 trainer = Trainer(
     model=model,                # the instantiated 🤗 Transformers model to be trained
     args=training_args,                   # training arguments, defined above
-    train_dataset=train_val_sets,    # training dataset
+    train_dataset=train_ds,    # training dataset
     eval_dataset=test_ds,      # evaluation dataset
     compute_metrics=compute_metrics,
 )
