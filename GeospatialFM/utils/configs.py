@@ -42,6 +42,8 @@ def setup(args):
         for new_attr in args.opts:
             name, val = new_attr.split('=')
             name = name.split('.')[-1]
+            if name == 'freeze_encoder':
+                continue
             name = COMMON_ACRONYM.get(name, name)
             args.exp_name = args.exp_name + f'_{name}{val}' if args.exp_name is not None else f'{name}{val}'
     if args.exp_name is not None:
