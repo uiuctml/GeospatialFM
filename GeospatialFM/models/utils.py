@@ -75,6 +75,8 @@ def construct_model(model_cfg):
                          criterion=criterion,
                          freeze_encoder = model_cfg['freeze_encoder'],)
             model.encoder.load_state_dict(encoder.state_dict())
+        elif head_cfg['head_type'] == 'pspnet':
+            pass
     else:
         raise NotImplementedError
 

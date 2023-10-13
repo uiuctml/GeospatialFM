@@ -50,10 +50,12 @@ DATASET:
     crop_size: 224
     hflip_prob: 0.5
     normalize: false
+    standardize: true
   eval_transforms:
     crop_size: 224
     resize_size: 256
     normalize: false
+    standardize: true
   eval_metric: ''
   use_train_transform: true
   train_frac: 1.0
