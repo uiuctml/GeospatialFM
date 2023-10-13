@@ -40,6 +40,7 @@ class MaybeToTensor(transforms.ToTensor):
 
 def make_standardize_transform():
     return lambda x: (x / 10000.0).to(torch.float)
+    # return lambda x: x
 
 class TransformSample():
     def __init__(self, transform,):
@@ -63,7 +64,8 @@ def make_classification_train_transform(
     interpolation=transforms.InterpolationMode.BICUBIC, # BILINEAR
     hflip_prob: float = 0.5,
     mean_std: tuple = (None, None),
-    normalize: bool = True,
+    normalize: bool = False,
+    standardize: bool = True,
 ):
     transforms_list = [transforms.RandomResizedCrop(crop_size, interpolation=interpolation, antialias=True)]
     if hflip_prob > 0.0:
@@ -72,7 +74,7 @@ def make_classification_train_transform(
     if mean_std[0] is not None and normalize:
         mean, std = mean_std
         transforms_list.append(transforms.Normalize(mean, std))
-    else:
+    elif standardize:
         transforms_list.append(make_standardize_transform())
     
     return transforms.Compose(transforms_list)
@@ -86,7 +88,8 @@ def make_classification_eval_transform(
     interpolation=transforms.InterpolationMode.BICUBIC, # BILINEAR
     crop_size: int = 224,
     mean_std: tuple = (None, None),
-    normalize: bool = True,
+    normalize: bool = False,
+    standardize: bool = True,
 ) -> transforms.Compose:
     transforms_list = [
         transforms.Resize(resize_size, interpolation=interpolation, antialias=True),
@@ -96,7 +99,7 @@ def make_classification_eval_transform(
     if mean_std[0] is not None and normalize:
         mean, std = mean_std
         transforms_list.append(transforms.Normalize(mean, std))
-    else:
+    elif standardize:
         transforms_list.append(make_standardize_transform())
     
     return transforms.Compose(transforms_list)
