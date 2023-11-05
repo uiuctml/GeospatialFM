@@ -23,6 +23,7 @@ def get_args_parser(add_help: bool = True):
     parser.add_argument("--exp_name", default=None, type=str, help="Experiment name")
     parser.add_argument("--debug", action="store_true", help="Debug mode")
 
+    parser.add_argument("--device", default=0, type=int, help="GPU device to use")
     # parser.add_argument("--learning_rate", type=float, default=None, help="Override the Learning Rate from config (for sweep)")
 
     return parser

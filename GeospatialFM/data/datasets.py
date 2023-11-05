@@ -26,17 +26,26 @@ class myBigEarthNet(BigEarthNet):
         image = self._load_image(index)
         label = self._load_target(index)
 
+        sample: dict[str, Tensor] = {"image": image, "label": torch.argmax(label)}
+
+        if self.transforms is not None:
+            sample = self.transforms(sample)
+
+        image = sample['image']
+
+        if self.bands == 'all':
+            radar = image[:2]
+            image = image[2:]
         if self.pad_s2:
-            assert self.bands == 's2'
+            assert image.shape[0] == 12
             img_size = image.shape[1:]
             image = torch.cat((image[:10], torch.zeros((1, *img_size)), image[10:]), dim=0)
         if self.rgb:
             image = image[self.RGB_INDEX]
 
-        sample: dict[str, Tensor] = {"image": image, "label": torch.argmax(label)}
-
-        if self.transforms is not None:
-            sample = self.transforms(sample)
+        sample['image'] = image
+        if self.bands == 'all':
+            sample['radar'] = radar
 
         return sample
 

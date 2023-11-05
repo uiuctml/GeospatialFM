@@ -30,7 +30,7 @@ def get_cfg_from_args(args):
     return cfg
 
 
-def setup(args):
+def setup(args, wandb=True):
     """
     Create configs and perform basic setups.
     """
@@ -51,10 +51,12 @@ def setup(args):
     if cfg['MODEL']['freeze_encoder']:
         cfg['NAME'] += f"_lp"
     # setup output directory
-    cfg['TRAINER']['output_dir'] += f'/{cfg["NAME"]}'
-    cfg['TRAINER']['logging_dir'] += f'/{cfg["NAME"]}'
+    cfg['TRAINER']['output_dir'] += f'/{cfg["DATASET"]["name"]}_{cfg["NAME"]}'
+    cfg['TRAINER']['logging_dir'] += f'/{cfg["DATASET"]["name"]}_{cfg["NAME"]}'
+    os.makedirs(cfg['TRAINER']['output_dir'], exist_ok=True)
+    os.makedirs(cfg['TRAINER']['logging_dir'], exist_ok=True)
     # setup logger
-    if args.debug:
+    if args.debug or wandb is False:
         cfg['TRAINER']['report_to'] = None
     run = init_wandb(cfg) if cfg['TRAINER']['report_to'] == 'wandb' else None
     return cfg, run

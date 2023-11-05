@@ -1,5 +1,0 @@
-CUDA_VISIBLE_DEVICES=2 python train.py --exp_name dino --config_file GeospatialFM/configs/eurosat/eurosat_vit-s16_dino.yaml TRAINER.learning_rate=0.1 MODEL.freeze_encoder=true &
-CUDA_VISIBLE_DEVICES=2 python train.py --exp_name moco --config_file GeospatialFM/configs/eurosat/eurosat_vit-s16_moco.yaml TRAINER.learning_rate=0.1 MODEL.freeze_encoder=true &
-CUDA_VISIBLE_DEVICES=3 python train.py --exp_name seco --config_file GeospatialFM/configs/eurosat/eurosat_rn50_seco.yaml TRAINER.learning_rate=0.1 MODEL.freeze_encoder=true &
-CUDA_VISIBLE_DEVICES=3 python train.py --exp_name moco --config_file GeospatialFM/configs/eurosat/eurosat_rn50_moco.yaml TRAINER.learning_rate=0.1 MODEL.freeze_encoder=true &
-CUDA_VISIBLE_DEVICES=1 python train.py --exp_name dino --config_file GeospatialFM/configs/eurosat/eurosat_rn50_dino.yaml TRAINER.learning_rate=0.1 MODEL.freeze_encoder=true

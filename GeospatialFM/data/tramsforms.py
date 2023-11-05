@@ -43,13 +43,20 @@ def make_standardize_transform():
     # return lambda x: x
 
 class TransformSample():
-    def __init__(self, transform,):
+    def __init__(self, transform, sar_transform=None):
         self.transform = transform
+        self.sar_transform = sar_transform
 
     def transform_img(self, sample):
         img = sample['image']
         img = self.transform(img)
         sample['image'] = img
+
+        if 'radar' is sample:
+            assert self.sar_transform is not None
+            radar = sample['radar']
+            radar = self.sar_transform(radar)
+            sample['radar'] = radar
         return sample
 
     def __call__(self, sample):
