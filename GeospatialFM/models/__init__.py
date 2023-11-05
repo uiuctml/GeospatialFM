@@ -2,7 +2,7 @@ from .utils import *
 from .modeling import *
 import os.path as osp
 import timm
-
+from .crop import *
 
 
 # def construct_model(model_cfg):

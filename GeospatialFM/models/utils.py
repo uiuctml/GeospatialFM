@@ -3,27 +3,15 @@ import torch
 import torchgeo.models as tgm
 from .modeling import *
 import timm
+# from .crop import *
 
 def get_criterion(criterion):
     if criterion == 'cross_entropy':
         return torch.nn.CrossEntropyLoss()
     else:
         raise NotImplementedError
-
-def consturct_encoder(model_cfg):
-    assert model_cfg['load_pretrained_from'] in ['timm', 'torchgeo', 'dir', None]
-
-    if model_cfg['load_pretrained_from'] == 'dir':
-        encoder = torch.load(model_cfg['pretrained_ckpt'])
     
-    elif model_cfg['load_pretrained_from'] == 'torchgeo':
-        assert model_cfg['pretrained_ckpt'] is not None
-        weights = tgm.get_weight(model_cfg['pretrained_ckpt'])
-        encoder = tgm.get_model(model_cfg['architecture'], weights=weights)
-
-    else:
-        encoder = timm.create_model(model_cfg['architecture'], pretrained=(model_cfg['load_pretrained_from']=='timm'))
-    
+def tailor_model(encoder, model_cfg):
     if model_cfg['architecture'].startswith('vit'):
         conv_in = encoder.patch_embed.proj
     elif model_cfg['architecture'].startswith('resnet'):
@@ -51,12 +39,36 @@ def consturct_encoder(model_cfg):
     elif model_cfg['architecture'].startswith('resnet'):
         encoder.conv1 = band_ext_conv_in
         encoder.fc = nn.Identity()
+    return encoder
+
+def consturct_encoder(model_cfg):
+    assert model_cfg['load_pretrained_from'] in ['timm', 'torchgeo', 'dir', None]
+
+    if model_cfg['load_pretrained_from'] == 'torchgeo':
+        assert model_cfg['pretrained_ckpt'] is not None
+        weights = tgm.get_weight(model_cfg['pretrained_ckpt'])
+        encoder = tgm.get_model(model_cfg['architecture'], weights=weights)
+
+    else:
+        encoder = timm.create_model(model_cfg['architecture'], pretrained=(model_cfg['load_pretrained_from']=='timm'))
+    
+    encoder = tailor_model(encoder, model_cfg)
+
+    if model_cfg['load_pretrained_from'] == 'dir':
+        encoder.load_state_dict(torch.load(model_cfg['pretrained_ckpt']), strict=False)
         
     if model_cfg['freeze_encoder']:
         for param in encoder.parameters():
             param.requires_grad = False
 
     return encoder
+
+def construct_head(head_cfg):
+    if head_cfg['task_type'] == 'classification':
+        head = ClassificationHead(out_features=head_cfg['num_classes'], in_features=head_cfg['in_features'], use_bias=head_cfg['use_bias'])
+    else:
+        raise NotImplementedError
+    return head
 
 def construct_model(model_cfg):
     criterion = get_criterion(model_cfg['criterion'])
@@ -81,3 +93,12 @@ def construct_model(model_cfg):
         raise NotImplementedError
 
     return model
+
+
+# def build_crop(cfg):
+#     optical = construct_model(cfg['MODEL'])
+#     optical_encoder = optical.base_model if hasattr(optical, 'base_model') else optical
+#     sar = construct_model(cfg['SAR_MODEL'])
+#     sar_encoder = sar.base_model if hasattr(sar, 'base_model') else sar
+#     crop = CROP().align_pretrained(optical_encoder, sar_encoder)
+#     return crop
