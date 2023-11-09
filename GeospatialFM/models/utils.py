@@ -1,98 +1,65 @@
 import os
 import torch
 import torchgeo.models as tgm
-from .modeling import *
+import torch.nn as nn
 import timm
-# from .crop import *
+from .vision_transformer import ViTEncoder, ViTDecoder
+from .mae import CrossModalMAEViT
 
-def get_criterion(criterion):
-    if criterion == 'cross_entropy':
-        return torch.nn.CrossEntropyLoss()
-    else:
-        raise NotImplementedError
-    
-def tailor_model(encoder, model_cfg):
-    if model_cfg['architecture'].startswith('vit'):
-        conv_in = encoder.patch_embed.proj
-    elif model_cfg['architecture'].startswith('resnet'):
-        conv_in = encoder.conv1
-
-    kernel_size = conv_in.kernel_size[0]
-    stride = conv_in.stride[0]
-    padding = conv_in.padding[0]
-    out_channels = conv_in.out_channels
-    bias = conv_in.bias is not None
-
-    # brute force duplicate the weights for each band
-    weight = conv_in.weight.data
-    _weight = weight.repeat(1, model_cfg['bands']//weight.shape[1]+1, 1, 1)[:, :model_cfg['bands'], :, :]
-    _bias = conv_in.bias.data if bias else None
-
-    band_ext_conv_in = nn.Conv2d(model_cfg['bands'], out_channels, kernel_size, stride, padding, bias=bias)
-    band_ext_conv_in.weight.data = _weight
-    if bias:
-        band_ext_conv_in.bias.data = _bias
-
-    if model_cfg['architecture'].startswith('vit'):
-        encoder.patch_embed.proj = band_ext_conv_in
-        encoder.head = nn.Identity()
-    elif model_cfg['architecture'].startswith('resnet'):
-        encoder.conv1 = band_ext_conv_in
-        encoder.fc = nn.Identity()
-    return encoder
-
-def consturct_encoder(model_cfg):
+def construct_encoder(model_cfg, arch=None):
     assert model_cfg['load_pretrained_from'] in ['timm', 'torchgeo', 'dir', None]
+    if arch is None: assert model_cfg['load_pretrained_from'] in ['dir', None]
 
-    if model_cfg['load_pretrained_from'] == 'torchgeo':
-        assert model_cfg['pretrained_ckpt'] is not None
-        weights = tgm.get_weight(model_cfg['pretrained_ckpt'])
-        encoder = tgm.get_model(model_cfg['architecture'], weights=weights)
+    encoder = ViTEncoder(**model_cfg['kwargs'])
 
-    else:
-        encoder = timm.create_model(model_cfg['architecture'], pretrained=(model_cfg['load_pretrained_from']=='timm'))
-    
-    encoder = tailor_model(encoder, model_cfg)
+    if model_cfg['load_pretrained_from'] != None:
+        if model_cfg['load_pretrained_from'] == 'torchgeo':
+            assert model_cfg['pretrained_ckpt'] is not None
+            weights = tgm.get_weight(model_cfg['pretrained_ckpt'])
+            state_dict = tgm.get_model(arch, weights=weights).state_dict()
 
-    if model_cfg['load_pretrained_from'] == 'dir':
-        encoder.load_state_dict(torch.load(model_cfg['pretrained_ckpt']), strict=False)
-        
+        elif model_cfg['load_pretrained_from'] == 'timm':
+            state_dict = timm.create_model(arch, pretrained=(model_cfg['load_pretrained_from']=='timm')).state_dict()  
+
+        elif model_cfg['load_pretrained_from'] == 'dir':
+            state_dict = torch.load(model_cfg['pretrained_ckpt'])
+
+        try:
+            encoder.load_state_dict(state_dict, strict=False)
+        except:
+            raise ValueError(f"Pretrained ckpt for {arch} mismatch with model config")
+
     if model_cfg['freeze_encoder']:
         for param in encoder.parameters():
             param.requires_grad = False
 
     return encoder
 
+def construct_decoder(decoder_cfg):
+    return ViTDecoder(**decoder_cfg['kwargs'])
+
+def construct_mae(model_cfg):
+    arch = model_cfg['architecture']
+    if model_cfg['cross_modal']:
+        optical_encoder = construct_encoder(model_cfg['OPTICAL'], arch=arch)
+        radar_encoder = construct_encoder(model_cfg['RADAR'], arch=arch)
+        if model_cfg['OPTICAL']['use_head']:
+            optical_head = construct_head(model_cfg['OPTICAL']['head_kwargs'])
+        if model_cfg['RADAR']['use_head']:
+            radar_head = construct_head(model_cfg['RADAR']['head_kwargs'])
+    if model_cfg['cross_modal']:
+        decoder = construct_decoder(model_cfg['DECODER'])
+    mae = CrossModalMAEViT(optical_encoder, radar_encoder, decoder, decoder)
+    if model_cfg['OPTICAL']['use_head'] and model_cfg['RADAR']['use_head']:
+        mae.set_head(optical_head, radar_head)
+    return mae
+
 def construct_head(head_cfg):
     if head_cfg['task_type'] == 'classification':
-        head = ClassificationHead(out_features=head_cfg['num_classes'], in_features=head_cfg['in_features'], use_bias=head_cfg['use_bias'])
+        head = nn.Linear(head_cfg['in_features'], head_cfg['num_classes'], bias=head_cfg['use_bias'])
     else:
         raise NotImplementedError
     return head
-
-def construct_model(model_cfg):
-    criterion = get_criterion(model_cfg['criterion'])
-    encoder = consturct_encoder(model_cfg)
-
-    head_cfg = model_cfg['head_kwargs']
-    if head_cfg['task_type'] == 'classification':
-        head = ClassificationHead(out_features=head_cfg['num_classes'], in_features=head_cfg['in_features'], use_bias=head_cfg['use_bias'])
-        model = EncoderDecoder(encoder, head, freeze_encoder=model_cfg['freeze_encoder'], criterion=criterion)
-    elif head_cfg['task_type'] == 'segmentation':
-        if head_cfg['head_type'] == 'unet':
-            assert model_cfg['architecture'].startswith('resnet')
-            model = Unet(encoder_name = model_cfg['architecture'],
-                         in_channels = model_cfg['bands'],
-                         classes = head_cfg['num_classes'],
-                         criterion=criterion,
-                         freeze_encoder = model_cfg['freeze_encoder'],)
-            model.encoder.load_state_dict(encoder.state_dict())
-        elif head_cfg['head_type'] == 'pspnet':
-            pass
-    else:
-        raise NotImplementedError
-
-    return model
 
 
 # def build_crop(cfg):

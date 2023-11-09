@@ -75,5 +75,7 @@ def get_datasets(data_cfg):
         val_dataset = test_dataset
     if data_cfg['train_frac'] < 1.0:
         train_dataset = Subset(train_dataset, torch.randperm(len(train_dataset))[:int(len(train_dataset)*data_cfg['train_frac'])])
+    if data_cfg['val_frac'] < 1.0:
+        val_dataset = Subset(val_dataset, torch.randperm(len(val_dataset))[:int(len(val_dataset)*data_cfg['val_frac'])])
 
     return train_dataset, val_dataset, test_dataset
