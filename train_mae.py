@@ -43,7 +43,7 @@ data = get_data(cfg)
 steps = data['train'].dataloader.num_batches * cfg['TRAINER']['num_train_epochs']
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg['TRAINER']['learning_rate'], weight_decay=cfg['TRAINER']['weight_decay'])
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=steps, eta_min=1e-7)
-loss = [MAELoss(**cfg.LOSS['MAE']), MultiModalCELoss()]
+loss = [MAELoss(**cfg.LOSS['MAE']), MultiModalCELoss(**cfg.LOSS['MMCE'])]
 
 for epoch in trange(training_args.epochs):
     train_one_epoch(model, data, loss, epoch, optimizer, scheduler, training_args)

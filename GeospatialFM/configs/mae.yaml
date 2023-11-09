@@ -67,7 +67,10 @@ MODEL:
       num_register_tokens: 0
       embed_dim: 384
 LOSS:
+  MMCE:
+    scale: 1.0
   MAE:
+    scale: 10.0
     uni_decoder: true
     cross_modal_recon: false
     channel_reweight: true
