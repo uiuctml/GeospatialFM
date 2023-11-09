@@ -52,7 +52,7 @@ class TransformSample():
         img = self.transform(img)
         sample['image'] = img
 
-        if 'radar' is sample:
+        if 'radar' in sample:
             assert self.sar_transform is not None
             radar = sample['radar']
             radar = self.sar_transform(radar)
