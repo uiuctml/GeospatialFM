@@ -8,7 +8,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 # from torch.nn.parallel.distributed import DistributedDataParallel
-
+from collections import defaultdict
 try:
     import wandb
 except ImportError:
@@ -18,7 +18,7 @@ except ImportError:
 # from .distributed import is_master
 # from .zero_shot import zero_shot_eval
 from .precision import get_autocast
-from GeospatialFM.loss import CropLoss
+from GeospatialFM.loss import *
 
 
 class AverageMeter(object):
@@ -84,66 +84,74 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
 
         if args.accum_freq == 1:
             with autocast():
-                model_out = model(images, radar)
-                logit_scale = model_out["logit_scale"]
-                losses = loss(**model_out, output_dict=True)
+                model_out = model(images, radar, args.mask_ratio)
+                logit_scale = model_out.get("logit_scale")
+                model_out['labels'] = label
+                if isinstance(loss, list):
+                    losses = {}
+                    for l in loss:
+                        losses.update(l(**model_out, output_dict=True))
+                else:
+                    losses = loss(**model_out, output_dict=True)
 
                 total_loss = sum(losses.values())
                 losses["loss"] = total_loss
 
             total_loss.backward()
         else:
+            raise NotImplementedError
+            # TODO: combine MAE with CLIP loss
             # First, cache the features without any gradient tracking.
-            with torch.no_grad():
-                with autocast():
-                    model_out = model(images, radar)
+            # with torch.no_grad():
+            #     with autocast():
+            #         model_out = model(images, radar)
 
-                    for f in ("logit_scale", "logit_bias"):
-                        model_out.pop(f, None)
+            #         for f in ("logit_scale", "logit_bias"):
+            #             model_out.pop(f, None)
 
-                    for key, val in model_out.items():
-                        if key in accum_features:
-                            accum_features[key].append(val)
-                        else:
-                            accum_features[key] = [val]
+            #         for key, val in model_out.items():
+            #             if key in accum_features:
+            #                 accum_features[key].append(val)
+            #             else:
+            #                 accum_features[key] = [val]
 
-                accum_images.append(images)
-                accum_radar.append(radar)
-                accum_label.append(label)
+            #     accum_images.append(images)
+            #     accum_radar.append(radar)
+            #     accum_label.append(label)
 
 
-            # If (i + 1) % accum_freq is not zero, move on to the next batch.
-            if ((i + 1) % args.accum_freq) > 0:
-                # FIXME this makes data time logging unreliable when accumulating
-                continue
+            # # If (i + 1) % accum_freq is not zero, move on to the next batch.
+            # if ((i + 1) % args.accum_freq) > 0:
+            #     # FIXME this makes data time logging unreliable when accumulating
+            #     continue
 
-            # Now, ready to take gradients for the last accum_freq batches.
-            # Re-do the forward pass for those batches, and use the cached features from the other batches as negatives.
-            # Call backwards each time, but only step optimizer at the end.
-            optimizer.zero_grad()
-            for j in range(args.accum_freq):
-                images = accum_images[j]
-                radar = accum_radar[j]
-                with autocast():
-                    model_out = model(images, radar)
+            # # Now, ready to take gradients for the last accum_freq batches.
+            # # Re-do the forward pass for those batches, and use the cached features from the other batches as negatives.
+            # # Call backwards each time, but only step optimizer at the end.
+            # optimizer.zero_grad()
+            # for j in range(args.accum_freq):
+            #     images = accum_images[j]
+            #     radar = accum_radar[j]
+            #     with autocast():
+            #         model_out = model(images, radar)
 
-                    inputs_no_accum = {}
-                    inputs_no_accum["logit_scale"] = logit_scale = model_out.pop("logit_scale")
-                    if "logit_bias" in model_out:
-                        inputs_no_accum["logit_bias"] = model_out.pop("logit_bias")
+            #         inputs_no_accum = {}
+            #         inputs_no_accum["logit_scale"] = logit_scale = model_out.pop("logit_scale")
+            #         if "logit_bias" in model_out:
+            #             inputs_no_accum["logit_bias"] = model_out.pop("logit_bias")
 
-                    inputs = {}
-                    for key, val in accum_features.items():
-                        accumulated = accum_features[key]
-                        inputs[key] = torch.cat(accumulated[:j] + [model_out[key]] + accumulated[j + 1:])
+            #         inputs = {}
+            #         for key, val in accum_features.items():
+            #             accumulated = accum_features[key]
+            #             inputs[key] = torch.cat(accumulated[:j] + [model_out[key]] + accumulated[j + 1:])
 
-                    losses = loss(**inputs, **inputs_no_accum, output_dict=True)
-                    del inputs
-                    del inputs_no_accum
-                    total_loss = sum(losses.values())
-                    losses["loss"] = total_loss
+            #         losses = loss(**inputs, **inputs_no_accum, output_dict=True)
+            #         del inputs
+            #         del inputs_no_accum
+            #         total_loss = sum(losses.values())
+            #         losses["loss"] = total_loss
 
-                total_loss.backward()
+            #     total_loss.backward()
 
         if args.grad_clip_norm is not None:
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip_norm, norm_type=2.0)
@@ -213,7 +221,7 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
             data_time_m.reset()
     # end for
 
-def evaluate(model, data, loss, epoch, args, tb_writer=None):
+def evaluate(model, data, loss, epoch, args, val_split='val'):
     metrics = {}
     # if not is_master(args):
     #     return metrics
@@ -226,21 +234,12 @@ def evaluate(model, data, loss, epoch, args, tb_writer=None):
     autocast = get_autocast(args.precision)
     # input_dtype = get_input_dtype(args.precision)
 
-    if 'val' in data and (args.val_frequency and ((epoch % args.val_frequency) == 0 or epoch == args.epochs)):
-        dataloader = data['val'].dataloader
+    if val_split in data and (args.val_frequency and ((epoch % args.val_frequency) == 0 or epoch == args.epochs)):
+        dataloader = data[val_split].dataloader
         num_samples = 0
         samples_per_val = dataloader.num_samples
 
-        # FIXME this does not scale past small eval datasets
-        # all_image_features @ all_text_features will blow up memory and compute very quickly
-        cumulative_loss = 0.0
-        cumulative_image_acc = 0.0
-        cumulative_radar_acc = 0.0
-        cumulative_logit_scale = 0.0
-        cumulative_image_loss = 0.0
-        cumulative_radar_loss = 0.0
-        # cumulative_gen_loss = 0.0
-        # all_image_features, all_radar_features = [], []
+        cumulative_losses = defaultdict(float)
         with torch.no_grad():
             for i, batch in enumerate(dataloader):
                 images, radar, gt_label = batch['image'], batch['radar'], batch['label']
@@ -248,78 +247,53 @@ def evaluate(model, data, loss, epoch, args, tb_writer=None):
                 radar = radar.to(device=device, non_blocking=True)
                 gt_label = gt_label.to(device=device, non_blocking=True)
 
+                batch_size = len(images)
+
                 with autocast():
                     model_out = model(images, radar)
-                    image_features = model_out["image_features"]
-                    radar_features = model_out["radar_features"]
-                    image_logits = model_out.get("image_logits")
-                    radar_logits = model_out.get("radar_logits")
-                    logit_scale = model_out["logit_scale"]
-                    # features are accumulated in CPU tensors, otherwise GPU memory exhausted quickly
-                    # however, system RAM is easily exceeded and compute time becomes problematic
-                    # all_image_features.append(image_features.cpu())
-                    # all_radar_features.append(radar_features.cpu())
-                    logit_scale = logit_scale.mean()
-                    logits_per_image = logit_scale * image_features @ radar_features.t()
-                    logits_per_text = logits_per_image.t()
+                    model_out['labels'] = gt_label
+                    if isinstance(loss, list):
+                        losses = {}
+                        for l in loss:
+                            losses.update(l(**model_out, output_dict=True))
+                    else:
+                        losses = loss(**model_out, output_dict=True)
 
-                    batch_size = images.shape[0]
-                    labels = torch.arange(batch_size, device=device).long()
-                    contrastive_loss = (
-                        F.cross_entropy(logits_per_image, labels) +
-                        F.cross_entropy(logits_per_text, labels)
-                    ) / 2
-
-                    # calculate loss
-                    image_loss = F.cross_entropy(image_logits, gt_label)
-                    radar_loss = F.cross_entropy(radar_logits, gt_label)
+                    total_loss = sum(losses.values())
+                    losses["loss"] = total_loss
 
                     # calculate accuracy
-                    image_preds = torch.argmax(image_logits, dim=1)
-                    radar_preds = torch.argmax(radar_logits, dim=1)
+                    optical_logits = model_out.get('optical_logits')
+                    radar_logits = model_out.get('radar_logits')
+                    if optical_logits is not None and radar_logits is not None:
+                        image_preds = torch.argmax(model_out['optical_logits'], dim=1)
+                        image_acc = (image_preds == gt_label).sum().item() / len(gt_label)
+                        losses['image_acc'] = image_acc
+                        radar_preds = torch.argmax(model_out['radar_logits'], dim=1)
+                        radar_acc = (radar_preds == gt_label).sum().item() / len(gt_label)
+                        losses['radar_acc'] = radar_acc
 
-                    image_acc = (image_preds == gt_label).sum().item() / batch_size
-                    radar_acc = (radar_preds == gt_label).sum().item() / batch_size
-
-                    # gen_loss = maybe_compute_generative_loss(model_out)
-
-                cumulative_loss += contrastive_loss * batch_size
-                cumulative_image_acc += image_acc * batch_size
-                cumulative_radar_acc += radar_acc * batch_size
-                cumulative_logit_scale += logit_scale * batch_size
-                cumulative_image_loss += image_loss * batch_size
-                cumulative_radar_loss += radar_loss * batch_size
+                for key, val in losses.items():
+                    try:
+                        cumulative_losses[key] += val.item() * batch_size
+                    except:
+                        cumulative_losses[key] += val * batch_size
 
                 num_samples += batch_size
                 if (i % 100) == 0:
-                    logging.info(
-                        f"Eval Epoch: {epoch} [{num_samples} / {samples_per_val}]\t"
-                        f"Crop Loss: {cumulative_loss / num_samples:.6f}\t"
-                        f"Image Acc: {cumulative_image_acc / num_samples:.6f}\t"
-                        f"Radar Acc: {cumulative_radar_acc / num_samples:.6f}\t"
-                        f"Logit Scale: {cumulative_logit_scale / num_samples:.6f}\t"
-                        f"Image Loss: {cumulative_image_loss / num_samples:.6f}\t"
-                        f"Radar Loss: {cumulative_radar_loss / num_samples:.6f}\t")
-                    
+                    loss_log = f"Eval Epoch: {epoch} [{num_samples} / {samples_per_val}]" 
+                    loss_log += " ".join(
+                        [
+                            f"{key.replace('_', ' ').title()}: {val / num_samples:.6f}" 
+                            for key, val in cumulative_losses.items()
+                        ]
+                    )
+                    logging.info(loss_log)
 
-                    # if gen_loss is not None:
-                    #     cumulative_gen_loss += gen_loss * batch_size
-                    #     logging.info(
-                    #         f"Generative Loss: {cumulative_gen_loss / num_samples:.6f}\t")
+            for key, val in cumulative_losses.items():
+                metrics[key] = val / num_samples
 
-            # val_metrics = get_clip_metrics(
-            #     image_features=torch.cat(all_image_features),
-            #     text_features=torch.cat(all_text_features),
-            #     logit_scale=logit_scale.cpu(),
-            # )
-            loss = cumulative_loss / num_samples
-            image_acc = cumulative_image_acc / num_samples
-            radar_acc = cumulative_radar_acc / num_samples
-            logit_scale = cumulative_logit_scale / num_samples
-            # metrics.update(
-            #     {**val_metrics, "clip_val_loss": loss.item(), "epoch": epoch, "num_samples": num_samples}
-            # )
-            metrics.update({"crop_val_loss": loss.item(), "image_acc": image_acc, "radar_acc": radar_acc, "epoch": epoch, "num_samples": num_samples, "logit_scale": logit_scale.item()})
+            metrics.update({"epoch": epoch, "num_samples": num_samples})
             # if gen_loss is not None:
             #     gen_loss = cumulative_gen_loss / num_samples
             #     metrics.update({"val_generative_loss": gen_loss.item()})
@@ -335,9 +309,6 @@ def evaluate(model, data, loss, epoch, args, tb_writer=None):
     log_data = {"val/" + name: val for name, val in metrics.items()}
 
     if args.save_logs:
-        # if tb_writer is not None:
-        #     for name, val in log_data.items():
-        #         tb_writer.add_scalar(name, val, epoch)
 
         with open(os.path.join(args.checkpoint_path, "results.jsonl"), "a+") as f:
             f.write(json.dumps(metrics))
