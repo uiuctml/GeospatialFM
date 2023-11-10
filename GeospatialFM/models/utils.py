@@ -43,15 +43,21 @@ def construct_mae(model_cfg):
     if model_cfg['cross_modal']:
         optical_encoder = construct_encoder(model_cfg['OPTICAL'], arch=arch)
         radar_encoder = construct_encoder(model_cfg['RADAR'], arch=arch)
-        if model_cfg['OPTICAL']['use_head']:
+
+        if model_cfg['unified_decoder']:
+            decoder = construct_decoder(model_cfg['DECODER'])
+            optical_decoder = radar_decoder = decoder
+        else:
+            optical_decoder = construct_decoder(model_cfg['OPTICAL_DECODER'])
+            radar_decoder = construct_decoder(model_cfg['RADAR_DECODER'])
+
+        mae = CrossModalMAEViT(optical_encoder, radar_encoder, optical_decoder, radar_decoder)
+        if model_cfg['OPTICAL']['use_head'] and model_cfg['RADAR']['use_head']:
             optical_head = construct_head(model_cfg['OPTICAL']['head_kwargs'])
-        if model_cfg['RADAR']['use_head']:
             radar_head = construct_head(model_cfg['RADAR']['head_kwargs'])
-    if model_cfg['cross_modal']:
-        decoder = construct_decoder(model_cfg['DECODER'])
-    mae = CrossModalMAEViT(optical_encoder, radar_encoder, decoder, decoder)
-    if model_cfg['OPTICAL']['use_head'] and model_cfg['RADAR']['use_head']:
-        mae.set_head(optical_head, radar_head)
+            mae.set_head(optical_head, radar_head)
+    else:
+        raise NotImplementedError
     return mae
 
 def construct_head(head_cfg):
