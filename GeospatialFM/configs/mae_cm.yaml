@@ -1,7 +1,6 @@
 MODEL:
   architecture: vit_small_patch16_224
-  cross_modal: true
-  use_decoder: true
+  cross_modal: false
   unified_decoder: false
   mask_ratio: 0.75
   OPTICAL:
@@ -21,7 +20,7 @@ MODEL:
       drop_path_uniform: False
       init_values: null
       num_register_tokens: 0
-    use_head: true
+    use_head: false
     head_kwargs:
       head_type: linear
       task_type: classification
@@ -45,7 +44,7 @@ MODEL:
       drop_path_uniform: False
       init_values: null
       num_register_tokens: 0
-    use_head: true
+    use_head: false
     head_kwargs:
       head_type: linear
       task_type: classification
@@ -54,8 +53,8 @@ MODEL:
       num_classes: 19
   OPTICAL_DECODER:
     kwargs:
-      out_chans: 2
-      num_heads: 6
+      out_chans: 13
+      num_heads: 12
       mlp_ratio: 4.0
       qkv_bias: True
       init_values: null
@@ -68,8 +67,8 @@ MODEL:
       embed_dim: 384
   RADAR_DECODER:
     kwargs:
-      out_chans: 12
-      num_heads: 6
+      out_chans: 2
+      num_heads: 12
       mlp_ratio: 4.0
       qkv_bias: True
       init_values: null
@@ -81,13 +80,13 @@ MODEL:
       num_register_tokens: 0
       embed_dim: 384
 LOSS:
-  MMCE:
-    scale: 1.0
+  # MMCE:
+  #   scale: 1.0
   MAE:
-    scale: 10.0
-    uni_decoder: true
+    scale: 1.0
+    uni_decoder: false
     cross_modal_recon: false
-    channel_reweight: true
+    channel_reweight: false
 DATASET:
   root: ./data/geospatial
   name: BigEarthNet

@@ -250,7 +250,7 @@ def evaluate(model, data, loss, epoch, args, val_split='val'):
                 batch_size = len(images)
 
                 with autocast():
-                    model_out = model(images, radar)
+                    model_out = model(images, radar, args.mask_ratio)
                     model_out['labels'] = gt_label
                     if isinstance(loss, list):
                         losses = {}
