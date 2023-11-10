@@ -1,0 +1,127 @@
+MODEL:
+  architecture: vit_small_patch16_224
+  cross_modal: true
+  use_decoder: true
+  unified_decoder: false
+  mask_ratio: 0.75
+  OPTICAL:
+    load_pretrained_from: torchgeo
+    pretrained_ckpt: ViTSmall16_Weights.SENTINEL2_ALL_MOCO
+    freeze_encoder: false
+    kwargs:
+      img_size: 224
+      patch_size: 16
+      in_chans: 13
+      embed_dim: 384
+      depth: 12
+      num_heads: 6
+      mlp_ratio: 4.0
+      qkv_bias: True
+      drop_path_rate: 0.0
+      drop_path_uniform: False
+      init_values: null
+      num_register_tokens: 0
+    use_head: true
+    head_kwargs:
+      head_type: linear
+      task_type: classification
+      use_bias: true
+      in_features: 384
+      num_classes: 19
+  RADAR:
+    load_pretrained_from: dir
+    pretrained_ckpt: /data/common/huggingface_models/SSL4EO/B2_vits16_mae.pth
+    freeze_encoder: false
+    kwargs:
+      img_size: 224
+      patch_size: 16
+      in_chans: 2
+      embed_dim: 384
+      depth: 12
+      num_heads: 6
+      mlp_ratio: 4.0
+      qkv_bias: True
+      drop_path_rate: 0.0
+      drop_path_uniform: False
+      init_values: null
+      num_register_tokens: 0
+    use_head: true
+    head_kwargs:
+      head_type: linear
+      task_type: classification
+      use_bias: true
+      in_features: 384
+      num_classes: 19
+  OPTICAL_DECODER:
+    kwargs:
+      out_chans: 2
+      num_heads: 6
+      mlp_ratio: 4.0
+      qkv_bias: True
+      init_values: null
+      decoder_embed_dim: 512 
+      decoder_depth: 8 
+      decoder_num_heads: 16
+      num_patches: 196
+      patch_size: 16
+      num_register_tokens: 0
+      embed_dim: 384
+  RADAR_DECODER:
+    kwargs:
+      out_chans: 12
+      num_heads: 6
+      mlp_ratio: 4.0
+      qkv_bias: True
+      init_values: null
+      decoder_embed_dim: 512 
+      decoder_depth: 8 
+      decoder_num_heads: 16
+      num_patches: 196
+      patch_size: 16
+      num_register_tokens: 0
+      embed_dim: 384
+LOSS:
+  MMCE:
+    scale: 1.0
+  MAE:
+    scale: 10.0
+    uni_decoder: true
+    cross_modal_recon: false
+    channel_reweight: true
+DATASET:
+  root: ./data/geospatial
+  name: BigEarthNet
+  train_transforms:
+    normalize: true
+    standardize: false
+  eval_transforms:
+    normalize: true
+    standardize: false
+  kwargs:
+    bands: all
+    num_classes: 19
+    pad_s2: true
+  eval_metric: classification
+  use_train_transform: true
+  train_frac: 0.1
+  val_frac: 0.1
+TRAINER:
+  # Training related
+  num_train_epochs: 50
+  per_device_train_batch_size: 256
+  per_device_eval_batch_size: 256
+  gradient_accumulation_steps: 1
+  learning_rate: 1e-4
+  weight_decay: 0.
+  # dataloader
+  dataloader_num_workers: 8
+  dataloader_pin_memory: true
+  dataloader_drop_last: false
+  # Logging
+  report_to: wandb
+  logging_steps: 50
+  # optimizer
+  optim: adamw_torch
+  lr_scheduler_type: cosine
+  # Other
+  seed: 0
