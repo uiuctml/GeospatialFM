@@ -21,10 +21,10 @@ class MAELoss(nn.Module):
                     optical_recon, radar_recon,
                     optical_target, radar_target,
                     output_dict=False, **kwargs):
-        optical_dim = optical_target.shape[-1]
-        radar_dim = radar_target.shape[-1]
-        scale = radar_dim / optical_dim
         if self.channel_reweight:
+            optical_dim = optical_target.shape[-1]
+            radar_dim = radar_target.shape[-1]
+            scale = radar_dim / optical_dim
             optical_recon[:, :, :optical_dim] *= scale
             optical_target[:, :, :optical_dim] *= scale
         if self.uni_decoder:

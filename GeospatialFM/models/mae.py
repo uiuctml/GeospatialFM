@@ -29,6 +29,20 @@ class CrossModalMAEViT(nn.Module):
         self.optical_head = optical_head
         self.radar_head = radar_head
 
+    def forward_recon(self, optical, radar, mask_ratio=0.75):
+        # forward optical
+        optical_latent, optical_mask, optical_ids_restore = self.optical_encoder.forward_encoder(optical, mask_ratio)
+        optical_recon = self.optical_decoder.forward_decoder(optical_latent, optical_ids_restore, restore_input_dim=True)
+        optical_cls_token = optical_latent[:, 0]
+        # forward radar
+        radar_latent, radar_mask, radar_ids_restore = self.radar_encoder.forward_encoder(radar, mask_ratio)
+        radar_recon = self.radar_decoder.forward_decoder(radar_latent, radar_ids_restore, restore_input_dim=True)
+        radar_cls_token = radar_latent[:, 0]
+        return_dict= dict(optical_cls_token=optical_cls_token, radar_cls_token=radar_cls_token,
+                    optical_recon=optical_recon, radar_recon=radar_recon,
+                    optical_mask=optical_mask, radar_mask=radar_mask,)
+        return return_dict
+
     def forward(self, optical, radar, mask_ratio=0.75):
         # forward optical
         optical_latent, optical_mask, optical_ids_restore = self.optical_encoder.forward_encoder(optical, mask_ratio)
