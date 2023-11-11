@@ -47,6 +47,8 @@ loss = get_loss_list(cfg.LOSS)
 for epoch in trange(training_args.epochs):
     train_one_epoch(model, data, loss, epoch, optimizer, scheduler, training_args)
     evaluate(model, data, loss, epoch, training_args, val_split='val')
+    if cfg.TRAINER.save_frequency > 0 and (epoch + 1) % cfg.TRAINER.save_frequency == 0:
+        torch.save(model.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], f'ckpt_epoch{epoch+1}.pth'))
 evaluate(model, data, loss, epoch, training_args, val_split='test')
 # save model
-torch.save(model.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], 'model.pth'))
+torch.save(model.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], 'final_model.pth'))
