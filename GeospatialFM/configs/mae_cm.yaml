@@ -1,10 +1,10 @@
 MODEL:
   architecture: vit_small_patch16_224
-  cross_modal: false
+  cross_modal: true
   unified_decoder: false
   mask_ratio: 0.75
   OPTICAL:
-    load_pretrained_from: torchgeo
+    load_pretrained_from: null
     pretrained_ckpt: ViTSmall16_Weights.SENTINEL2_ALL_MOCO
     freeze_encoder: false
     kwargs:
@@ -28,7 +28,7 @@ MODEL:
       in_features: 384
       num_classes: 19
   RADAR:
-    load_pretrained_from: dir
+    load_pretrained_from: null
     pretrained_ckpt: /data/common/huggingface_models/SSL4EO/B2_vits16_mae.pth
     freeze_encoder: false
     kwargs:
@@ -84,7 +84,7 @@ LOSS:
   #   scale: 1.0
   MAE:
     scale: 1.0
-    uni_decoder: false
+    recon_all: false
     cross_modal_recon: false
     channel_reweight: false
 DATASET:
