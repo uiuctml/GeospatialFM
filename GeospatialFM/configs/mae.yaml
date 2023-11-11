@@ -68,7 +68,7 @@ MODEL:
       embed_dim: 384
 LOSS:
   MMCE:
-    scale: 1.0
+    scale: 0
   MAE:
     scale: 10.0
     uni_decoder: true

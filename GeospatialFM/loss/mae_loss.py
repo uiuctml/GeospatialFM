@@ -3,11 +3,11 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 class MAELoss(nn.Module):
-    def __init__(self, uni_decoder=True, cross_modal_recon=False, channel_reweight=False, scale=1.0):
+    def __init__(self, recon_all=True, cross_modal_recon=False, channel_reweight=False, scale=1.0):
         super().__init__()
-        self.uni_decoder = uni_decoder
+        self.recon_all = recon_all
         self.cross_modal_recon = cross_modal_recon
-        assert not (uni_decoder and cross_modal_recon)
+        assert not (recon_all and cross_modal_recon)
         self.channel_reweight = channel_reweight # TODO: implement this
         self.lambda_ = scale
 
@@ -27,7 +27,7 @@ class MAELoss(nn.Module):
             scale = radar_dim / optical_dim
             optical_recon[:, :, :optical_dim] *= scale
             optical_target[:, :, :optical_dim] *= scale
-        if self.uni_decoder:
+        if self.recon_all:
             combined_target = torch.cat([optical_target, radar_target], dim=-1)
             optical_target = radar_target = combined_target
         elif self.cross_modal_recon:
