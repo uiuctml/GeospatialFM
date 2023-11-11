@@ -33,10 +33,7 @@ training_args = dict(
     mask_ratio = cfg['MODEL']['mask_ratio']
 )
 training_args = argparse.Namespace(**training_args)
-if len(training_args.device_ids) == 1:
-    training_args.device = f'cuda:{training_args.device[0]}'
-else:
-    training_args.device = 'cuda'
+training_args.device = f'cuda:{training_args.device[0]}'
 
 model = construct_mae(cfg.MODEL)
 if len(training_args.device) > 1:
