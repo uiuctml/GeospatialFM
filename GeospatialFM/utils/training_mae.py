@@ -85,7 +85,7 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
         if args.accum_freq == 1:
             with autocast():
                 model_out = model(images, radar, args.mask_ratio)
-                logit_scale = model_out.get("logit_scale")
+                # logit_scale = model_out.get("logit_scale")
                 model_out['labels'] = label
                 if isinstance(loss, list):
                     losses = {}
@@ -163,8 +163,8 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
             accum_images, accum_radar, accum_features = [], [], {}
 
         # Note: we clamp to 4.6052 = ln(100), as in the original paper.
-        with torch.no_grad():
-            unwrap_model(model).logit_scale.clamp_(0, math.log(100))
+        # with torch.no_grad():
+        #     unwrap_model(model).logit_scale.clamp_(0, math.log(100))
 
         batch_time_m.update(time.time() - end)
         end = time.time()
@@ -196,8 +196,8 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
                 f"Data (t): {data_time_m.avg:.3f} "
                 f"Batch (t): {batch_time_m.avg:.3f}, {samples_per_second:#g}/s, {samples_per_second_per_gpu:#g}/s/gpu "
                 f"LR: {optimizer.param_groups[0]['lr']:5f} "
-                f"Logit Scale: {logit_scale_scalar:.3f} " + loss_log
             )
+            # f"Logit Scale: {logit_scale_scalar:.3f} " + loss_log
 
             # Save train loss / etc. Using non avg meter values as loggers have their own smoothing
             log_data = {
@@ -205,9 +205,10 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
                 "batch_time": batch_time_m.val,
                 "samples_per_second": samples_per_second,
                 "samples_per_second_per_gpu": samples_per_second_per_gpu,
-                "scale": logit_scale_scalar,
                 "lr": optimizer.param_groups[0]["lr"]
             }            
+            # "scale": logit_scale_scalar,
+
             log_data.update({name:val.val for name,val in losses_m.items()})
 
             log_data = {"train/" + name: val for name, val in log_data.items()}

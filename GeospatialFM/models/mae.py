@@ -19,11 +19,11 @@ class CrossModalMAEViT(nn.Module):
         self.optical_decoder = optical_decoder
         self.radar_decoder = radar_decoder
 
-        self.logit_scale = nn.Parameter(torch.ones([]) * init_logit_scale).requires_grad_(False)
-        if init_logit_bias is not None:
-            self.logit_bias = nn.Parameter(torch.ones([]) * init_logit_bias).requires_grad_(False)
-        else:
-            self.logit_bias = None
+        # self.logit_scale = nn.Parameter(torch.ones([]) * init_logit_scale).requires_grad_(False)
+        # if init_logit_bias is not None:
+        #     self.logit_bias = nn.Parameter(torch.ones([]) * init_logit_bias).requires_grad_(False)
+        # else:
+        #     self.logit_bias = None
 
     def set_head(self, optical_head, radar_head):
         self.optical_head = optical_head
@@ -58,8 +58,8 @@ class CrossModalMAEViT(nn.Module):
         return_dict= dict(optical_mask=optical_mask, radar_mask=radar_mask,
                     optical_recon=optical_recon, radar_recon=radar_recon,
                     optical_target=optical_target, radar_target=radar_target,
-                    optical_cls_token=optical_cls_token, radar_cls_token=radar_cls_token,
-                    logit_scale=self.logit_scale.exp())
+                    optical_cls_token=optical_cls_token, radar_cls_token=radar_cls_token,)
+                    # logit_scale=self.logit_scale.exp())
         # downstream head
         if hasattr(self, 'optical_head'):
             optical_logits = self.optical_head(optical_cls_token)
