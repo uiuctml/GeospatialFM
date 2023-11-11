@@ -124,3 +124,5 @@ TRAINER:
   lr_scheduler_type: cosine
   # Other
   seed: 0
+  # ckpt
+  save_frequency: 10
