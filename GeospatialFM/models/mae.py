@@ -59,7 +59,7 @@ class CrossModalMAEViT(nn.Module):
                     optical_recon=optical_recon, radar_recon=radar_recon,
                     optical_target=optical_target, radar_target=radar_target,
                     optical_cls_token=optical_cls_token, radar_cls_token=radar_cls_token,
-                    logit_scale=self.logit_scale)
+                    logit_scale=self.logit_scale.exp())
         # downstream head
         if hasattr(self, 'optical_head'):
             optical_logits = self.optical_head(optical_cls_token)
