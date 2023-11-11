@@ -55,6 +55,7 @@ def unwrap_model(model):
         return model
 
 def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
+    print(args.device)
     device = torch.device(args.device)
     autocast = get_autocast(args.precision)
     model.train()
