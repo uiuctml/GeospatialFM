@@ -32,9 +32,14 @@ training_args = dict(
     mask_ratio = cfg['MODEL']['mask_ratio']
 )
 training_args = argparse.Namespace(**training_args)
-training_args.device = f'cuda:{training_args.device}'
+if len(training_args.device) == 1:
+    training_args.device = f'cuda:{training_args.device[0]}'
+else:
+    training_args.device = 'cuda'
 
 model = construct_mae(cfg.MODEL)
+if len(training_args.device) > 1:
+    model = torch.nn.DataParallel(model, device_ids=training_args.device)
 model = model.to(training_args.device)
 
 data = get_data(cfg)
