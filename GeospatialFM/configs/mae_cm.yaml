@@ -53,7 +53,7 @@ MODEL:
       num_classes: 19
   OPTICAL_DECODER:
     kwargs:
-      out_chans: 13
+      out_chans: 2
       num_heads: 12
       mlp_ratio: 4.0
       qkv_bias: True
@@ -67,7 +67,7 @@ MODEL:
       embed_dim: 384
   RADAR_DECODER:
     kwargs:
-      out_chans: 2
+      out_chans: 13
       num_heads: 12
       mlp_ratio: 4.0
       qkv_bias: True
@@ -85,7 +85,7 @@ LOSS:
   MAE:
     scale: 1.0
     recon_all: false
-    cross_modal_recon: false
+    cross_modal_recon: true
     channel_reweight: false
 DATASET:
   root: ./data/geospatial
