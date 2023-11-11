@@ -40,7 +40,7 @@ else:
 
 model = construct_mae(cfg.MODEL)
 if len(training_args.device) > 1:
-    model = torch.nn.DataParallel(model, device_ids=training_args.device)
+    model = torch.nn.DataParallel(model, device_ids=training_args.device_ids)
 model = model.to(training_args.device)
 
 data = get_data(cfg)
