@@ -70,7 +70,7 @@ LOSS:
   # MMCE:
   #   scale: 0
   MAE:
-    scale: 10.0
+    scale: 1.0
     recon_all: true
     cross_modal_recon: false
     channel_reweight: true
