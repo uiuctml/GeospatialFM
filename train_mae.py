@@ -18,7 +18,8 @@ if args.debug:
 cfg, _ = setup(args)
 
 training_args = dict(
-    device = args.device,
+    device_ids = args.device_ids,
+    device = 'cpu'
     precision = None,
     accum_freq = cfg['TRAINER']['gradient_accumulation_steps'],
     grad_clip_norm = None,
@@ -32,10 +33,10 @@ training_args = dict(
     mask_ratio = cfg['MODEL']['mask_ratio']
 )
 training_args = argparse.Namespace(**training_args)
-if len(training_args.device) == 1:
-    training_args.device = f'cuda:{training_args.device[0]}'.string()
+if len(training_args.device_ids) == 1:
+    training_args.device = f'cuda:{training_args.device[0]}'
 else:
-    training_args.device = 'cuda'.string()
+    training_args.device = 'cuda'
 
 model = construct_mae(cfg.MODEL)
 if len(training_args.device) > 1:
