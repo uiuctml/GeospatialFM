@@ -181,7 +181,8 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
                     losses_m[key] = AverageMeter()
                 losses_m[key].update(val.item(), batch_size)
 
-            logit_scale_scalar = logit_scale.item()
+            print(logit_scale)
+            # logit_scale_scalar = logit_scale.item()
             loss_log = " ".join(
                 [
                     f"{loss_name.capitalize()}: {loss_m.val:#.5g} ({loss_m.avg:#.5g})" 
