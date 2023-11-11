@@ -84,7 +84,7 @@ LOSS:
   #   scale: 1.0
   MAE:
     scale: 1.0
-    recon_all: true
+    recon_all: false
     cross_modal_recon: false
     channel_reweight: false
 DATASET:
