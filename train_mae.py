@@ -19,7 +19,7 @@ cfg, _ = setup(args)
 
 training_args = dict(
     device_ids = args.device_ids,
-    device = 'cpu'
+    device = 'cpu',
     precision = None,
     accum_freq = cfg['TRAINER']['gradient_accumulation_steps'],
     grad_clip_norm = None,
