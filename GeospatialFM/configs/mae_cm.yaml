@@ -86,7 +86,7 @@ LOSS:
     scale: 1.0
     recon_all: true
     cross_modal_recon: false
-    channel_reweight: true
+    channel_reweight: false
 DATASET:
   root: ./data/geospatial
   name: BigEarthNet
