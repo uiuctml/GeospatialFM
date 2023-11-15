@@ -13,6 +13,7 @@ from functools import partial
 
 import torch
 import torch.nn as nn
+import numpy as np
 
 from timm.models.vision_transformer import PatchEmbed, Block
 
@@ -303,7 +304,7 @@ class ViTDecoder(nn.Module):
         x = x.reshape(shape=(N, h * w, p**2 * C))
         return x
 
-    def unpatchify(self, x):
+    def _unpatchify(self, x):
         """
         x: (N, L, patch_size**2 *C)
         imgs: (N, C, H, W)
@@ -318,8 +319,22 @@ class ViTDecoder(nn.Module):
         x = torch.einsum('nhwpqc->nchpwq', x)
         imgs = x.reshape(shape=(x.shape[0], C, h * p, h * p))
         return imgs
+    
+    def unpatchify(self, x, slice_patch_tokens=None):
+        if slice_patch_tokens is not None:
+            assert isinstance(slice_patch_tokens, list) or isinstance(slice_patch_tokens, tuple)
+            slice_patch_tokens = np.array(slice_patch_tokens)
+            ratio = slice_patch_tokens / np.sum(slice_patch_tokens)
+            split_indices = np.round(ratio * x.shape[-1]).astype(np.int32)
+            assert np.sum(split_indices) == x.shape[-1]
+            xs = torch.split(x, tuple(split_indices), dim=-1)
+            x = [self._unpatchify(x_) for x_ in xs]
+            x = torch.cat(x, dim=1)
+        else:
+            x = self._unpatchify(x)
+        return x
 
-    def forward_decoder(self, x, ids_restore, restore_input_dim=False):
+    def forward_decoder(self, x, ids_restore, restore_input_dim=False, slice_patch_tokens=None):
         # embed tokens
         x = self.decoder_embed(x)
 
@@ -344,7 +359,7 @@ class ViTDecoder(nn.Module):
         x = x[:, 1+self.num_register_tokens:, :]
 
         if restore_input_dim:
-            x = self.unpatchify(x)
+            x = self.unpatchify(x, slice_patch_tokens)
 
         return x
     
