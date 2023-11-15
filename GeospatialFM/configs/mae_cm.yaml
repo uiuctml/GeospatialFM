@@ -2,7 +2,7 @@ MODEL:
   architecture: vit_small_patch16_224
   cross_modal: true
   unified_decoder: false
-  mask_ratio: 0.75
+  mask_ratio: 0.
   OPTICAL:
     load_pretrained_from: null
     pretrained_ckpt: ViTSmall16_Weights.SENTINEL2_ALL_MOCO
@@ -86,7 +86,7 @@ LOSS:
     scale: 1.0
     recon_all: true
     cross_modal_recon: false
-    channel_reweight: true
+    channel_reweight: false
 DATASET:
   root: ./data/geospatial
   name: BigEarthNet

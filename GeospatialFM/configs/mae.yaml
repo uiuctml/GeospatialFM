@@ -54,12 +54,12 @@ MODEL:
   DECODER:
     kwargs:
       out_chans: 15
-      num_heads: 12
+      num_heads: 6
       mlp_ratio: 4.0
       qkv_bias: True
       init_values: null
       decoder_embed_dim: 512 
-      decoder_depth: 12
+      decoder_depth: 8
       decoder_num_heads: 16
       num_patches: 196
       patch_size: 16
@@ -72,7 +72,7 @@ LOSS:
     scale: 1.0
     recon_all: true
     cross_modal_recon: false
-    channel_reweight: true
+    channel_reweight: false
 DATASET:
   root: ./data/geospatial
   name: BigEarthNet
