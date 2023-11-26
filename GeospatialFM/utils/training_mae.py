@@ -254,6 +254,8 @@ def evaluate(model, data, loss, epoch, args, val_split='val'):
 
                 with autocast():
                     model_out = model(images, radar, args.mask_ratio)
+                    logit_scale = model_out.get("logit_scale").mean()
+                    model_out['logit_scale'] = logit_scale
                     model_out['labels'] = gt_label
                     if isinstance(loss, list):
                         losses = {}
