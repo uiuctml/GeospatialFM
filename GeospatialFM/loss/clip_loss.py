@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-class CropLoss(nn.Module):
+class ClipLoss(nn.Module):
 
     def __init__(
             self,
@@ -36,20 +36,20 @@ class CropLoss(nn.Module):
             labels = self.labels[device]
         return labels
 
-    def get_logits(self, image_features, radar_features, logit_scale):
-        logits_per_image = logit_scale * image_features @ radar_features.T
-        logits_per_radar = logit_scale * radar_features @ image_features.T
+    def get_logits(self, optical_cls_token, radar_cls_token, logit_scale):
+        logits_per_optical = logit_scale * optical_cls_token @ radar_cls_token.T
+        logits_per_radar = logit_scale * radar_cls_token @ optical_cls_token.T
         
-        return logits_per_image, logits_per_radar
+        return logits_per_optical, logits_per_radar
 
-    def forward(self, image_features, radar_features, logit_scale, output_dict=False, **kwargs):
-        device = image_features.device
-        logits_per_image, logits_per_radar = self.get_logits(image_features, radar_features, logit_scale)
+    def forward(self, optical_cls_token, radar_cls_token, logit_scale, output_dict=False, **kwargs):
+        device = optical_cls_token.device
+        logits_per_optical, logits_per_radar = self.get_logits(optical_cls_token, radar_cls_token, logit_scale)
 
-        labels = self.get_ground_truth(device, logits_per_image.shape[0])
+        labels = self.get_ground_truth(device, logits_per_optical.shape[0])
 
         total_loss = (
-            F.cross_entropy(logits_per_image, labels) +
+            F.cross_entropy(logits_per_optical, labels) +
             F.cross_entropy(logits_per_radar, labels)
         ) / 2
 

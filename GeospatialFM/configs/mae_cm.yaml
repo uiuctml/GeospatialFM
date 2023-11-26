@@ -1,60 +1,40 @@
 MODEL:
-  architecture: vit_small_patch16_224
+  architecture: vit_base_patch16_224
   cross_modal: true
-  unified_decoder: false
-  mask_ratio: 0.
+  unified_decoder: true
+  mask_ratio: 0.75
   OPTICAL:
-    load_pretrained_from: null
-    pretrained_ckpt: ViTSmall16_Weights.SENTINEL2_ALL_MOCO
-    freeze_encoder: false
     kwargs:
       img_size: 224
       patch_size: 16
       in_chans: 13
-      embed_dim: 384
+      embed_dim: 768
       depth: 12
-      num_heads: 6
+      num_heads: 12
       mlp_ratio: 4.0
       qkv_bias: True
       drop_path_rate: 0.0
       drop_path_uniform: False
       init_values: null
       num_register_tokens: 0
-    use_head: false
-    head_kwargs:
-      head_type: linear
-      task_type: classification
-      use_bias: true
-      in_features: 384
-      num_classes: 19
   RADAR:
-    load_pretrained_from: null
-    pretrained_ckpt: /data/common/huggingface_models/SSL4EO/B2_vits16_mae.pth
-    freeze_encoder: false
     kwargs:
       img_size: 224
       patch_size: 16
       in_chans: 2
-      embed_dim: 384
+      embed_dim: 768
       depth: 12
-      num_heads: 6
+      num_heads: 12
       mlp_ratio: 4.0
       qkv_bias: True
       drop_path_rate: 0.0
       drop_path_uniform: False
       init_values: null
       num_register_tokens: 0
-    use_head: false
-    head_kwargs:
-      head_type: linear
-      task_type: classification
-      use_bias: true
-      in_features: 384
-      num_classes: 19
-  OPTICAL_DECODER:
+  DECODER:
     kwargs:
-      out_chans: 2
-      num_heads: 12
+      out_chans: 15
+      num_heads: 16
       mlp_ratio: 4.0
       qkv_bias: True
       init_values: null
@@ -64,24 +44,14 @@ MODEL:
       num_patches: 196
       patch_size: 16
       num_register_tokens: 0
-      embed_dim: 384
-  RADAR_DECODER:
-    kwargs:
-      out_chans: 13
-      num_heads: 12
-      mlp_ratio: 4.0
-      qkv_bias: True
-      init_values: null
-      decoder_embed_dim: 512 
-      decoder_depth: 8 
-      decoder_num_heads: 16
-      num_patches: 196
-      patch_size: 16
-      num_register_tokens: 0
-      embed_dim: 384
+      embed_dim: 768
 LOSS:
-  # MMCE:
-  #   scale: 1.0
+  CLIP:
+    local_loss: false
+    gather_with_grad: false
+    cache_labels: false
+    rank: 0
+    world_size: 1
   MAE:
     scale: 1.0
     recon_all: true

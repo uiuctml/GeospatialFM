@@ -37,7 +37,7 @@ training_args.device = f'cuda:{training_args.device_ids[0]}'
 
 model = construct_mae(cfg.MODEL)
 model = model.to(training_args.device)
-if len(training_args.device) > 1:
+if len(training_args.device_ids) > 1:
     model = torch.nn.DataParallel(model, device_ids=training_args.device_ids)
 
 data = get_data(cfg)
