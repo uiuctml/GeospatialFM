@@ -10,7 +10,7 @@ def get_loss_list(loss_cfg):
         elif loss_name == 'MMCE':
             loss_list.append(MultiModalCELoss(**loss_kwargs))
         elif loss_name == 'CLIP':
-            loss_list.append(CropLoss(**loss_kwargs))
+            loss_list.append(ClipLoss(**loss_kwargs))
         else:
             raise NotImplementedError
     return loss_list

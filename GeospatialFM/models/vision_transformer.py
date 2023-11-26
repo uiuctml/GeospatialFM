@@ -112,11 +112,12 @@ class ViTEncoder(nn.Module):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    def random_masking(self, x, mask_ratio):
+    def random_masking(self, x, mask_ratio, channel_mask=None):
         """
         Perform per-sample random masking by per-sample shuffling.
         Per-sample shuffling is done by argsort random noise.
         x: [N, L, D], sequence
+        channel_mask: (Optional(int, list, None)): channel mask ratio or list of channel ids to mask
         """
         N, L, D = x.shape  # batch, length, dim
         len_keep = int(L * (1 - mask_ratio))
