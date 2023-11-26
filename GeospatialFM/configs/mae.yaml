@@ -1,5 +1,5 @@
 MODEL:
-  architecture: vit_small_patch16_224
+  architecture: vit_base_patch16_224
   cross_modal: true
   unified_decoder: true
   mask_ratio: 0.75
@@ -11,9 +11,9 @@ MODEL:
       img_size: 224
       patch_size: 16
       in_chans: 13
-      embed_dim: 384
+      embed_dim: 768
       depth: 12
-      num_heads: 6
+      num_heads: 12
       mlp_ratio: 4.0
       qkv_bias: True
       drop_path_rate: 0.0
@@ -21,12 +21,12 @@ MODEL:
       init_values: null
       num_register_tokens: 0
     use_head: false
-    head_kwargs:
-      head_type: linear
-      task_type: classification
-      use_bias: true
-      in_features: 384
-      num_classes: 19
+    # head_kwargs:
+    #   head_type: linear
+    #   task_type: classification
+    #   use_bias: true
+    #   in_features: 768
+    #   num_classes: 19
   RADAR:
     load_pretrained_from: null
     pretrained_ckpt: /data/common/huggingface_models/SSL4EO/B2_vits16_mae.pth
@@ -35,9 +35,9 @@ MODEL:
       img_size: 224
       patch_size: 16
       in_chans: 2
-      embed_dim: 384
+      embed_dim: 768
       depth: 12
-      num_heads: 6
+      num_heads: 12
       mlp_ratio: 4.0
       qkv_bias: True
       drop_path_rate: 0.0
@@ -45,16 +45,16 @@ MODEL:
       init_values: null
       num_register_tokens: 0
     use_head: false
-    head_kwargs:
-      head_type: linear
-      task_type: classification
-      use_bias: true
-      in_features: 384
-      num_classes: 19
+    # head_kwargs:
+      # head_type: linear
+      # task_type: classification
+      # use_bias: true
+      # in_features: 768
+      # num_classes: 19
   DECODER:
     kwargs:
       out_chans: 15
-      num_heads: 6
+      num_heads: 16
       mlp_ratio: 4.0
       qkv_bias: True
       init_values: null
@@ -64,7 +64,7 @@ MODEL:
       num_patches: 196
       patch_size: 16
       num_register_tokens: 0
-      embed_dim: 384
+      embed_dim: 768
 LOSS:
   # MMCE:
   #   scale: 0
@@ -72,7 +72,7 @@ LOSS:
     scale: 1.0
     recon_all: true
     cross_modal_recon: false
-    channel_reweight: false
+    channel_reweight: true
 DATASET:
   root: ./data/geospatial
   name: BigEarthNet
@@ -93,8 +93,8 @@ DATASET:
 TRAINER:
   # Training related
   num_train_epochs: 20
-  per_device_train_batch_size: 256
-  per_device_eval_batch_size: 256
+  per_device_train_batch_size: 512
+  per_device_eval_batch_size: 512
   gradient_accumulation_steps: 1
   learning_rate: 1e-4
   weight_decay: 0.
