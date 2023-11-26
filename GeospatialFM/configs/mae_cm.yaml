@@ -2,7 +2,7 @@ MODEL:
   architecture: vit_small_patch16_224
   cross_modal: true
   unified_decoder: false
-  mask_ratio: 0.75
+  mask_ratio: 0.
   OPTICAL:
     load_pretrained_from: null
     pretrained_ckpt: ViTSmall16_Weights.SENTINEL2_ALL_MOCO
@@ -53,7 +53,7 @@ MODEL:
       num_classes: 19
   OPTICAL_DECODER:
     kwargs:
-      out_chans: 15
+      out_chans: 2
       num_heads: 12
       mlp_ratio: 4.0
       qkv_bias: True
@@ -67,7 +67,7 @@ MODEL:
       embed_dim: 384
   RADAR_DECODER:
     kwargs:
-      out_chans: 15
+      out_chans: 13
       num_heads: 12
       mlp_ratio: 4.0
       qkv_bias: True

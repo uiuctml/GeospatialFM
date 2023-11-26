@@ -14,6 +14,8 @@ class MAELoss(nn.Module):
     def _forward_mse_one_modal(self, recon, target, mask):
         loss = (recon - target).abs()
         loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
+        if mask.sum() == 0:
+            return loss.mean() # if no mask, mean loss on all patches
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
         return loss
 
@@ -21,13 +23,14 @@ class MAELoss(nn.Module):
                     optical_recon, radar_recon,
                     optical_target, radar_target,
                     output_dict=False, **kwargs):
-        if self.channel_reweight:
-            optical_dim = optical_target.shape[-1]
-            radar_dim = radar_target.shape[-1]
-            scale = radar_dim / optical_dim
-            optical_recon[:, :, :optical_dim] *= scale
-            optical_target[:, :, :optical_dim] *= scale
         if self.recon_all:
+            if self.channel_reweight:
+                optical_dim = optical_target.shape[-1]
+                radar_dim = radar_target.shape[-1]
+                scale = optical_dim / radar_dim
+                radar_recon[:, :, -radar_dim:] *= scale
+                optical_recon[:, :, -radar_dim:] *= scale
+                radar_target *= scale
             combined_target = torch.cat([optical_target, radar_target], dim=-1)
             optical_target = radar_target = combined_target
         elif self.cross_modal_recon:
