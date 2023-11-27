@@ -97,13 +97,12 @@ if __name__ == '__main__':
             for split in splits:
                 data_dict[split] = np.load(cache_data_path)
         else:
-            for split in splits:
-                data_dict[split] = extract_features(model, data[split].dataloader, training_args.device)
-                if cache_feat:
-                    if not os.path.exists(cache_path):
-                        os.makedirs(cache_path)
-                    np.save(cache_data_path, data_dict[split])
-              
+            data_dict[split] = extract_features(model, data[split].dataloader, training_args.device)
+            if cache_feat:
+                if not os.path.exists(cache_path):
+                    os.makedirs(cache_path)
+                np.save(cache_data_path, data_dict[split])
+            
     # train_features = torch.from_numpy(train_data)
     # test_features = torch.from_numpy(test_data)
     # val_features = torch.from_numpy(val_data)
