@@ -46,6 +46,7 @@ if __name__ == '__main__':
     if args.debug:
         logging.basicConfig(level=logging.INFO)
     cfg, _ = setup(args)
+    cfg.DATASET['train_frac'] = 0.1
 
     training_args = dict(
         device_ids = args.device_ids,
@@ -69,7 +70,7 @@ if __name__ == '__main__':
 
     model = construct_mae(cfg.MODEL)
     state_dict = unwrap_model(torch.load(save_path))
-    model.load_state_dict(state_dict)
+    model.load_state_dict(state_dict, strict=False)
     model = model.to(training_args.device)
     if hasattr(model, 'optical_decoder'):
         del model.optical_decoder
