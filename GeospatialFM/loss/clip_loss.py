@@ -11,6 +11,7 @@ class ClipLoss(nn.Module):
             cache_labels=False,
             rank=0,
             world_size=1,
+            scale=1.0,
     ):
         super().__init__()
         self.local_loss = local_loss
@@ -18,6 +19,7 @@ class ClipLoss(nn.Module):
         self.cache_labels = cache_labels
         self.rank = rank
         self.world_size = world_size
+        self.lambda_ = scale
 
         # cache state
         self.prev_num_logits = 0
@@ -52,5 +54,9 @@ class ClipLoss(nn.Module):
             F.cross_entropy(logits_per_optical, labels) +
             F.cross_entropy(logits_per_radar, labels)
         ) / 2
+        total_loss *= self.lambda_
 
         return {"contrastive_loss": total_loss} if output_dict else total_loss
+    
+
+# TODO: SigCLIP

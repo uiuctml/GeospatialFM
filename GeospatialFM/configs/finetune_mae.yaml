@@ -1,0 +1,89 @@
+MODEL:
+  architecture: vit_base_patch16_224
+  cross_modal: true
+  unified_decoder: false
+  mask_ratio: 0.75
+  OPTICAL:
+    kwargs:
+      img_size: 224
+      patch_size: 16
+      in_chans: 13
+      embed_dim: 768
+      depth: 12
+      num_heads: 12
+      mlp_ratio: 4.0
+      qkv_bias: True
+      drop_path_rate: 0.0
+      drop_path_uniform: False
+      init_values: null
+      num_register_tokens: 0
+    use_head: true
+    head_kwargs:
+      head_type: linear
+      task_type: classification
+      use_bias: true
+      in_features: 768
+      num_classes: 19
+  RADAR:
+    kwargs:
+      img_size: 224
+      patch_size: 16
+      in_chans: 2
+      embed_dim: 768
+      depth: 12
+      num_heads: 12
+      mlp_ratio: 4.0
+      qkv_bias: True
+      drop_path_rate: 0.0
+      drop_path_uniform: False
+      init_values: null
+      num_register_tokens: 0
+    use_head: true
+    head_kwargs:
+      head_type: linear
+      task_type: classification
+      use_bias: true
+      in_features: 768
+      num_classes: 19
+LOSS:
+  CE:
+    scale: 1.0
+DATASET:
+  root: ./data/geospatial
+  name: BigEarthNet
+  train_transforms:
+    normalize: true
+    standardize: false
+  eval_transforms:
+    normalize: true
+    standardize: false
+  kwargs:
+    bands: all
+    num_classes: 19
+    pad_s2: true
+  eval_metric: classification
+  use_train_transform: true
+  train_frac: 0.1
+  val_frac: 0.1
+TRAINER:
+  # Training related
+  num_train_epochs: 20
+  per_device_train_batch_size: 512
+  per_device_eval_batch_size: 512
+  gradient_accumulation_steps: 1
+  learning_rate: 5e-4
+  weight_decay: 0.05
+  # dataloader
+  dataloader_num_workers: 8
+  dataloader_pin_memory: true
+  dataloader_drop_last: false
+  # Logging
+  report_to: wandb
+  logging_steps: 50
+  # optimizer
+  optim: adamw_torch
+  lr_scheduler_type: cosine
+  # Other
+  seed: 0
+  # ckpt
+  save_frequency: 10

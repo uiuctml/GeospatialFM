@@ -58,5 +58,7 @@ def setup(args, wandb=True):
     # setup logger
     if args.debug or wandb is False:
         cfg['TRAINER']['report_to'] = None
+    if args.finetune:
+        cfg.NAME += f'_finetune_{args.finetune_modal}' # TODO: improve args for finetuning
     run = init_wandb(cfg) if cfg['TRAINER']['report_to'] == 'wandb' else None
     return cfg, run

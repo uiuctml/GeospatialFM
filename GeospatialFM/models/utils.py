@@ -5,6 +5,41 @@ import torch.nn as nn
 import timm
 from .vision_transformer import ViTEncoder, ViTDecoder
 from .mae import CrossModalMAEViT
+from collections import OrderedDict
+
+class ViTModel(nn.Module):
+    def __init__(self, encoder, head):
+        super().__init__()
+        self.encoder = encoder
+        self.head = head
+
+    def forward(self, x):
+        x = self.encoder(x, return_dict=True)['cls_token']
+        x = self.head(x)
+        return x
+    
+def unwrap_model(state_dict):
+    new_state_dict = OrderedDict()
+    for key, value in state_dict.items():
+        new_key = key.replace('module.', '')
+        new_state_dict[new_key] = value
+    
+    return new_state_dict
+
+def decompose_model(state_dict):
+    optical_model = OrderedDict()
+    radar_model = OrderedDict()
+    for key, value in state_dict.items():
+        try:
+            key_prefix, key_name = key.split('.', 1)
+        except:
+            print(key)
+            continue
+        if 'optical_encoder' in key_prefix:
+            optical_model[key_name] = value
+        elif 'radar_encoder' in key_prefix:
+            radar_model[key_name] = value
+    return optical_model, radar_model
 
 def construct_encoder(model_cfg, arch=None):
     assert model_cfg['load_pretrained_from'] in ['timm', 'torchgeo', 'dir', None]
@@ -59,6 +94,19 @@ def construct_mae(model_cfg):
     else:
         raise NotImplementedError
     return mae
+
+def construct_downstream_models(model_cfg):
+    modals = ['OPTICAL', 'RADAR']
+    arch = model_cfg['architecture']
+    models = {}
+    for modal in modals:
+        if not hasattr(model_cfg, modal): continue
+        assert model_cfg[modal]['use_head']
+        encoder = construct_encoder(model_cfg[modal], arch=arch)
+        head = construct_head(model_cfg[modal]['head_kwargs'])
+        model = ViTModel(encoder, head)
+        models[modal] = model
+    return models
 
 def construct_head(head_cfg):
     if head_cfg['task_type'] == 'classification':
