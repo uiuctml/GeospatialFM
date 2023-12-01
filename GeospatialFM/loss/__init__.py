@@ -11,6 +11,8 @@ def get_loss_list(loss_cfg):
             loss_list.append(MultiModalCELoss(**loss_kwargs))
         elif loss_name == 'CLIP':
             loss_list.append(ClipLoss(**loss_kwargs))
+        elif loss_name == 'CE':
+            loss_list.append(CrossEntropyLoss(**loss_kwargs))
         else:
             raise NotImplementedError
     return loss_list

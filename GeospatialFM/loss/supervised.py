@@ -14,3 +14,14 @@ class MultiModalCELoss(nn.Module):
         if output_dict:
             return dict(optical_ce=optical_ce, radar_ce=radar_ce)
         return optical_ce, radar_ce
+    
+class CrossEntropyLoss(nn.Module):
+    def __init__(self, scale=1.0):
+        super().__init__()
+        self.lambda_ = scale
+
+    def forward(self, logits, labels, output_dict=False, **kwargs):
+        ce = F.cross_entropy(logits, labels) * self.lambda_
+        if output_dict:
+            return dict(ce=ce)
+        return ce

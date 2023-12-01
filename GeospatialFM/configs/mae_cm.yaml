@@ -52,6 +52,7 @@ LOSS:
     cache_labels: false
     rank: 0
     world_size: 1
+    scale: 0.1
   MAE:
     scale: 1.0
     recon_all: true
