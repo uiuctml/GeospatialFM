@@ -30,6 +30,7 @@ def get_sampler(cfg):
     return None
 
 def get_data(cfg):
+    # TODO: support distributed training
     train_ds, val_ds, test_ds = get_datasets(cfg['DATASET'])
     batch_size = cfg['TRAINER']['per_device_train_batch_size']
     num_workers = cfg['TRAINER']['dataloader_num_workers']
