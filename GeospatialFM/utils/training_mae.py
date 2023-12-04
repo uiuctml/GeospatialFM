@@ -7,7 +7,7 @@ import time
 import numpy as np
 import torch
 import torch.nn.functional as F
-# from torch.nn.parallel.distributed import DistributedDataParallel
+from torch.nn.parallel.distributed import DistributedDataParallel
 from collections import defaultdict
 try:
     import wandb
@@ -15,7 +15,7 @@ except ImportError:
     wandb = None
 
 # from open_clip import get_input_dtype, CLIP, CustomTextCLIP
-# from .distributed import is_master
+from .distributed import is_master
 # from .zero_shot import zero_shot_eval
 from .precision import get_autocast
 from GeospatialFM.loss import *
@@ -57,6 +57,7 @@ def unwrap_model(model):
 def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
     device = torch.device(args.device)
     autocast = get_autocast(args.precision)
+    # input_dtype = get_input_dtype(args.precision)
     model.train()
 
     dataloader = data['train'].dataloader
@@ -74,10 +75,11 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
         i_accum = i // args.accum_freq
         step = num_batches_per_epoch * epoch + i_accum
 
-        images, radar, label = batch['image'], batch['radar'], batch['label']
+        images, radar = batch['image'], batch['radar']
+        # label = batch['label']
         images = images.to(device=device, non_blocking=True)
         radar = radar.to(device=device, non_blocking=True)
-        label = label.to(device=device, non_blocking=True)  
+        # label = label.to(device=device, non_blocking=True)
 
         data_time_m.update(time.time() - end)
         optimizer.zero_grad()
@@ -85,9 +87,10 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
         if args.accum_freq == 1:
             with autocast():
                 model_out = model(images, radar, args.mask_ratio)
-                logit_scale = model_out.get("logit_scale").mean()
-                model_out['logit_scale'] = logit_scale
-                model_out['labels'] = label
+                # logit_scale = model_out.get("logit_scale").mean()
+                logit_scale = model_out['logit_scale']
+                # model_out['logit_scale'] = logit_scale
+                # model_out['labels'] = label
                 if isinstance(loss, list):
                     losses = {}
                     for l in loss:
@@ -100,59 +103,64 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
 
             total_loss.backward()
         else:
-            raise NotImplementedError
+            # raise NotImplementedError
             # TODO: combine MAE with CLIP loss
             # First, cache the features without any gradient tracking.
-            # with torch.no_grad():
-            #     with autocast():
-            #         model_out = model(images, radar)
+            with torch.no_grad():
+                with autocast():
+                    model_out = model(images, radar)
 
-            #         for f in ("logit_scale", "logit_bias"):
-            #             model_out.pop(f, None)
+                    for f in ("logit_scale", "logit_bias"):
+                        model_out.pop(f, None)
 
-            #         for key, val in model_out.items():
-            #             if key in accum_features:
-            #                 accum_features[key].append(val)
-            #             else:
-            #                 accum_features[key] = [val]
+                    for key, val in model_out.items():
+                        if key in accum_features:
+                            accum_features[key].append(val)
+                        else:
+                            accum_features[key] = [val]
 
-            #     accum_images.append(images)
-            #     accum_radar.append(radar)
-            #     accum_label.append(label)
-
+                accum_images.append(images)
+                accum_radar.append(radar)
 
             # # If (i + 1) % accum_freq is not zero, move on to the next batch.
-            # if ((i + 1) % args.accum_freq) > 0:
-            #     # FIXME this makes data time logging unreliable when accumulating
-            #     continue
+            if ((i + 1) % args.accum_freq) > 0:
+                # FIXME this makes data time logging unreliable when accumulating
+                continue
 
             # # Now, ready to take gradients for the last accum_freq batches.
             # # Re-do the forward pass for those batches, and use the cached features from the other batches as negatives.
             # # Call backwards each time, but only step optimizer at the end.
-            # optimizer.zero_grad()
-            # for j in range(args.accum_freq):
-            #     images = accum_images[j]
-            #     radar = accum_radar[j]
-            #     with autocast():
-            #         model_out = model(images, radar)
+            optimizer.zero_grad()
+            for j in range(args.accum_freq):
+                images = accum_images[j]
+                radar = accum_radar[j]
+                with autocast():
+                    model_out = model(images, radar)
 
-            #         inputs_no_accum = {}
-            #         inputs_no_accum["logit_scale"] = logit_scale = model_out.pop("logit_scale")
-            #         if "logit_bias" in model_out:
-            #             inputs_no_accum["logit_bias"] = model_out.pop("logit_bias")
+                    inputs_no_accum = {}
+                    inputs_no_accum["logit_scale"] = logit_scale = model_out.pop("logit_scale")
+                    if "logit_bias" in model_out:
+                        inputs_no_accum["logit_bias"] = model_out.pop("logit_bias")
 
-            #         inputs = {}
-            #         for key, val in accum_features.items():
-            #             accumulated = accum_features[key]
-            #             inputs[key] = torch.cat(accumulated[:j] + [model_out[key]] + accumulated[j + 1:])
+                    inputs = {}
+                    for key, val in accum_features.items():
+                        accumulated = accum_features[key]
+                        inputs[key] = torch.cat(accumulated[:j] + [model_out[key]] + accumulated[j + 1:])
 
-            #         losses = loss(**inputs, **inputs_no_accum, output_dict=True)
-            #         del inputs
-            #         del inputs_no_accum
-            #         total_loss = sum(losses.values())
-            #         losses["loss"] = total_loss
+                    if isinstance(loss, list):
+                        losses = {}
+                        for l in loss:
+                            losses.update(l(**inputs, **inputs_no_accum, output_dict=True))
+                    else:
+                        losses = loss(**inputs, **inputs_no_accum, output_dict=True)
 
-            #     total_loss.backward()
+                    losses = loss(**inputs, **inputs_no_accum, output_dict=True)
+                    del inputs
+                    del inputs_no_accum
+                    total_loss = sum(losses.values())
+                    losses["loss"] = total_loss
+
+                total_loss.backward()
 
         if args.grad_clip_norm is not None:
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip_norm, norm_type=2.0)
@@ -170,7 +178,7 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
         batch_time_m.update(time.time() - end)
         end = time.time()
         batch_count = i_accum + 1
-        if (i_accum % args.log_every_n_steps == 0 or batch_count == num_batches_per_epoch):
+        if is_master(args) and (i_accum % args.log_every_n_steps == 0 or batch_count == num_batches_per_epoch):
             batch_size = len(images)
             num_samples = batch_count * batch_size * args.accum_freq
             samples_per_epoch = dataloader.num_samples
@@ -226,8 +234,8 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
 
 def evaluate(model, data, loss, epoch, args, val_split='val'):
     metrics = {}
-    # if not is_master(args):
-    #     return metrics
+    if not is_master(args):
+        return metrics
     device = torch.device(args.device)
     model.eval()
 
@@ -285,7 +293,7 @@ def evaluate(model, data, loss, epoch, args, val_split='val'):
                         cumulative_losses[key] += val * batch_size
 
                 num_samples += batch_size
-                if (i % 100) == 0:
+                if is_master(args) and (i % 100) == 0:
                     loss_log = f"Eval Epoch: {epoch} [{num_samples} / {samples_per_val}]" 
                     loss_log += " ".join(
                         [
