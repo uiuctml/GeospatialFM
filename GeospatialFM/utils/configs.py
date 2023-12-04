@@ -9,6 +9,7 @@ from omegaconf import OmegaConf
 
 from .logging import init_wandb
 from GeospatialFM.configs import default_config
+from .distributed import *
 
 COMMON_ACRONYM = {
     "learning_rate": 'lr',
@@ -53,12 +54,13 @@ def setup(args, wandb=True):
     # setup output directory
     cfg['TRAINER']['output_dir'] += f'/{cfg["DATASET"]["name"]}_{cfg["NAME"]}'
     cfg['TRAINER']['logging_dir'] += f'/{cfg["DATASET"]["name"]}_{cfg["NAME"]}'
-    os.makedirs(cfg['TRAINER']['output_dir'], exist_ok=True)
-    os.makedirs(cfg['TRAINER']['logging_dir'], exist_ok=True)
+    if is_master(args):
+        os.makedirs(cfg['TRAINER']['output_dir'], exist_ok=True)
+        os.makedirs(cfg['TRAINER']['logging_dir'], exist_ok=True)
     # setup logger
     if args.debug or wandb is False:
         cfg['TRAINER']['report_to'] = None
     if args.finetune:
         cfg.NAME += f'_finetune_{args.finetune_modal}' # TODO: improve args for finetuning
-    run = init_wandb(cfg) if cfg['TRAINER']['report_to'] == 'wandb' else None
+    run = init_wandb(cfg) if cfg['TRAINER']['report_to'] == 'wandb' and is_master(args) else None
     return cfg, run
