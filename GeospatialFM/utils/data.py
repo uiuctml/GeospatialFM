@@ -26,16 +26,18 @@ class DataInfo:
         if self.sampler is not None and isinstance(self.sampler, DistributedSampler):
             self.sampler.set_epoch(epoch)
 
-def get_sampler(cfg):
-    return None
+# def get_sampler(cfg):
+#     return None
 
-def get_data(cfg):
+def get_data(cfg, ddp=False):
     train_ds, val_ds, test_ds = get_datasets(cfg['DATASET'])
+    train_sampler = DistributedSampler(train_ds) if ddp else None
+    train_shuffle = ddp is False
     batch_size = cfg['TRAINER']['per_device_train_batch_size']
     num_workers = cfg['TRAINER']['dataloader_num_workers']
     pin_memory = cfg['TRAINER']['dataloader_pin_memory']
     drop_last = cfg['TRAINER']['dataloader_drop_last']
-    train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=pin_memory, drop_last=drop_last)
+    train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=train_shuffle, num_workers=num_workers, pin_memory=pin_memory, drop_last=drop_last, sampler=train_sampler)
     train_dl.num_samples = len(train_ds)
     train_dl.num_batches = len(train_dl)
     val_dl = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory)
@@ -45,7 +47,7 @@ def get_data(cfg):
     test_dl.num_samples = len(test_ds)
     test_dl.num_batches = len(test_dl)
     data = dict(
-        train=DataInfo(train_dl),
+        train=DataInfo(train_dl, train_sampler),
         val=DataInfo(val_dl),
         test=DataInfo(test_dl),
     )
