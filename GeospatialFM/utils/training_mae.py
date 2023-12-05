@@ -60,6 +60,7 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
     # input_dtype = get_input_dtype(args.precision)
     model.train()
 
+    data['train'].set_epoch(epoch)  # set epoch in process safe manner via sampler or shared_epoch
     dataloader = data['train'].dataloader
     num_batches_per_epoch = dataloader.num_batches // args.accum_freq
     sample_digits = math.ceil(math.log(dataloader.num_samples + 1, 10))
@@ -203,9 +204,8 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
                 f"Train Epoch: {epoch} [{num_samples:>{sample_digits}}/{samples_per_epoch} ({percent_complete:.0f}%)] "
                 f"Data (t): {data_time_m.avg:.3f} "
                 f"Batch (t): {batch_time_m.avg:.3f}, {samples_per_second:#g}/s, {samples_per_second_per_gpu:#g}/s/gpu "
-                f"LR: {optimizer.param_groups[0]['lr']:5f} ",
+                f"LR: {optimizer.param_groups[0]['lr']:5f} "
                 f"Logit Scale: {logit_scale_scalar:.3f} " + loss_log
-
             )
 
             # Save train loss / etc. Using non avg meter values as loggers have their own smoothing

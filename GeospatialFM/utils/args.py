@@ -27,6 +27,7 @@ def get_args_parser(add_help: bool = True):
     # parser.add_argument("--learning_rate", type=float, default=None, help="Override the Learning Rate from config (for sweep)")
     parser.add_argument("--finetune_modal", default='OPTICAL', type=str, choices=['radar', 'optical'],help="the modal to finetune")
     parser.add_argument("--finetune", action="store_true", help="Finetune mode")
-    parser.add_argument("--backend", default='nccl', type=str, help="Distributed backend")
+    parser.add_argument("--dist_backend", default='nccl', type=str, help="Distributed backend")
     parser.add_argument("--dist_url", default='env://', type=str, help="Distributed url")
+    parser.add_argument("--no_set_device_rank", action="store_true", help="Not set device rank")
     return parser
