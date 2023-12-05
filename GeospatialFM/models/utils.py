@@ -6,6 +6,7 @@ import timm
 from .vision_transformer import ViTEncoder, ViTDecoder
 from .mae import CrossModalMAEViT
 from collections import OrderedDict
+import numpy as np
 
 class ViTModel(nn.Module):
     def __init__(self, encoder, head):
@@ -86,7 +87,10 @@ def construct_mae(model_cfg):
             optical_decoder = construct_decoder(model_cfg['OPTICAL_DECODER'])
             radar_decoder = construct_decoder(model_cfg['RADAR_DECODER'])
 
-        mae = CrossModalMAEViT(optical_encoder, radar_encoder, optical_decoder, radar_decoder)
+        logit_scale = np.log(10) if model_cfg['use_siglip'] else np.log(1 / 0.07)
+        logit_bias = -10 if model_cfg['use_siglip'] else None
+        
+        mae = CrossModalMAEViT(optical_encoder, radar_encoder, optical_decoder, radar_decoder, init_logit_scale=logit_scale, init_logit_bias=logit_bias, use_clip=model_cfg['use_siglip'])
         if model_cfg['OPTICAL']['use_head'] and model_cfg['RADAR']['use_head']:
             optical_head = construct_head(model_cfg['OPTICAL']['head_kwargs'])
             radar_head = construct_head(model_cfg['RADAR']['head_kwargs'])

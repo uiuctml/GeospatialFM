@@ -164,6 +164,7 @@ class SigLipLoss(nn.Module):
             world_size=1,
             bidir=True,
             use_horovod=False,
+            scale=1.0,
     ):
         super().__init__()
         self.cache_labels = cache_labels
@@ -172,6 +173,7 @@ class SigLipLoss(nn.Module):
         assert not use_horovod  # FIXME need to look at hvd ops for ring transfers
         self.use_horovod = use_horovod
         self.bidir = bidir
+        self.lambda_ = scale
 
         # cache state FIXME cache not currently used, worthwhile?
         self.prev_num_logits = 0
@@ -183,75 +185,76 @@ class SigLipLoss(nn.Module):
             labels = 2 * torch.eye(num_logits, device=device, dtype=dtype) + labels
         return labels
 
-    def get_logits(self, image_features, text_features, logit_scale, logit_bias=None):
-        logits = logit_scale * image_features @ text_features.T
+    def get_logits(self, optical_cls_token, radar_cls_token, logit_scale, logit_bias=None):
+        logits = logit_scale * optical_cls_token @ radar_cls_token.T
         if logit_bias is not None:
             logits += logit_bias
         return logits
 
-    def _loss(self, image_features, text_features, logit_scale, logit_bias=None, negative_only=False):
-        logits = self.get_logits(image_features, text_features, logit_scale, logit_bias)
+    def _loss(self, optical_cls_token, radar_cls_token, logit_scale, logit_bias=None, negative_only=False):
+        logits = self.get_logits(optical_cls_token, radar_cls_token, logit_scale, logit_bias)
         labels = self.get_ground_truth(
-            image_features.device,
-            image_features.dtype,
-            image_features.shape[0],
+            optical_cls_token.device,
+            optical_cls_token.dtype,
+            optical_cls_token.shape[0],
             negative_only=negative_only,
         )
-        loss = -F.logsigmoid(labels * logits).sum() / image_features.shape[0]
+        loss = -F.logsigmoid(labels * logits).sum() / optical_cls_token.shape[0]
         return loss
 
-    def forward(self, image_features, text_features, logit_scale, logit_bias, output_dict=False):
-        loss = self._loss(image_features, text_features, logit_scale, logit_bias)
+    def forward(self, optical_cls_token, radar_cls_token, logit_scale, logit_bias, output_dict=False, **kwargs):
+        loss = self._loss(optical_cls_token, radar_cls_token, logit_scale, logit_bias)
 
         if self.world_size > 1:
             # exchange text features w/ neighbour world_size - 1 times
             right_rank = (self.rank + 1) % self.world_size
             left_rank = (self.rank - 1 + self.world_size) % self.world_size
             if self.bidir:
-                text_features_to_right = text_features_to_left = text_features
+                radar_cls_token_to_right = radar_cls_token_to_left = radar_cls_token
                 num_bidir, remainder = divmod(self.world_size - 1, 2)
                 for i in range(num_bidir):
-                    text_features_recv = neighbour_exchange_bidir_with_grad(
+                    radar_cls_token_recv = neighbour_exchange_bidir_with_grad(
                         left_rank,
                         right_rank,
-                        text_features_to_left,
-                        text_features_to_right,
+                        radar_cls_token_to_left,
+                        radar_cls_token_to_right,
                     )
 
-                    for f in text_features_recv:
+                    for f in radar_cls_token_recv:
                         loss += self._loss(
-                            image_features,
+                            optical_cls_token,
                             f,
                             logit_scale,
                             logit_bias,
                             negative_only=True,
                         )
-                    text_features_to_left, text_features_to_right = text_features_recv
+                    radar_cls_token_to_left, radar_cls_token_to_right = radar_cls_token_recv
 
                 if remainder:
-                    text_features_recv = neighbour_exchange_with_grad(
-                        left_rank, right_rank, text_features_to_right)
+                    radar_cls_token_recv = neighbour_exchange_with_grad(
+                        left_rank, right_rank, radar_cls_token_to_right)
 
                     loss += self._loss(
-                        image_features,
-                        text_features_recv,
+                        optical_cls_token,
+                        radar_cls_token_recv,
                         logit_scale,
                         logit_bias,
                         negative_only=True,
                     )
             else:
-                text_features_to_right = text_features
+                radar_cls_token_to_right = radar_cls_token
                 for i in range(self.world_size - 1):
-                    text_features_from_left = neighbour_exchange_with_grad(
-                        left_rank, right_rank, text_features_to_right)
+                    radar_cls_token_from_left = neighbour_exchange_with_grad(
+                        left_rank, right_rank, radar_cls_token_to_right)
 
                     loss += self._loss(
-                        image_features,
-                        text_features_from_left,
+                        optical_cls_token,
+                        radar_cls_token_from_left,
                         logit_scale,
                         logit_bias,
                         negative_only=True,
                     )
-                    text_features_to_right = text_features_from_left
+                    radar_cls_token_to_right = radar_cls_token_from_left
 
+        loss *= self.lambda_
         return {"contrastive_loss": loss} if output_dict else loss

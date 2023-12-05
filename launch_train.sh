@@ -1,12 +1,3 @@
-# CUDA_VISIBLE_DEVICES=2 python train.py --exp_name dino_frac0.1 --config_file GeospatialFM/configs/so2sat/so2sat_vit-s16_dino.yaml
-# CUDA_VISIBLE_DEVICES=2 python train.py --exp_name moco_frac0.1 --config_file GeospatialFM/configs/so2sat/so2sat_vit-s16_moco.yaml &
-# CUDA_VISIBLE_DEVICES=3 python train.py --exp_name seco_frac0.1 --config_file GeospatialFM/configs/so2sat/so2sat_rn50_seco.yaml
-# CUDA_VISIBLE_DEVICES=2 python train.py --exp_name moco_frac0.1 --config_file GeospatialFM/configs/so2sat/so2sat_rn50_moco.yaml &
-# CUDA_VISIBLE_DEVICES=3 python train.py --exp_name dino_frac0.1 --config_file GeospatialFM/configs/so2sat/so2sat_rn50_dino.yaml
-
-CUDA_VISIBLE_DEVICES=2 python train.py --exp_name dino_frac0.1 --config_file GeospatialFM/configs/so2sat/so2sat_vit-s16_dino.yaml TRAINER.learning_rate=0.1 
-CUDA_VISIBLE_DEVICES=2 python train.py --exp_name moco_frac0.1 --config_file GeospatialFM/configs/so2sat/so2sat_vit-s16_moco.yaml TRAINER.learning_rate=0.1
-CUDA_VISIBLE_DEVICES=3 python train.py --exp_name seco_frac0.1 --config_file GeospatialFM/configs/so2sat/so2sat_rn50_seco.yaml TRAINER.learning_rate=0.1
-CUDA_VISIBLE_DEVICES=2 python train.py --exp_name moco_frac0.1 --config_file GeospatialFM/configs/so2sat/so2sat_rn50_moco.yaml TRAINER.learning_rate=0.1
-CUDA_VISIBLE_DEVICES=3 python train.py --exp_name dino_frac0.1 --config_file GeospatialFM/configs/so2sat/so2sat_rn50_dino.yaml TRAINER.learning_rate=0.1
+CUDA_VISIBLE_DEVICES=2,3 torchrun --nproc_per_node 2 --master_port=10086 -m train_dist.py --exp_name mae_base_siglip --config_file GeospatialFM/configs/mae_cm.yaml
+# CUDA_VISIBLE_DEVICES=4,5 torchrun --nproc_per_node 2 -m train_dist.py --exp_name mae_base_dist --config_file GeospatialFM/configs/mae.yaml
 

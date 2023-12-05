@@ -13,6 +13,8 @@ def get_loss_list(loss_cfg):
             loss_list.append(ClipLoss(**loss_kwargs))
         elif loss_name == 'CE':
             loss_list.append(CrossEntropyLoss(**loss_kwargs))
+        elif loss_name == 'SigLipLoss':
+            loss_list.append(SigLipLoss(**loss_kwargs))
         else:
             raise NotImplementedError
     return loss_list

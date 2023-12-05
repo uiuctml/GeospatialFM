@@ -66,6 +66,7 @@ MODEL:
   unified_decoder: false
   mask_ratio: 0.
   freeze_encoder: false
+  use_siglip: false
   OPTICAL:
     load_pretrained_from: null
     pretrained_ckpt: null

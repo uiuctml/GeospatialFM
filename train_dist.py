@@ -8,6 +8,12 @@ from GeospatialFM.models import *
 from GeospatialFM.loss import *
 
 from tqdm import trange
+import random
+
+def random_seed(seed=42, rank=0):
+    torch.manual_seed(seed + rank)
+    np.random.seed(seed + rank)
+    random.seed(seed + rank)
 
 args = get_args_parser().parse_args()
 # args.debug = True
@@ -29,7 +35,7 @@ cfg, _ = setup(args)
 
 training_args = dict(
     # device_ids = args.device_ids,
-    device = device,
+    # device = device,
     precision = 'amp_bf16',
     accum_freq = cfg['TRAINER']['gradient_accumulation_steps'],
     grad_clip_norm = None,
@@ -46,10 +52,12 @@ training_args = dict(
 # update args with training_args
 training_args = argparse.Namespace(**vars(args), **training_args)
 
+random_seed(0, args.rank)
 model = construct_mae(cfg.MODEL) # TODO: siglip has different logit scale
 model = model.to(training_args.device)
 # if len(training_args.device_ids) > 1:
     # model = torch.nn.DataParallel(model, device_ids=training_args.device_ids)
+random_seed(0, args.rank)
 if training_args.distributed:
     ddp_args = {} # TODO: add ddp args
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[device], **ddp_args)
@@ -68,4 +76,5 @@ for epoch in trange(training_args.epochs):
         torch.save(model.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], f'ckpt_epoch{epoch+1}.pth'))
 evaluate(model, data, loss, epoch, training_args, val_split='test')
 # save model
-torch.save(model.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], 'final_model.pth'))
+if is_master(args):
+    torch.save(model.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], 'final_model.pth'))

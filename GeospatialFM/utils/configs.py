@@ -63,4 +63,12 @@ def setup(args, wandb=True):
     if args.finetune:
         cfg.NAME += f'_finetune_{args.finetune_modal}' # TODO: improve args for finetuning
     run = init_wandb(cfg) if cfg['TRAINER']['report_to'] == 'wandb' and is_master(args) else None
+    # assign rank, world_size
+    world_size = args.world_size
+    rank = args.rank
+    for loss_name, loss_kwargs in cfg.LOSS.items():
+        if world_size in loss_kwargs.keys():
+            cfg.LOSS[loss_name]['world_size'] = world_size
+        if rank in loss_kwargs.keys():
+            cfg.LOSS[loss_name]['rank'] = rank
     return cfg, run
