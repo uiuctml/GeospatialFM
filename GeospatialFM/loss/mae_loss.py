@@ -3,13 +3,14 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 class MAELoss(nn.Module):
-    def __init__(self, recon_all=True, cross_modal_recon=False, channel_reweight=False, scale=1.0):
+    def __init__(self, recon_all=True, cross_modal_recon=False, channel_reweight=False, scale=1.0, radar_scale=1.0):
         super().__init__()
         self.recon_all = recon_all
         self.cross_modal_recon = cross_modal_recon
         assert not (recon_all and cross_modal_recon)
         self.channel_reweight = channel_reweight # TODO: implement this
         self.lambda_ = scale
+        self.radar_lambda_ = radar_scale
 
     def _forward_mse_one_modal(self, recon, target, mask):
         loss = (recon - target).abs()
@@ -36,7 +37,7 @@ class MAELoss(nn.Module):
         elif self.cross_modal_recon:
             optical_target, radar_target = radar_target, optical_target
         optical_mse = self._forward_mse_one_modal(optical_recon, optical_target, optical_mask) * self.lambda_
-        radar_mse = self._forward_mse_one_modal(radar_recon, radar_target, radar_mask) * self.lambda_
+        radar_mse = self._forward_mse_one_modal(radar_recon, radar_target, radar_mask) * self.lambda_ * self.radar_lambda_
         if output_dict:
             return dict(optical_mse=optical_mse, radar_mse=radar_mse)
         return optical_mse, radar_mse

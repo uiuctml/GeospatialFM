@@ -3,6 +3,7 @@ MODEL:
   cross_modal: true
   unified_decoder: true
   mask_ratio: 0.75
+  use_clip: true
   use_siglip: true
   OPTICAL:
     kwargs:
@@ -52,6 +53,7 @@ LOSS:
     recon_all: true
     cross_modal_recon: false
     channel_reweight: true
+    radar_scale: 1.0
   SigLipLoss:
     rank: 0
     world_size: 1
@@ -76,8 +78,8 @@ DATASET:
 TRAINER:
   # Training related
   num_train_epochs: 20
-  per_device_train_batch_size: 380
-  per_device_eval_batch_size: 380
+  per_device_train_batch_size: 360
+  per_device_eval_batch_size: 360
   gradient_accumulation_steps: 1
   learning_rate: 1e-3
   weight_decay: 0.

@@ -90,7 +90,7 @@ def construct_mae(model_cfg):
         logit_scale = np.log(10) if model_cfg['use_siglip'] else np.log(1 / 0.07)
         logit_bias = -10 if model_cfg['use_siglip'] else None
         
-        mae = CrossModalMAEViT(optical_encoder, radar_encoder, optical_decoder, radar_decoder, init_logit_scale=logit_scale, init_logit_bias=logit_bias, use_clip=model_cfg['use_siglip'])
+        mae = CrossModalMAEViT(optical_encoder, radar_encoder, optical_decoder, radar_decoder, init_logit_scale=logit_scale, init_logit_bias=logit_bias, use_clip=model_cfg['use_clip'])
         if model_cfg['OPTICAL']['use_head'] and model_cfg['RADAR']['use_head']:
             optical_head = construct_head(model_cfg['OPTICAL']['head_kwargs'])
             radar_head = construct_head(model_cfg['RADAR']['head_kwargs'])
