@@ -9,12 +9,14 @@ from GeospatialFM.models import *
 from GeospatialFM.loss import *
 
 from tqdm import trange
+import random
 
 def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
     device = torch.device(args.device)
     autocast = get_autocast(args.precision)
     model.train()
 
+    data['train'].set_epoch(epoch)
     dataloader = data['train'].dataloader
     num_batches_per_epoch = dataloader.num_batches // args.accum_freq
     sample_digits = math.ceil(math.log(dataloader.num_samples + 1, 10))
@@ -61,7 +63,7 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
         batch_time_m.update(time.time() - end)
         end = time.time()
         batch_count = i_accum + 1
-        if (i_accum % args.log_every_n_steps == 0 or batch_count == num_batches_per_epoch):
+        if is_master(args) and (i_accum % args.log_every_n_steps == 0 or batch_count == num_batches_per_epoch):
             batch_size = len(images)
             num_samples = batch_count * batch_size * args.accum_freq
             samples_per_epoch = dataloader.num_samples
@@ -113,8 +115,8 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
 
 def evaluate_finetune(model, data, loss, epoch, args, val_split='val'):
     metrics = {}
-    # if not is_master(args):
-    #     return metrics
+    if not is_master(args):
+        return metrics
     device = torch.device(args.device)
     model.eval()
 
@@ -157,7 +159,7 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val'):
                         cumulative_losses[key] += val * batch_size
 
                 num_samples += batch_size
-                if (i % 100) == 0:
+                if is_master(args) and (i % 100) == 0:
                     loss_log = f"Eval Epoch: {epoch} [{num_samples} / {samples_per_val}]" 
                     loss_log += " ".join(
                         [
@@ -205,6 +207,10 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val'):
 
     return metrics
 
+def random_seed(seed=42, rank=0):
+    torch.manual_seed(seed + rank)
+    np.random.seed(seed + rank)
+    random.seed(seed + rank)
 
 if __name__ == '__main__':
     args = get_args_parser().parse_args()
@@ -212,12 +218,24 @@ if __name__ == '__main__':
     args.finetune = True
     if args.debug:
         logging.basicConfig(level=logging.INFO)
+
+    if torch.cuda.is_available():
+        # This enables tf32 on Ampere GPUs which is only 8% slower than
+        # float16 and almost as accurate as float32
+        # This was a default in pytorch until 1.12
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.deterministic = False
+
+    # fully initialize distributed device environment
+    device = init_distributed_device(args)
+
     cfg, _ = setup(args)
     args.finetune_modal = args.finetune_modal.upper()
 
     training_args = dict(
-        device_ids = args.device_ids,
-        device = 'cpu',
+        # device_ids = args.device_ids,
+        # device = 'cpu',
         precision = 'amp_bf16',
         accum_freq = cfg['TRAINER']['gradient_accumulation_steps'],
         grad_clip_norm = None,
@@ -229,13 +247,13 @@ if __name__ == '__main__':
         save_logs = True,
         checkpoint_path = cfg['TRAINER']['logging_dir'],
         mask_ratio = cfg['MODEL']['mask_ratio'],
-        finetune_modal = args.finetune_modal
     )
-    training_args = argparse.Namespace(**training_args)
-    training_args.device = f'cuda:{training_args.device_ids[0]}'
+    training_args = argparse.Namespace(**vars(args), **training_args)
+    # training_args.device = f'cuda:{training_args.device_ids[0]}'
 
+    random_seed(0, args.rank)
     models = construct_downstream_models(cfg.MODEL)
-    save_path = os.path.join(cfg.TRAINER['output_dir'], 'final_model.pth')
+    save_path = os.path.join(cfg.TRAINER['output_dir'], 'ckpt_epoch20.pth')
     state_dict = unwrap_model(torch.load(save_path, map_location='cpu'))
     optical_state_dict, radar_state_dict = decompose_model(state_dict)
 
@@ -245,10 +263,15 @@ if __name__ == '__main__':
     model = models[args.finetune_modal]
     model = model.to(training_args.device)
 
-    if len(training_args.device_ids) > 1:
-        model = torch.nn.DataParallel(model, device_ids=training_args.device_ids)
+    random_seed(0, args.rank)
+    if training_args.distributed:
+        ddp_args = {} # TODO: add ddp args
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[device], **ddp_args)
 
-    data = get_data(cfg)
+    # if len(training_args.device_ids) > 1:
+    #     model = torch.nn.DataParallel(model, device_ids=training_args.device_ids)
+
+    data = get_data(cfg, ddp=training_args.distributed)
 
     steps = data['train'].dataloader.num_batches * cfg['TRAINER']['num_train_epochs']
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg['TRAINER']['learning_rate'], weight_decay=cfg['TRAINER']['weight_decay'])
@@ -262,4 +285,5 @@ if __name__ == '__main__':
             torch.save(model.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], f'ft_ckpt_epoch{epoch+1}.pth'))
     evaluate_finetune(model, data, loss, epoch, training_args, val_split='test')
     # save model
-    torch.save(model.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], 'ft_model.pth'))
+    if is_master(args):
+        torch.save(model.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], 'ft_model.pth'))
