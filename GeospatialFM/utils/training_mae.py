@@ -76,6 +76,8 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
         i_accum = i // args.accum_freq
         step = num_batches_per_epoch * epoch + i_accum
 
+        scheduler(step)
+
         images, radar = batch['image'], batch['radar']
         # label = batch['label']
         images = images.to(device=device, non_blocking=True)
@@ -166,7 +168,7 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
         if args.grad_clip_norm is not None:
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip_norm, norm_type=2.0)
         optimizer.step()
-        scheduler.step()
+        # scheduler.step()
 
         # reset gradient accum, if enabled
         if args.accum_freq > 1:

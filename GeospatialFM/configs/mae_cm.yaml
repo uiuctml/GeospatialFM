@@ -3,8 +3,8 @@ MODEL:
   cross_modal: true
   unified_decoder: true
   mask_ratio: 0.75
-  use_clip: true
-  use_siglip: true
+  use_clip: false
+  use_siglip: false
   OPTICAL:
     kwargs:
       img_size: 224
@@ -54,10 +54,10 @@ LOSS:
     cross_modal_recon: false
     channel_reweight: true
     radar_scale: 1.0
-  SigLipLoss:
-    rank: 0
-    world_size: 1
-    scale: 1.0
+  # SigLipLoss:
+  #   rank: 0
+  #   world_size: 1
+  #   scale: 1.0
 DATASET:
   root: ./data/geospatial
   name: BigEarthNet
@@ -93,6 +93,7 @@ TRAINER:
   # optimizer
   optim: adamw_torch
   lr_scheduler_type: cosine
+  warmup_epochs: 4
   # Other
   seed: 0
   # ckpt
