@@ -32,6 +32,8 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
         i_accum = i // args.accum_freq
         step = num_batches_per_epoch * epoch + i_accum
 
+        scheduler(step)
+
         # images, radar, label = batch['image'], batch['radar'], batch['label']
         images = batch['image'] if args.finetune_modal == 'OPTICAL' else batch['radar']
         label = batch['label']
@@ -54,7 +56,7 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
             raise NotImplementedError
 
         optimizer.step()
-        scheduler.step()
+        # scheduler.step()
 
         # reset gradient accum, if enabled
         if args.accum_freq > 1:
@@ -274,8 +276,10 @@ if __name__ == '__main__':
     data = get_data(cfg, ddp=training_args.distributed)
 
     steps = data['train'].dataloader.num_batches * cfg['TRAINER']['num_train_epochs']
+    warmup_steps = data['train'].dataloader.num_batches * cfg['TRAINER']['warmup_epochs']
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg['TRAINER']['learning_rate'], weight_decay=cfg['TRAINER']['weight_decay'])
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=steps, eta_min=1e-7)
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=steps, eta_min=1e-7)
+    scheduler = get_scheduler(cfg['TRAINER']['lr_scheduler_type'], optimizer, cfg['TRAINER']['learning_rate'], warmup_steps, steps, cfg['TRAINER']['scheduler_kwargs'])
     loss = get_loss_list(cfg.LOSS)[0]
 
     for epoch in trange(training_args.epochs):

@@ -65,8 +65,10 @@ if training_args.distributed:
 data = get_data(cfg, ddp=training_args.distributed)
 
 steps = data['train'].dataloader.num_batches * cfg['TRAINER']['num_train_epochs']
+warmup_steps = data['train'].dataloader.num_batches * cfg['TRAINER']['warmup_epochs']
 optimizer = torch.optim.AdamW(model.parameters(), lr=cfg['TRAINER']['learning_rate'], weight_decay=cfg['TRAINER']['weight_decay']) # TODO: add beta
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=steps, eta_min=1e-7) # TODO: change to warmup
+# scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=steps, eta_min=1e-7) # TODO: change to warmup
+scheduler = get_scheduler(cfg['TRAINER']['lr_scheduler_type'], optimizer, cfg['TRAINER']['learning_rate'], warmup_steps, steps, cfg['TRAINER']['scheduler_kwargs'])
 loss = get_loss_list(cfg.LOSS)
 
 for epoch in trange(training_args.epochs):
