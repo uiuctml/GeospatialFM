@@ -13,6 +13,8 @@ TRAINER:
   # optimizer
   optim: adamw_torch
   lr_scheduler_type: cosine
+  warmup_epochs: 1
+  scheduler_kwargs: null
   # Model saving & evaluation
   save_strategy: epoch
   evaluation_strategy: epoch
