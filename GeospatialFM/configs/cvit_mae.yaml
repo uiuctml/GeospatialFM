@@ -91,6 +91,7 @@ TRAINER:
   # optimizer
   optim: adamw_torch
   lr_scheduler_type: cosine
+  warmup_epochs: 4
   # Other
   seed: 0
   # ckpt
