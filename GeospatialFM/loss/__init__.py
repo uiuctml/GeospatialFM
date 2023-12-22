@@ -15,6 +15,8 @@ def get_loss_list(loss_cfg):
             loss_list.append(CrossEntropyLoss(**loss_kwargs))
         elif loss_name == 'SigLipLoss':
             loss_list.append(SigLipLoss(**loss_kwargs))
+        elif loss_name == 'Spectral':
+            loss_list.append(SpectralInterpolationLoss(**loss_kwargs))
         else:
             raise NotImplementedError
     return loss_list

@@ -41,3 +41,28 @@ class MAELoss(nn.Module):
         if output_dict:
             return dict(optical_mse=optical_mse, radar_mse=radar_mse)
         return optical_mse, radar_mse
+
+
+class SpectralInterpolationLoss(nn.Module):
+    def __init__(self, scale=1.0, recon_all=True):
+        super().__init__()
+        self.lambda_ = scale
+        self.recon_all = recon_all
+
+    def _forward_channel_mse_one_modal(self, recon, target, mask):
+        B, L, D = target.shape
+        recon = recon[:, :, :D]
+        loss = (recon - target).abs()
+        loss = loss.mean(dim=1)
+        if mask.sum() == 0:
+            return loss.mean() # if no mask, mean loss on all channels
+        loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
+        return loss
+
+    def forward(self, optical_recon, radar_recon, optical_target, optical_channel_mask, output_dict=False, **kwargs):
+        optical_channel_mse = self._forward_channel_mse_one_modal(optical_recon, optical_target, optical_channel_mask) * self.lambda_
+        if self.recon_all:
+            radar_channel_mse = self._forward_channel_mse_one_modal(radar_recon, optical_target, optical_channel_mask) * self.lambda_
+        if output_dict:
+            return dict(optical_channel_mse=optical_channel_mse, radar_channel_mse=radar_channel_mse)
+        return optical_channel_mse, radar_channel_mse

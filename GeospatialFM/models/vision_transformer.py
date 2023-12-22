@@ -112,12 +112,11 @@ class ViTEncoder(nn.Module):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    def random_masking(self, x, mask_ratio, channel_mask=None):
+    def random_masking(self, x, mask_ratio):
         """
         Perform per-sample random masking by per-sample shuffling.
         Per-sample shuffling is done by argsort random noise.
         x: [N, L, D], sequence
-        channel_mask: (Optional(int, list, None)): channel mask ratio or list of channel ids to mask
         """
         N, L, D = x.shape  # batch, length, dim
         len_keep = int(L * (1 - mask_ratio))
@@ -374,45 +373,3 @@ class ViTDecoder(nn.Module):
             var = target.var(dim=-1, keepdim=True)
             target = (target - mean) / (var + 1.e-6)**.5
         return target
-
-
-# def mae_vit_base_patch16_dec512d8b(**kwargs):
-#     model = MaskedAutoencoderViT(
-#         patch_size=16, embed_dim=768, depth=12, num_heads=12,
-#         decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
-#         mlp_ratio=4, **kwargs)
-#     return model
-
-
-# def mae_vit_large_patch16_dec512d8b(**kwargs):
-#     model = MaskedAutoencoderViT(
-#         patch_size=16, embed_dim=1024, depth=24, num_heads=16,
-#         decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
-#         mlp_ratio=4, **kwargs)
-#     return model
-
-
-# def mae_vit_huge_patch14_dec512d8b(**kwargs):
-#     model = MaskedAutoencoderViT(
-#         patch_size=14, embed_dim=1280, depth=32, num_heads=16,
-#         decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
-#         mlp_ratio=4, **kwargs)
-#     return model
-
-# def mae_vit_small_patch16_dec512d8b(**kwargs):
-#     encoder = MAEEncoder(
-#         patch_size=16, embed_dim=384, depth=12, num_heads=6,
-#         mlp_ratio=4, **kwargs)
-#     num_patches = encoder.num_patches
-#     decoder = MAEDecoder(
-#         num_patches=num_patches, patch_size=16, in_chans=384, out_chans=13, num_heads=6,
-#         decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
-#         mlp_ratio=4, **kwargs)
-#     return encoder, decoder
-
-
-# # set recommended archs
-# mae_vit_base_patch16 = mae_vit_base_patch16_dec512d8b  # decoder: 512 dim, 8 blocks
-# mae_vit_large_patch16 = mae_vit_large_patch16_dec512d8b  # decoder: 512 dim, 8 blocks
-# mae_vit_huge_patch14 = mae_vit_huge_patch14_dec512d8b  # decoder: 512 dim, 8 blocks
-# mae_vit_small_patch16 = mae_vit_small_patch16_dec512d8b  # decoder: 512 dim, 8 blocks

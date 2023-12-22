@@ -47,6 +47,7 @@ training_args = dict(
     save_logs = True,
     checkpoint_path = cfg['TRAINER']['logging_dir'],
     mask_ratio = cfg['MODEL']['mask_ratio'],
+    channel_mask_ratio = cfg['MODEL']['channel_mask_ratio'],
 )
 
 # update args with training_args
