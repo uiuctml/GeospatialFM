@@ -4,6 +4,7 @@ import torchgeo.models as tgm
 import torch.nn as nn
 import timm
 from .vision_transformer import ViTEncoder, ViTDecoder
+from .channel_vit import ChannelViTEncoder
 from .mae import CrossModalMAEViT
 from collections import OrderedDict
 import numpy as np
@@ -46,7 +47,10 @@ def construct_encoder(model_cfg, arch=None):
     assert model_cfg['load_pretrained_from'] in ['timm', 'torchgeo', 'dir', None]
     if arch is None: assert model_cfg['load_pretrained_from'] in ['dir', None]
 
-    encoder = ViTEncoder(**model_cfg['kwargs'])
+    if model_cfg['channel_vit']:
+        encoder = ChannelViTEncoder(**model_cfg['kwargs'])
+    else:
+        encoder = ViTEncoder(**model_cfg['kwargs'])
 
     if model_cfg['load_pretrained_from'] != None:
         if model_cfg['load_pretrained_from'] == 'torchgeo':
