@@ -58,10 +58,9 @@ class PatchEmbedPerChannel(nn.Module):
 
         B, Cin, H, W = x.shape
         # Note: The current number of channels (Cin) can be smaller or equal to in_chans
-        len_keep = int(Cin * (1 - channel_mask_ratio))
 
-        mask = None
         if self.training and self.enable_sample:
+            len_keep = int(Cin * (1 - channel_mask_ratio))
             noise = torch.rand(B, Cin, device=x.device)  # noise in [0, 1]
             # sort noise for each sample
             ids_shuffle = torch.argsort(noise, dim=1)  # ascend: small is keep, large is remove
@@ -80,6 +79,8 @@ class PatchEmbedPerChannel(nn.Module):
             # Update the embedding lookup
             cur_channel_embed = torch.gather(cur_channel_embed, 2, ids_keep.unsqueeze(1).repeat(1, cur_channel_embed.shape[1], 1))
             ######
+        else:
+            mask = torch.zeros([B, Cin], device=x.device)
 
         # shared projection layer across channels
         x = self.proj(x.unsqueeze(1))  # B Cout Cin H W

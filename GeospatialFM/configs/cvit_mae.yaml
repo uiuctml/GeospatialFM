@@ -4,6 +4,8 @@ MODEL:
   unified_decoder: true
   mask_ratio: 0.75
   channel_mask_ratio: 0.5
+  use_clip: false
+  use_siglip: false
   OPTICAL:
     channel_vit: true
     kwargs:
@@ -20,6 +22,7 @@ MODEL:
       init_values: null
       num_register_tokens: 0
   RADAR:
+    channel_vit: false
     kwargs:
       img_size: 224
       patch_size: 16
@@ -48,7 +51,7 @@ MODEL:
       num_register_tokens: 0
       embed_dim: 768
 LOSS:
-  SpectralInterpolationLoss:
+  Spectral:
     scale: 1.0
     recon_all: true
   MAE:
@@ -76,8 +79,8 @@ DATASET:
 TRAINER:
   # Training related
   num_train_epochs: 20
-  per_device_train_batch_size: 360
-  per_device_eval_batch_size: 360
+  per_device_train_batch_size: 320
+  per_device_eval_batch_size: 320
   gradient_accumulation_steps: 1
   learning_rate: 1e-3
   weight_decay: 0.

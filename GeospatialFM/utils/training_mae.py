@@ -89,7 +89,7 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
 
         if args.accum_freq == 1:
             with autocast():
-                model_out = model(images, radar, args.mask_ratio)
+                model_out = model(images, radar, args.mask_ratio, args.channel_mask_ratio)
                 # logit_scale = model_out.get("logit_scale").mean()
                 logit_scale = model_out['logit_scale']
                 # model_out['logit_scale'] = logit_scale
