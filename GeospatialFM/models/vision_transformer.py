@@ -342,6 +342,7 @@ class ViTDecoder(nn.Module):
         mask_tokens = self.mask_token.repeat(x.shape[0], ids_restore.shape[1] + 1 - x.shape[1], 1)
         x_ = torch.cat([x[:, 1+self.num_register_tokens:, :], mask_tokens], dim=1)  # no cls token and register tokens
         x_ = torch.gather(x_, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x.shape[2]))  # unshuffle
+        # print(x_.shape)
         x = torch.cat([x[:, :1, :], x_], dim=1)  # append cls token
 
         # add pos embed

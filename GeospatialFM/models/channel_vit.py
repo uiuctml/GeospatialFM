@@ -28,12 +28,14 @@ class PatchEmbedPerChannel(nn.Module):
         in_chans: int = 3,
         embed_dim: int = 768,
         enable_sample: bool = True,
+        channel_mean: bool = True,
     ):
         super().__init__()
         num_patches = (img_size // patch_size) * (img_size // patch_size) * in_chans
         self.img_size = img_size
         self.patch_size = patch_size
         self.num_patches = num_patches
+        self.channel_mean = channel_mean
 
         self.proj = nn.Conv3d(
             1,
@@ -61,17 +63,17 @@ class PatchEmbedPerChannel(nn.Module):
 
         if self.training and self.enable_sample:
             len_keep = int(Cin * (1 - channel_mask_ratio))
-            noise = torch.rand(B, Cin, device=x.device)  # noise in [0, 1]
+            noise = torch.rand(1, Cin, device=x.device)  # noise in [0, 1]
             # sort noise for each sample
             ids_shuffle = torch.argsort(noise, dim=1)  # ascend: small is keep, large is remove
             ids_restore = torch.argsort(ids_shuffle, dim=1)
 
             # keep the first subset
             ids_keep = ids_shuffle[:, :len_keep]
-            x = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, H, W))
+            x = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(B, 1, H, W))
 
             # generate the binary mask: 0 is keep, 1 is remove
-            mask = torch.ones([B, Cin], device=x.device)
+            mask = torch.ones([1, Cin], device=x.device)
             mask[:, :len_keep] = 0
             # unshuffle to get the binary mask
             mask = torch.gather(mask, dim=1, index=ids_restore)
@@ -80,7 +82,7 @@ class PatchEmbedPerChannel(nn.Module):
             cur_channel_embed = torch.gather(cur_channel_embed, 2, ids_keep.unsqueeze(1).repeat(1, cur_channel_embed.shape[1], 1))
             ######
         else:
-            mask = torch.zeros([B, Cin], device=x.device)
+            mask = torch.zeros([1, Cin], device=x.device)
 
         # shared projection layer across channels
         x = self.proj(x.unsqueeze(1))  # B Cout Cin H W
@@ -89,12 +91,15 @@ class PatchEmbedPerChannel(nn.Module):
         x += cur_channel_embed.unsqueeze(-1).unsqueeze(-1)
         # x += self.channel_embed[:, :, cur_channels, :, :]  # B Cout Cin H W
 
-        # preparing the output sequence
-        x = x.flatten(3)  # B Cout Cin HW
-        # x = x.transpose(1, 2)  # B CinHW Cout
-        x = x.permute(0, 2, 3, 1) # B Cin HW Cout
-        x = x.mean(dim=1)
-
+        if self.channel_mean:
+            # preparing the output sequence
+            x = x.flatten(3)  # B Cout Cin HW
+            # x = x.transpose(1, 2)  # B CinHW Cout
+            x = x.permute(0, 2, 3, 1) # B Cin HW Cout
+            x = x.mean(dim=1)
+        else:
+            x = x.flatten(2) # B Cout CinHW
+            x = x.transpose(1, 2)  # B CinHW Cout
         return x, mask
 
 
@@ -113,9 +118,11 @@ class ChannelViTEncoder(ViTEncoder):
         # Additional args for Channel_ViT
         self.collpase_embed = collpase_embed
         # override the patch embedding
-        self.patch_embed = PatchEmbedPerChannel(img_size, patch_size, in_chans, embed_dim)
-        # TODO: check self.num_patches .etc here
-        # TODO: check in Channel ViT, how is the patch embedding done?
+        self.patch_embed = PatchEmbedPerChannel(img_size, patch_size, in_chans, embed_dim, channel_mean=self.collpase_embed)
+        if not self.collpase_embed:
+            self.num_patches_per_channel = self.num_patches
+            self.num_patches = self.patch_embed.num_patches
+            self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches + self.num_tokens, embed_dim), requires_grad=False)  # fixed sin-cos embedding
     
     # ViT Forward path
     def forward(self, x, channel_mask_ratio=0, channel_ids=None, return_dict=False):
@@ -160,13 +167,21 @@ class ChannelViTEncoder(ViTEncoder):
     # Encoder for MAE
     def forward_encoder(self, x, mask_ratio=0.75, channel_mask_ratio=0.5, channel_ids=None, return_dict=False):
         # embed patches
-        x, channel_mask = self.patch_embed(x, channel_mask_ratio, channel_ids)
-        channel_mask = channel_mask.unsqueeze(1).expand(-1, self.patch_size**2, -1).flatten(1)
+        x, _channel_mask = self.patch_embed(x, channel_mask_ratio, channel_ids)
+        channel_mask = _channel_mask.unsqueeze(1).expand(-1, self.patch_size**2, -1).flatten(1)
+        if not self.collpase_embed:
+            channel_mask_patch = _channel_mask.unsqueeze(1).expand(-1, self.num_patches_per_channel, -1).flatten(1)
+            keep_idx = torch.argwhere(channel_mask_patch[0] == 0).flatten().unsqueeze(0)
+            pos_embed = torch.gather(self.pos_embed[:, 1:, :], 1, keep_idx.unsqueeze(-1).repeat(1, 1, self.embed_dim))
+        else:
+            pos_embed = self.pos_embed[:, 1:, :]
+        # print(x.shape, pos_embed.shape)
         # if self.collpase_embed:
         #     x = collpase_channels(x)
 
         # add pos embed w/o cls token
-        x = x + self.pos_embed[:, 1:, :]
+        # x = x + self.pos_embed[:, 1:, :]
+        x = x + pos_embed
 
         # masking: length -> length * mask_ratio
         x, mask, ids_restore = self.random_masking(x, mask_ratio)
@@ -192,11 +207,13 @@ class ChannelViTEncoder(ViTEncoder):
             x = blk(x)
         x = self.norm(x)
 
-        if not self.collpase_embed:
-            raise NotImplementedError
-
         if return_dict:
             return dict(latent=x, mask=mask, ids_restore=ids_restore, channel_mask=channel_mask)
         return x, mask, ids_restore, channel_mask
 
-        
+
+class ChannelViTDecoder(ViTDecoder):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # TODO: finish this
+        self.decoder_pos_embed = nn.Parameter(torch.zeros(1, self.num_patches + self.num_tokens, self.embed_dim), requires_grad=False)  # fixed sin-cos embedding
