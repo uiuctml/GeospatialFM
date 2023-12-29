@@ -39,9 +39,10 @@ class CrossModalMAEViT(nn.Module):
     def forward_recon(self, optical, radar, mask_ratio=0.75, slice_patch_tokens=None, channel_mask_ratio=0.5):
         # forward optical
         if isinstance(self.optical_encoder, ChannelViTEncoder):
-            optical_latent, optical_mask, optical_ids_restore, _ = self.optical_encoder.forward_encoder(optical, mask_ratio, channel_mask_ratio)
+            optical_latent, optical_mask, optical_ids_restore, optical_channel_mask = self.optical_encoder.forward_encoder(optical, mask_ratio, channel_mask_ratio)
         else:
             optical_latent, optical_mask, optical_ids_restore = self.optical_encoder.forward_encoder(optical, mask_ratio)
+            optical_channel_mask = None
         optical_recon = self.optical_decoder.forward_decoder(optical_latent, optical_ids_restore, restore_input_dim=True, slice_patch_tokens=slice_patch_tokens)
         optical_cls_token = optical_latent[:, 0]
         # forward radar
@@ -51,6 +52,8 @@ class CrossModalMAEViT(nn.Module):
         return_dict= dict(optical_cls_token=optical_cls_token, radar_cls_token=radar_cls_token,
                     optical_recon=optical_recon, radar_recon=radar_recon,
                     optical_mask=optical_mask, radar_mask=radar_mask,)
+        if optical_channel_mask is not None:
+            return_dict['optical_channel_mask'] = optical_channel_mask
         return return_dict
 
     def forward(self, optical, radar, mask_ratio=0.75, channel_mask_ratio=0.5):
