@@ -10,16 +10,6 @@ def get_args_parser(add_help: bool = True):
     # )
     parser.add_argument("--eval-only", action="store_true", help="perform evaluation only")
     parser.add_argument("--eval", type=str, default="", help="Eval type to perform")
-    parser.add_argument(
-        "opts",
-        help="""
-        Modify config options at the end of the command. For Yacs configs, use
-        space-separated "PATH.KEY VALUE" pairs.
-        For python-based LazyConfig, use "path.key=value".
-        """.strip(),
-        default=None,
-        nargs=argparse.REMAINDER,
-    )
     parser.add_argument("--exp_name", default=None, type=str, help="Experiment name")
     parser.add_argument("--debug", action="store_true", help="Debug mode")
 
@@ -30,4 +20,15 @@ def get_args_parser(add_help: bool = True):
     parser.add_argument("--dist_backend", default='nccl', type=str, help="Distributed backend")
     parser.add_argument("--dist_url", default='env://', type=str, help="Distributed url")
     parser.add_argument("--no_set_device_rank", action="store_true", help="Not set device rank")
+
+    parser.add_argument(
+        "opts",
+        help="""
+        Modify config options at the end of the command. For Yacs configs, use
+        space-separated "PATH.KEY VALUE" pairs.
+        For python-based LazyConfig, use "path.key=value".
+        """.strip(),
+        default=None,
+        nargs=argparse.REMAINDER,
+    )
     return parser

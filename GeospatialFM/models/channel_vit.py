@@ -69,17 +69,19 @@ class PatchEmbedPerChannel(nn.Module):
 
         if self.training and self.enable_sample:
             len_keep = int(Cin * (1 - channel_mask_ratio))
-            noise = torch.rand(1, Cin, device=x.device)  # noise in [0, 1]
+            # noise = torch.rand(1, Cin, device=x.device)  # noise in [0, 1]
+            noise = torch.rand(B, Cin, device=x.device)  # noise in [0, 1]
             # sort noise for each sample
             ids_shuffle = torch.argsort(noise, dim=1)  # ascend: small is keep, large is remove
             ids_restore = torch.argsort(ids_shuffle, dim=1)
 
             # keep the first subset
             ids_keep = ids_shuffle[:, :len_keep]
-            x = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(B, 1, H, W))
+            # x = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(B, 1, H, W))
+            x = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, H, W))
 
             # generate the binary mask: 0 is keep, 1 is remove
-            mask = torch.ones([1, Cin], device=x.device)
+            mask = torch.ones([B, Cin], device=x.device)
             mask[:, :len_keep] = 0
             # unshuffle to get the binary mask
             mask = torch.gather(mask, dim=1, index=ids_restore)
@@ -164,7 +166,7 @@ class ChannelViTEncoder(ViTEncoder):
         register_tokens = x[:, 1:self.num_register_tokens+1] if self.num_register_tokens else None
         patch_tokens = x[:, self.num_register_tokens+1:]
 
-        if not self.collpase_embed:
+        if not self.channel_pool:
             raise NotImplementedError
 
         if return_dict:
