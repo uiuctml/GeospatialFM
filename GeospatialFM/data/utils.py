@@ -65,11 +65,11 @@ def get_datasets(data_cfg):
     eval_transform = TransformSample(eval_transform_func)
     train_transform = TransformSample(train_transform_func) if data_cfg['use_train_transform'] else eval_transform
     train_dataset = get_dataset(data_cfg, split='train', transforms=train_transform)
+    test_dataset = get_dataset(data_cfg, split='test', transforms=eval_transform)
     try:
         val_dataset = get_dataset(data_cfg, split='val', transforms=eval_transform)
     except:
-        val_dataset = None
-    test_dataset = get_dataset(data_cfg, split='test', transforms=eval_transform)
+        val_dataset = test_dataset
     if data_cfg['train_split'] == 'trainval' and val_dataset is not None:
         train_dataset = ConcatDataset([train_dataset, val_dataset])
         val_dataset = test_dataset

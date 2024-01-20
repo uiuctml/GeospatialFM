@@ -255,7 +255,7 @@ if __name__ == '__main__':
 
     random_seed(0, args.rank)
     models = construct_downstream_models(cfg.MODEL)
-    save_path = os.path.join(cfg.TRAINER['output_dir'], 'ckpt_epoch20.pth')
+    save_path = os.path.join(cfg.TRAINER['ckpt_dir'], 'final_model.pth')
     state_dict = unwrap_model(torch.load(save_path, map_location='cpu'))
     optical_state_dict, radar_state_dict = decompose_model(state_dict)
 
