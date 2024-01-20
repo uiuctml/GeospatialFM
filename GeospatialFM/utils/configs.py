@@ -52,8 +52,13 @@ def setup(args, wandb=True):
     if cfg['MODEL']['freeze_encoder']:
         cfg['NAME'] += f"_lp"
     # setup output directory
-    cfg['TRAINER']['output_dir'] += f'/{cfg["DATASET"]["name"]}_{cfg["NAME"]}'
-    cfg['TRAINER']['logging_dir'] += f'/{cfg["DATASET"]["name"]}_{cfg["NAME"]}'
+    if args.finetune:
+        cfg['TRAINER']['ckpt_dir'] = cfg['TRAINER']['output_dir'] + f'/{cfg["NAME"]}'
+        cfg['TRAINER']['output_dir'] += f'/{cfg["DATASET"]["name"]}_{cfg["NAME"]}'
+        cfg['TRAINER']['logging_dir'] += f'/{cfg["DATASET"]["name"]}_{cfg["NAME"]}'
+    else:
+        cfg['TRAINER']['output_dir'] += f'/{cfg["NAME"]}'
+        cfg['TRAINER']['logging_dir'] += f'/{cfg["NAME"]}'
     if is_master(args):
         os.makedirs(cfg['TRAINER']['output_dir'], exist_ok=True)
         os.makedirs(cfg['TRAINER']['logging_dir'], exist_ok=True)
