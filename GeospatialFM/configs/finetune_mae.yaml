@@ -2,8 +2,8 @@ MODEL:
   architecture: vit_base_patch16_224
   cross_modal: true
   unified_decoder: false
-  mask_ratio: 0.75
   OPTICAL:
+    channel_vit: true
     kwargs:
       img_size: 224
       patch_size: 16
@@ -23,7 +23,7 @@ MODEL:
       task_type: classification
       use_bias: true
       in_features: 768
-      num_classes: 19
+      num_classes: 17
   RADAR:
     kwargs:
       img_size: 224
@@ -44,13 +44,13 @@ MODEL:
       task_type: classification
       use_bias: true
       in_features: 768
-      num_classes: 19
+      num_classes: 17
 LOSS:
   CE:
     scale: 1.0
 DATASET:
   root: ./data/geospatial
-  name: BigEarthNet
+  name: So2Sat
   train_transforms:
     normalize: true
     standardize: false
@@ -58,13 +58,13 @@ DATASET:
     normalize: true
     standardize: false
   kwargs:
-    bands: all
-    num_classes: 19
+    version: 3_culture_10
+    bands: ['S2_B02', 'S2_B03', 'S2_B04', 'S2_B05', 'S2_B06', 'S2_B07', 'S2_B08', 'S2_B8A', 'S2_B11', 'S2_B12']
     pad_s2: true
   eval_metric: classification
   use_train_transform: true
-  train_frac: 0.1
-  val_frac: 0.1
+  train_frac: 1
+  val_frac: 1
 TRAINER:
   # Training related
   num_train_epochs: 20
