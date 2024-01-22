@@ -255,12 +255,12 @@ if __name__ == '__main__':
 
     random_seed(0, args.rank)
     models = construct_downstream_models(cfg)
-    save_path = os.path.join(cfg.TRAINER['ckpt_dir'], 'final_model.pth')
-    state_dict = unwrap_model(torch.load(save_path, map_location='cpu'))
-    optical_state_dict, radar_state_dict = decompose_model(state_dict)
+    # save_path = os.path.join(cfg.TRAINER['ckpt_dir'], 'final_model.pth')
+    # state_dict = unwrap_model(torch.load(save_path, map_location='cpu'))
+    # optical_state_dict, radar_state_dict = decompose_model(state_dict)
 
-    models['OPTICAL'].encoder.load_state_dict(optical_state_dict, strict=False)
-    models['RADAR'].encoder.load_state_dict(radar_state_dict, strict=False)
+    # models['OPTICAL'].encoder.load_state_dict(optical_state_dict, strict=False)
+    # models['RADAR'].encoder.load_state_dict(radar_state_dict, strict=False)
 
     model = models[args.finetune_modal]
     model = model.to(training_args.device)
