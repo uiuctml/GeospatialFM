@@ -1,0 +1,22 @@
+DATASET:
+  root: ./data/geospatial
+  name: BigEarthNet
+  train_transforms:
+    normalize: true
+    standardize: false
+  eval_transforms:
+    normalize: true
+    standardize: false
+  kwargs:
+    bands: all
+    num_classes: 19
+    pad_s2: true
+  eval_metric: classification
+  use_train_transform: true
+  train_frac: 0.1
+  val_frac: 0.1
+  train_split: train
+  task_head_kwargs:
+    head_type: linear
+    task_type: classification
+    num_classes: 19

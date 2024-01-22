@@ -103,15 +103,23 @@ def construct_mae(model_cfg):
         raise NotImplementedError
     return mae
 
-def construct_downstream_models(model_cfg):
-    modals = ['OPTICAL', 'RADAR']
+def construct_downstream_models(cfg, modals=['OPTICAL', 'RADAR']):
+    model_cfg = cfg.MODEL
+    task_head_kwargs = cfg.DATASET['task_head_kwargs']
     arch = model_cfg['architecture']
     models = {}
     for modal in modals:
         if not hasattr(model_cfg, modal): continue
-        assert model_cfg[modal]['use_head']
-        encoder = construct_encoder(model_cfg[modal], arch=arch)
-        head = construct_head(model_cfg[modal]['head_kwargs'])
+        modal_cfg = model_cfg[modal]
+        assert modal_cfg['use_head']
+        encoder = construct_encoder(modal_cfg, arch=arch)
+
+        num_features = encoder.num_features
+        head_kwargs = task_head_kwargs
+        head_kwargs['use_bias'] = modal_cfg['head_kwargs']['use_bias']
+        head_kwargs['in_features'] = num_features
+
+        head = construct_head(head_kwargs)
         model = ViTModel(encoder, head)
         models[modal] = model
     return models
