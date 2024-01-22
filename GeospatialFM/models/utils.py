@@ -43,31 +43,42 @@ def decompose_model(state_dict):
             radar_model[key_name] = value
     return optical_model, radar_model
 
+def get_pretrained_weight(model_cfg, arch, skip_modules=['patch_embed.proj.weight', 'patch_embed.proj.bias']):
+    load_pretrained_from = model_cfg['load_pretrained_from']
+    pretrained_ckpt = model_cfg['pretrained_ckpt']
+    assert load_pretrained_from in ['timm', 'torchgeo', 'dir', None]
+    if load_pretrained_from is None:
+        return None
+    elif load_pretrained_from == 'timm':
+        state_dict = timm.create_model(f'{arch}.{pretrained_ckpt}', pretrained=True).state_dict()
+        for skip_module in skip_modules:
+            del state_dict[skip_module]
+
 def construct_encoder(model_cfg, arch=None):
-    assert model_cfg['load_pretrained_from'] in ['timm', 'torchgeo', 'dir', None]
-    if arch is None: assert model_cfg['load_pretrained_from'] in ['dir', None]
+    # assert model_cfg['load_pretrained_from'] in ['timm', 'torchgeo', 'dir', None]
+    # if arch is None: assert model_cfg['load_pretrained_from'] in ['dir', None]
 
     if model_cfg['channel_vit']:
         encoder = ChannelViTEncoder(**model_cfg['kwargs'])
     else:
         encoder = ViTEncoder(**model_cfg['kwargs'])
 
-    if model_cfg['load_pretrained_from'] != None:
-        if model_cfg['load_pretrained_from'] == 'torchgeo':
-            assert model_cfg['pretrained_ckpt'] is not None
-            weights = tgm.get_weight(model_cfg['pretrained_ckpt'])
-            state_dict = tgm.get_model(arch, weights=weights).state_dict()
+    # if model_cfg['load_pretrained_from'] != None:
+    #     if model_cfg['load_pretrained_from'] == 'torchgeo':
+    #         assert model_cfg['pretrained_ckpt'] is not None
+    #         weights = tgm.get_weight(model_cfg['pretrained_ckpt'])
+    #         state_dict = tgm.get_model(arch, weights=weights).state_dict()
 
-        elif model_cfg['load_pretrained_from'] == 'timm':
-            state_dict = timm.create_model(arch, pretrained=(model_cfg['load_pretrained_from']=='timm')).state_dict()  
+    #     elif model_cfg['load_pretrained_from'] == 'timm':
+    #         state_dict = timm.create_model(arch, pretrained=(model_cfg['load_pretrained_from']=='timm')).state_dict()  
 
-        elif model_cfg['load_pretrained_from'] == 'dir':
-            state_dict = torch.load(model_cfg['pretrained_ckpt'])
+    #     elif model_cfg['load_pretrained_from'] == 'dir':
+    #         state_dict = torch.load(model_cfg['pretrained_ckpt'])
 
-        try:
-            encoder.load_state_dict(state_dict, strict=False)
-        except:
-            raise ValueError(f"Pretrained ckpt for {arch} mismatch with model config")
+    #     try:
+    #         encoder.load_state_dict(state_dict, strict=False)
+    #     except:
+    #         raise ValueError(f"Pretrained ckpt for {arch} mismatch with model config")
 
     if model_cfg['freeze_encoder']:
         for param in encoder.parameters():
@@ -80,6 +91,7 @@ def construct_decoder(decoder_cfg):
 
 def construct_mae(model_cfg):
     arch = model_cfg['architecture']
+
     if model_cfg['cross_modal']:
         optical_encoder = construct_encoder(model_cfg['OPTICAL'], arch=arch)
         radar_encoder = construct_encoder(model_cfg['RADAR'], arch=arch)
