@@ -71,9 +71,9 @@ MODEL:
   channel_mask_ratio: 0.
   freeze_encoder: false
   use_siglip: false
+  load_pretrained_from: null
+  pretrained_ckpt: null
   OPTICAL:
-    load_pretrained_from: null
-    pretrained_ckpt: null
     freeze_encoder: false
     channel_vit: false
     kwargs:
