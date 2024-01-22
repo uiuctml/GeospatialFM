@@ -58,6 +58,7 @@ def get_dataloaders(data_cfg):
     return train_dataloader, val_dataloader, test_dataloader
 
 def get_datasets(data_cfg):
+    print(f"Training Dataset: {data_cfg['name']}")
     data_cfg['kwargs']['root'] = osp.join(data_cfg['root'], data_cfg['name'])
     data_mean_std = get_mean_std(data_cfg)
     train_transform_func = make_classification_train_transform(**data_cfg['train_transforms'], mean_std=data_mean_std)
@@ -77,5 +78,6 @@ def get_datasets(data_cfg):
         train_dataset = Subset(train_dataset, torch.randperm(len(train_dataset))[:int(len(train_dataset)*data_cfg['train_frac'])])
     if data_cfg['val_frac'] < 1.0:
         val_dataset = Subset(val_dataset, torch.randperm(len(val_dataset))[:int(len(val_dataset)*data_cfg['val_frac'])])
+    print(f"Train Set: {len(train_dataset)}\t Val Set: {len(val_dataset)}\t Test Set: {len(test_dataset)}")
 
     return train_dataset, val_dataset, test_dataset
