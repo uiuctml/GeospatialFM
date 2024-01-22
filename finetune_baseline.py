@@ -254,15 +254,12 @@ if __name__ == '__main__':
     # training_args.device = f'cuda:{training_args.device_ids[0]}'
 
     random_seed(0, args.rank)
-    models = construct_downstream_models(cfg)
-    save_path = os.path.join(cfg.TRAINER['ckpt_dir'], 'final_model.pth')
-    state_dict = unwrap_model(torch.load(save_path, map_location='cpu'))
-    optical_state_dict, radar_state_dict = decompose_model(state_dict)
+    model = construct_downstream_models(cfg)['OPTICAL']
+    state_dict = timm.create_model('vit_base_patch16_224.mae', pretrained=True).state_dict()
+    state_dict['patch_embed.proj.weight'] = model.state_dict()['encoder.patch_embed.proj.weight']
+    state_dict['patch_embed.proj.bias'] = model.state_dict()['encoder.patch_embed.proj.bias']
 
-    models['OPTICAL'].encoder.load_state_dict(optical_state_dict, strict=False)
-    models['RADAR'].encoder.load_state_dict(radar_state_dict, strict=False)
-
-    model = models[args.finetune_modal]
+    model.encoder.load_state_dict(state_dict, strict=False)
     model = model.to(training_args.device)
 
     random_seed(0, args.rank)

@@ -1,0 +1,39 @@
+MODEL:
+  architecture: vit_base_patch16_224
+  cross_modal: true
+  unified_decoder: true
+  mask_ratio: 0.75
+  channel_mask_ratio: 0.5
+  use_clip: false
+  use_siglip: false
+  OPTICAL:
+    channel_vit: true
+    kwargs:
+      img_size: 224
+      patch_size: 16
+      in_chans: 13
+      embed_dim: 768
+      depth: 12
+      num_heads: 12
+      mlp_ratio: 4.0
+      qkv_bias: True
+      drop_path_rate: 0.0
+      drop_path_uniform: False
+      init_values: null
+      num_register_tokens: 0
+      channel_pool: max
+  RADAR:
+    channel_vit: false
+    kwargs:
+      img_size: 224
+      patch_size: 16
+      in_chans: 2
+      embed_dim: 768
+      depth: 12
+      num_heads: 12
+      mlp_ratio: 4.0
+      qkv_bias: True
+      drop_path_rate: 0.0
+      drop_path_uniform: False
+      init_values: null
+      num_register_tokens: 0
