@@ -61,6 +61,7 @@ DATASET:
   eval_metric: ''
   use_train_transform: true
   train_frac: 1.0
+  val_frac: 1.0
   train_split: trainval
 MODEL:
   architecture: null
@@ -70,9 +71,9 @@ MODEL:
   channel_mask_ratio: 0.
   freeze_encoder: false
   use_siglip: false
+  load_pretrained_from: null
+  pretrained_ckpt: null
   OPTICAL:
-    load_pretrained_from: null
-    pretrained_ckpt: null
     freeze_encoder: false
     channel_vit: false
     kwargs:
@@ -90,14 +91,8 @@ MODEL:
       num_register_tokens: 0
     use_head: false
     head_kwargs:
-      head_type: linear
-      task_type: classification
       use_bias: true
-      in_features: 384
-      num_classes: 19
   RADAR:
-    load_pretrained_from: null
-    pretrained_ckpt: null
     freeze_encoder: false
     channel_vit: false
     kwargs:
@@ -115,11 +110,7 @@ MODEL:
       num_register_tokens: 0
     use_head: false
     head_kwargs:
-      head_type: linear
-      task_type: classification
       use_bias: true
-      in_features: 384
-      num_classes: 19
   DECODER:
     kwargs:
       out_chans: 15
