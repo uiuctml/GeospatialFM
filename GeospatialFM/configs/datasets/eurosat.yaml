@@ -9,12 +9,12 @@ DATASET:
     standardize: false
   kwargs:
     bands: [B01, B02, B03, B04, B05, B06, B07, B08, B08A, B09, B10, B11, B12]
-  eval_metric: classification
+  eval_metric: accuracy
+  task_type: classification
   use_train_transform: true
   train_frac: 1
   val_frac: 0.1
   train_split: train
   task_head_kwargs:
     head_type: linear
-    task_type: classification
     num_classes: 10

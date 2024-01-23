@@ -115,7 +115,8 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
             data_time_m.reset()
     # end for
 
-def evaluate_finetune(model, data, loss, epoch, args, val_split='val'):
+def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metric='accuracy'):
+    assert eval_metric in ['accuracy', 'mAP']
     metrics = {}
     if not is_master(args):
         return metrics
@@ -129,6 +130,9 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val'):
     # input_dtype = get_input_dtype(args.precision)
 
     if val_split in data and (args.val_frequency and ((epoch % args.val_frequency) == 0 or epoch == args.epochs)):
+        if eval_metric == 'mAP':
+            all_preds = []
+            all_labels = []
         dataloader = data[val_split].dataloader
         num_samples = 0
         samples_per_val = dataloader.num_samples
@@ -150,17 +154,29 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val'):
                     total_loss = sum(losses.values())
                     losses["loss"] = total_loss
                     
-                    preds = torch.argmax(model_out, dim=1)
-                    image_acc = (preds == label).sum().item() / len(label)
-                    losses['image_acc'] = image_acc
-
-                for key, val in losses.items():
-                    try:
-                        cumulative_losses[key] += val.item() * batch_size
-                    except:
-                        cumulative_losses[key] += val * batch_size
+                    if eval_metric == 'accuracy':
+                        preds = torch.argmax(model_out, dim=1)
+                        image_acc = (preds == label).sum().item() / len(label)
+                        losses['image_acc'] = image_acc
+                    elif eval_metric == 'mAP':
+                        model_out = F.sigmoid(model_out)
+                        all_preds.append(model_out)
+                        all_labels.append(label)
+                        _all_preds = torch.cat(all_preds, dim=0).float()
+                        _all_labels = torch.cat(all_labels, dim=0).float()
+                        mAP = average_precision_score(_all_labels.cpu().numpy(), _all_preds.cpu().numpy(), average='macro')
+                        losses['mAP'] = mAP
 
                 num_samples += batch_size
+
+                for key, val in losses.items():
+                    if key == 'mAP': cumulative_losses['mAP'] = losses['mAP'] * num_samples
+                    else:
+                        try:
+                            cumulative_losses[key] += val.item() * batch_size
+                        except:
+                            cumulative_losses[key] += val * batch_size
+
                 if is_master(args) and (i % 100) == 0:
                     loss_log = f"Eval Epoch: {epoch} [{num_samples} / {samples_per_val}]" 
                     loss_log += " ".join(
@@ -280,14 +296,15 @@ if __name__ == '__main__':
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg['TRAINER']['learning_rate'], weight_decay=cfg['TRAINER']['weight_decay'])
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=steps, eta_min=1e-7)
     scheduler = get_scheduler(cfg['TRAINER']['lr_scheduler_type'], optimizer, cfg['TRAINER']['learning_rate'], warmup_steps, steps, cfg['TRAINER']['scheduler_kwargs'])
-    loss = get_loss_list(cfg.LOSS)[0]
+    print(f"Task type: {cfg.DATASET['task_type']}")
+    loss = get_loss(cfg.DATASET['task_type'])
 
     for epoch in trange(training_args.epochs):
         finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, training_args)
-        evaluate_finetune(model, data, loss, epoch, training_args, val_split='val')
+        evaluate_finetune(model, data, loss, epoch, training_args, val_split='val', eval_metric=cfg.DATASET['eval_metric'])
         if cfg.TRAINER.save_frequency > 0 and (epoch + 1) % cfg.TRAINER.save_frequency == 0:
             torch.save(model.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], f'ft_ckpt_epoch{epoch+1}.pth'))
-    evaluate_finetune(model, data, loss, epoch, training_args, val_split='test')
+    evaluate_finetune(model, data, loss, epoch, training_args, val_split='test', eval_metric=cfg.DATASET['eval_metric'])
     # save model
     if is_master(args):
         torch.save(model.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], 'ft_model.pth'))

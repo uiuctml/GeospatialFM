@@ -1,5 +1,5 @@
 MODEL:
-  architecture: vit_base_patch16_224
+  architecture: cvit_base_patch16_224
   OPTICAL:
     use_head: true
     head_kwargs:
@@ -8,9 +8,6 @@ MODEL:
     use_head: true
     head_kwargs:
       use_bias: true
-LOSS:
-  CE:
-    scale: 1.0
 DATASET:
   name: BigEarthNet
 TRAINER:
