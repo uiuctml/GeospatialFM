@@ -327,7 +327,7 @@ if __name__ == '__main__':
         if cfg.TRAINER.save_frequency > 0 and (epoch + 1) % cfg.TRAINER.save_frequency == 0:
             torch.save(model.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], f'ft_ckpt_epoch{epoch+1}.pth'))
     final_metrics = evaluate_finetune(model, data, loss, epoch+1, training_args, val_split='test', eval_metric=cfg.DATASET['eval_metric'])
-    if training_args.save_csv:
+    if training_args.save_csv and is_master(args):
         save_dict = dict(
             epochs = training_args.epochs,
             lr = cfg['TRAINER']['learning_rate'],
