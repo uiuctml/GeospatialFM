@@ -12,10 +12,11 @@ DATASET:
     bands: ['S2_B02', 'S2_B03', 'S2_B04', 'S2_B05', 'S2_B06', 'S2_B07', 'S2_B08', 'S2_B8A', 'S2_B11', 'S2_B12']
     pad_s2: true
   use_train_transform: true
+  eval_metric: accuracy
+  task_type: classification
   train_frac: 1
   val_frac: 0.1
   train_split: train
   task_head_kwargs:
     head_type: linear
-    task_type: classification
     num_classes: 17

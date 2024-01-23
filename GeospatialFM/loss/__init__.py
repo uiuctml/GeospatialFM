@@ -17,6 +17,16 @@ def get_loss_list(loss_cfg):
             loss_list.append(SigLipLoss(**loss_kwargs))
         elif loss_name == 'Spectral':
             loss_list.append(SpectralInterpolationLoss(**loss_kwargs))
+        elif loss_name == 'BCE':
+            loss_list.append(MultilabelBCELoss(**loss_kwargs))
         else:
             raise NotImplementedError
     return loss_list
+
+def get_loss(task_type):
+    if task_type == 'classification':
+        return CrossEntropyLoss()
+    elif task_type == 'multilabel':
+        return MultilabelBCELoss()
+    else:
+        raise NotImplementedError

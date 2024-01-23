@@ -1,4 +1,4 @@
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, average_precision_score
 from transformers import EvalPrediction
 import numpy as np
 
