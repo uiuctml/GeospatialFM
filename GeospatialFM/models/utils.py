@@ -156,7 +156,7 @@ def construct_downstream_models(cfg, modals=['OPTICAL', 'RADAR']):
     return models
 
 def construct_head(head_cfg):
-    if head_cfg['task_type'] == 'classification':
+    if head_cfg['head_type'] == 'linear':
         head = nn.Linear(head_cfg['in_features'], head_cfg['num_classes'], bias=head_cfg['use_bias'])
     else:
         raise NotImplementedError

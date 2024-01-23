@@ -78,9 +78,10 @@ def setup(args, wandb=True):
     # assign rank, world_size
     world_size = args.world_size
     rank = args.rank
-    for loss_name, loss_kwargs in cfg.LOSS.items():
-        if world_size in loss_kwargs.keys():
-            cfg.LOSS[loss_name]['world_size'] = world_size
-        if rank in loss_kwargs.keys():
-            cfg.LOSS[loss_name]['rank'] = rank
+    if hasattr(cfg, 'LOSS'):
+        for loss_name, loss_kwargs in cfg.LOSS.items():
+            if world_size in loss_kwargs.keys():
+                cfg.LOSS[loss_name]['world_size'] = world_size
+            if rank in loss_kwargs.keys():
+                cfg.LOSS[loss_name]['rank'] = rank
     return cfg, run
