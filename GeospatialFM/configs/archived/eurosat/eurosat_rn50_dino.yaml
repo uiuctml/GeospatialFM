@@ -1,0 +1,40 @@
+DATASET:
+  root: ./data/geospatial
+  name: EuroSAT
+  kwargs:
+    bands: [B01, B02, B03, B04, B05, B06, B07, B08, B08A, B09, B10, B11, B12]
+  eval_metric: classification
+  use_train_transform: true
+MODEL:
+  architecture: resnet50
+  bands: 13
+  load_pretrained_from: torchgeo
+  pretrained_ckpt: ResNet50_Weights.SENTINEL2_ALL_DINO
+  criterion: cross_entropy
+  freeze_encoder: false
+  head_kwargs:
+    head_type: linear
+    task_type: classification
+    use_bias: true
+    in_features: 2048
+    num_classes: 10
+TRAINER:
+  # Training related
+  num_train_epochs: 100
+  per_device_train_batch_size: 512
+  per_device_eval_batch_size: 512
+  gradient_accumulation_steps: 1
+  learning_rate: 1e-4
+  weight_decay: 0
+  # dataloader
+  dataloader_num_workers: 8
+  dataloader_pin_memory: true
+  dataloader_drop_last: false
+  # Logging
+  report_to: wandb
+  # optimizer
+  optim: adamw_torch
+  lr_scheduler_type: cosine
+  # Other
+  seed: 0
+

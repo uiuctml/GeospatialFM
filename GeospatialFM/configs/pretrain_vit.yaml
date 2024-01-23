@@ -1,0 +1,63 @@
+MODEL:
+  architecture: vit_base_patch16_224
+  DECODER:
+    kwargs:
+      out_chans: 15
+      num_heads: 16
+      mlp_ratio: 4.0
+      qkv_bias: True
+      init_values: null
+      decoder_embed_dim: 512 
+      decoder_depth: 8
+      decoder_num_heads: 16
+      num_patches: 196
+      patch_size: 16
+      num_register_tokens: 0
+      embed_dim: 768
+LOSS:
+  MAE:
+    scale: 1.0
+    recon_all: true
+    cross_modal_recon: false
+    channel_reweight: true
+DATASET:
+  root: ./data/geospatial
+  name: BigEarthNet
+  train_transforms:
+    normalize: true
+    standardize: false
+  eval_transforms:
+    normalize: true
+    standardize: false
+  kwargs:
+    bands: all
+    num_classes: 19
+    pad_s2: true
+  eval_metric: classification
+  use_train_transform: true
+  train_frac: 1
+  val_frac: 0.1
+  train_split: trainval
+TRAINER:
+  # Training related
+  num_train_epochs: 20
+  per_device_train_batch_size: 320
+  per_device_eval_batch_size: 320
+  gradient_accumulation_steps: 1
+  learning_rate: 1.5e-4
+  weight_decay: 0.05
+  # dataloader
+  dataloader_num_workers: 8
+  dataloader_pin_memory: true
+  dataloader_drop_last: false
+  # Logging
+  report_to: wandb
+  logging_steps: 50
+  # optimizer
+  optim: adamw_torch
+  lr_scheduler_type: cosine
+  warmup_epochs: 4
+  # Other
+  seed: 0
+  # ckpt
+  save_frequency: 10

@@ -3,7 +3,6 @@ import os
 import torch
 import torch.distributed as dist
 
-
 def is_global_master(args):
     return args.rank == 0
 
