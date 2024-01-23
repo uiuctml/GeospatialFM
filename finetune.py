@@ -28,6 +28,8 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
     batch_time_m = AverageMeter()
     data_time_m = AverageMeter()
     end = time.time()
+    optimizer.zero_grad()
+
     for i, batch in enumerate(dataloader):
         i_accum = i // args.accum_freq
         step = num_batches_per_epoch * epoch + i_accum
@@ -41,26 +43,29 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
         label = label.to(device=device, non_blocking=True)  
 
         data_time_m.update(time.time() - end)
-        optimizer.zero_grad()
+        
+        # if args.accum_freq == 1:
+        with autocast():
+            model_out = model(images)
+            losses = loss(model_out, label, output_dict=True)
 
-        if args.accum_freq == 1:
-            with autocast():
-                model_out = model(images)
-                losses = loss(model_out, label, output_dict=True)
+            total_loss = sum(losses.values())
+            losses["loss"] = total_loss
 
-                total_loss = sum(losses.values())
-                losses["loss"] = total_loss
+        total_loss.backward()
 
-            total_loss.backward()
-        else:
-            raise NotImplementedError
+        if (i + 1) % args.accum_freq == 0:
+            optimizer.step()
+            optimizer.zero_grad() 
+        # else:
+        #     raise NotImplementedError
 
-        optimizer.step()
+        # optimizer.step()
         # scheduler.step()
 
         # reset gradient accum, if enabled
-        if args.accum_freq > 1:
-            accum_images, accum_radar, accum_features = [], [], {}
+        # if args.accum_freq > 1:
+            # accum_images, accum_radar, accum_features = [], [], {}
 
         batch_time_m.update(time.time() - end)
         end = time.time()
@@ -298,9 +303,9 @@ if __name__ == '__main__':
     #     model = torch.nn.DataParallel(model, device_ids=training_args.device_ids)
 
     data = get_data(cfg, ddp=training_args.distributed)
-
-    steps = data['train'].dataloader.num_batches * cfg['TRAINER']['num_train_epochs']
-    warmup_steps = data['train'].dataloader.num_batches * cfg['TRAINER']['warmup_epochs']
+    
+    steps = data['train'].dataloader.num_batches // cfg.TRAINER['gradient_accumulation_steps'] * cfg['TRAINER']['num_train_epochs']
+    warmup_steps = data['train'].dataloader.num_batches // cfg.TRAINER['gradient_accumulation_steps'] * cfg['TRAINER']['warmup_epochs']
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg['TRAINER']['learning_rate'], weight_decay=cfg['TRAINER']['weight_decay'])
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=steps, eta_min=1e-7)
     scheduler = get_scheduler(cfg['TRAINER']['lr_scheduler_type'], optimizer, cfg['TRAINER']['learning_rate'], warmup_steps, steps, cfg['TRAINER']['scheduler_kwargs'])
