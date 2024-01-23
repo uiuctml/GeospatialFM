@@ -9,7 +9,7 @@ MODEL:
     head_kwargs:
       use_bias: true
 DATASET:
-  name: BigEarthNet
+  name: So2Sat
 TRAINER:
   # Training related
   num_train_epochs: 20
