@@ -26,7 +26,7 @@ class myBigEarthNet(BigEarthNet):
         image = self._load_image(index)
         label = self._load_target(index)
 
-        sample: dict[str, Tensor] = {"image": image, "label": torch.argmax(label)}
+        sample: dict[str, Tensor] = {"image": image, "label": label.float()}
 
         if self.transforms is not None:
             sample = self.transforms(sample)

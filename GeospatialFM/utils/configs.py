@@ -16,6 +16,7 @@ COMMON_ACRONYM = {
     'weight_decay': 'wd',
     'per_device_train_batch_size': 'bs',
 }
+CFG_BASE_DIR = 'GeospatialFM/configs'
 
 def write_config(cfg, output_dir, name="config.yaml"):
     OmegaConf.to_yaml(cfg)
@@ -27,7 +28,13 @@ def write_config(cfg, output_dir, name="config.yaml"):
 def get_cfg_from_args(args):
     default_cfg = OmegaConf.create(default_config)
     cfg = OmegaConf.load(args.config_file)
-    cfg = OmegaConf.merge(default_cfg, cfg, OmegaConf.from_cli(args.opts))
+    # get model config
+    model_cfg_path = os.path.join(CFG_BASE_DIR, 'models', cfg.MODEL['architecture']+'.yaml')
+    model_cfg = OmegaConf.load(model_cfg_path)
+    # get dataset config
+    dataset_cfg_path = os.path.join(CFG_BASE_DIR, 'datasets', cfg.DATASET['name'].lower()+'.yaml')
+    dataset_cfg = OmegaConf.load(dataset_cfg_path)
+    cfg = OmegaConf.merge(default_cfg, model_cfg, dataset_cfg, cfg, OmegaConf.from_cli(args.opts))
     return cfg
 
 
@@ -71,9 +78,10 @@ def setup(args, wandb=True):
     # assign rank, world_size
     world_size = args.world_size
     rank = args.rank
-    for loss_name, loss_kwargs in cfg.LOSS.items():
-        if world_size in loss_kwargs.keys():
-            cfg.LOSS[loss_name]['world_size'] = world_size
-        if rank in loss_kwargs.keys():
-            cfg.LOSS[loss_name]['rank'] = rank
+    if hasattr(cfg, 'LOSS'):
+        for loss_name, loss_kwargs in cfg.LOSS.items():
+            if world_size in loss_kwargs.keys():
+                cfg.LOSS[loss_name]['world_size'] = world_size
+            if rank in loss_kwargs.keys():
+                cfg.LOSS[loss_name]['rank'] = rank
     return cfg, run
