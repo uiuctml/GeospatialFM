@@ -25,3 +25,14 @@ class CrossEntropyLoss(nn.Module):
         if output_dict:
             return dict(ce=ce)
         return ce
+    
+class MultilabelBCELoss(nn.Module):
+    def __init__(self, scale=1.0):
+        super().__init__()
+        self.lambda_ = scale
+
+    def forward(self, logits, labels, output_dict=False, **kwargs):
+        bce = F.binary_cross_entropy_with_logits(logits, labels) * self.lambda_
+        if output_dict:
+            return dict(bce=bce)
+        return bce
