@@ -160,17 +160,19 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
                         losses['image_acc'] = image_acc
                     elif eval_metric == 'mAP':
                         model_out = F.sigmoid(model_out)
-                        all_preds.append(model_out)
-                        all_labels.append(label)
-                        _all_preds = torch.cat(all_preds, dim=0).float()
-                        _all_labels = torch.cat(all_labels, dim=0).float()
-                        mAP = average_precision_score(_all_labels.cpu().numpy(), _all_preds.cpu().numpy(), average='macro')
-                        losses['mAP'] = mAP
+                        all_preds.append(model_out.cpu())
+                        all_labels.append(label.cpu())
+                        # _all_preds = torch.cat(all_preds, dim=0).float()
+                        # _all_labels = torch.cat(all_labels, dim=0).float()
+                        # mAP = average_precision_score(_all_labels.cpu().numpy(), _all_preds.cpu().numpy(), average='macro')
+                        # losses['mAP'] = mAP
 
                 num_samples += batch_size
 
                 for key, val in losses.items():
-                    if key == 'mAP': cumulative_losses['mAP'] = losses['mAP'] * num_samples
+                    if key == 'mAP': 
+                        pass
+                        # cumulative_losses['mAP'] = losses['mAP'] * num_samples
                     else:
                         try:
                             cumulative_losses[key] += val.item() * batch_size
@@ -189,6 +191,12 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
 
             for key, val in cumulative_losses.items():
                 metrics[key] = val / num_samples
+            
+            if eval_metric == 'mAP':
+                _all_preds = torch.cat(all_preds, dim=0).float()
+                _all_labels = torch.cat(all_labels, dim=0).float()
+                mAP = average_precision_score(_all_labels.numpy(), _all_preds.numpy(), average='macro')
+                metrics['mAP'] = mAP
 
             metrics.update({"epoch": epoch, "num_samples": num_samples})
             # if gen_loss is not None:
@@ -298,6 +306,7 @@ if __name__ == '__main__':
     scheduler = get_scheduler(cfg['TRAINER']['lr_scheduler_type'], optimizer, cfg['TRAINER']['learning_rate'], warmup_steps, steps, cfg['TRAINER']['scheduler_kwargs'])
     print(f"Task type: {cfg.DATASET['task_type']}")
     loss = get_loss(cfg.DATASET['task_type'])
+    print(f"Evaluation metric: {cfg.DATASET['eval_metric']}")
 
     for epoch in trange(training_args.epochs):
         finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, training_args)

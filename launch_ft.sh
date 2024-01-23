@@ -10,7 +10,7 @@
 #     done
 # done
 
-for i in 1e-3 5e-4 1e-4
+for i in 1e-4 5e-4
 do
     for j in 5e-2
     do  
