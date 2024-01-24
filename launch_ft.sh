@@ -10,9 +10,9 @@
 #     done
 # done
 
-for i in 1e-4 5e-4
+for i in 6e-4 4e-4 5e-4
 do
-    for j in 5e-2
+    for j in 5e-3 6e-3
     do  
         echo "learning_rate: $i, weight_decay: $j"
         CUDA_VISIBLE_DEVICES=2,3 torchrun --nproc_per_node 2 --master_port=10087 -m finetune --exp_name mae_base_si_maxpool \

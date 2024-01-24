@@ -10,6 +10,7 @@ from GeospatialFM.loss import *
 
 from tqdm import trange
 import random
+import pandas as pd
 
 def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
     device = torch.device(args.device)
@@ -219,7 +220,6 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
     log_data = {"val/" + name: val for name, val in metrics.items()}
 
     if args.save_logs:
-
         with open(os.path.join(args.checkpoint_path, "results.jsonl"), "a+") as f:
             f.write(json.dumps(metrics))
             f.write("\n")
@@ -276,6 +276,7 @@ if __name__ == '__main__':
         val_frequency = 1,
         epochs = cfg['TRAINER']['num_train_epochs'],
         save_logs = True,
+        save_csv = True,
         checkpoint_path = cfg['TRAINER']['logging_dir'],
         mask_ratio = cfg['MODEL']['mask_ratio'],
     )
@@ -307,6 +308,13 @@ if __name__ == '__main__':
     steps = data['train'].dataloader.num_batches // cfg.TRAINER['gradient_accumulation_steps'] * cfg['TRAINER']['num_train_epochs']
     warmup_steps = data['train'].dataloader.num_batches // cfg.TRAINER['gradient_accumulation_steps'] * cfg['TRAINER']['warmup_epochs']
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg['TRAINER']['learning_rate'], weight_decay=cfg['TRAINER']['weight_decay'])
+
+    logging.info(f"Hyperparameters: LR: {cfg['TRAINER']['learning_rate']}, weight decay: {cfg['TRAINER']['weight_decay']}")
+    if is_master(args) and training_args.save_logs:
+        with open(os.path.join(training_args.checkpoint_path, "results.jsonl"), "a+") as f:
+                f.write("===================================\n")
+                f.write(f"Hyperparameters: LR: {cfg['TRAINER']['learning_rate']}, weight decay: {cfg['TRAINER']['weight_decay']}\n")
+                f.write("===================================\n")
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=steps, eta_min=1e-7)
     scheduler = get_scheduler(cfg['TRAINER']['lr_scheduler_type'], optimizer, cfg['TRAINER']['learning_rate'], warmup_steps, steps, cfg['TRAINER']['scheduler_kwargs'])
     print(f"Task type: {cfg.DATASET['task_type']}")
@@ -318,7 +326,22 @@ if __name__ == '__main__':
         evaluate_finetune(model, data, loss, epoch, training_args, val_split='val', eval_metric=cfg.DATASET['eval_metric'])
         if cfg.TRAINER.save_frequency > 0 and (epoch + 1) % cfg.TRAINER.save_frequency == 0:
             torch.save(model.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], f'ft_ckpt_epoch{epoch+1}.pth'))
-    evaluate_finetune(model, data, loss, epoch, training_args, val_split='test', eval_metric=cfg.DATASET['eval_metric'])
+    final_metrics = evaluate_finetune(model, data, loss, epoch+1, training_args, val_split='test', eval_metric=cfg.DATASET['eval_metric'])
+    if training_args.save_csv and is_master(args):
+        save_dict = dict(
+            epochs = training_args.epochs,
+            lr = cfg['TRAINER']['learning_rate'],
+            weight_decay = cfg['TRAINER']['weight_decay'],
+            **final_metrics
+        )
+        save_path = os.path.join(training_args.checkpoint_path, 'ft_metrics.csv')
+        df_new = pd.DataFrame(save_dict, index=[0])
+        if os.path.exists(save_path):
+            df = pd.read_csv(save_path)
+            df = pd.concat([df, df_new], ignore_index=True)
+        else:
+            df = df_new
+        df.to_csv(save_path, index=False)
     # save model
     if is_master(args):
         torch.save(model.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], 'ft_model.pth'))
