@@ -13,10 +13,11 @@ def get_args_parser(add_help: bool = True):
     parser.add_argument("--exp_name", default=None, type=str, help="Experiment name")
     parser.add_argument("--debug", action="store_true", help="Debug mode")
 
-    parser.add_argument("--device_ids", nargs='+', default=[0], type=int, help="GPU device to use")
+    parser.add_argument("--device", type=int, default=0, help="GPU device to use")
     # parser.add_argument("--learning_rate", type=float, default=None, help="Override the Learning Rate from config (for sweep)")
     parser.add_argument("--finetune_modal", default='OPTICAL', type=str, choices=['radar', 'optical'],help="the modal to finetune")
-    parser.add_argument("--finetune", action="store_true", help="Finetune mode")
+    parser.add_argument("--finetune", action="store_true", default=False, help="Finetune mode")
+    parser.add_argument("--lpft", action="store_true", default=False, help="LP-FT mode")
     parser.add_argument("--dist_backend", default='nccl', type=str, help="Distributed backend")
     parser.add_argument("--dist_url", default='env://', type=str, help="Distributed url")
     parser.add_argument("--no_set_device_rank", action="store_true", help="Not set device rank")
