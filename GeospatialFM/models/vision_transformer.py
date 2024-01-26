@@ -361,7 +361,6 @@ class ViTDecoder(nn.Module):
 
         if restore_input_dim:
             x = self.unpatchify(x, slice_patch_tokens)
-
         return x
     
     def forward_target(self, imgs):

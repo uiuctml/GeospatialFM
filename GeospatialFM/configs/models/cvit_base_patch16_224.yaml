@@ -3,7 +3,7 @@ MODEL:
   cross_modal: true
   unified_decoder: true
   mask_ratio: 0.75
-  channel_mask_ratio: 0.5
+  channel_mask_ratio: 0.25
   use_clip: false
   use_siglip: false
   OPTICAL:
@@ -37,3 +37,17 @@ MODEL:
       drop_path_uniform: False
       init_values: null
       num_register_tokens: 0
+  DECODER:
+    kwargs:
+      out_chans: 15
+      num_heads: 16
+      mlp_ratio: 4.0
+      qkv_bias: True
+      init_values: null
+      decoder_embed_dim: 512 
+      decoder_depth: 8
+      decoder_num_heads: 16
+      num_patches: 196
+      patch_size: 16
+      num_register_tokens: 0
+      embed_dim: 768
