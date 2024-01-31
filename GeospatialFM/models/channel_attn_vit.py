@@ -19,6 +19,33 @@ def collpase_channels(x, reduce=None):
     else:
         raise NotImplementedError
 
+class ChannelAttention(nn.Module):
+    def __init__(self, embed_dim):
+        super(ChannelAttention, self).__init__()
+        self.query = nn.Linear(embed_dim, embed_dim)
+        self.key = nn.Linear(embed_dim, embed_dim)
+        self.value = nn.Linear(embed_dim, embed_dim)
+        
+    def forward(self, x):
+        # Assuming x is of shape [B, C, E]
+        # Compute query, key, value matrices
+        query = self.query(x)  # Shape [B, C, E]
+        key = self.key(x)      # Shape [B, C, E]
+        value = self.value(x)  # Shape [B, C, E]
+        
+        # Calculate attention scores
+        attention_scores = torch.matmul(query, key.transpose(-2, -1))  # Shape [B, C, C]
+        attention_scores = F.softmax(attention_scores, dim=-1)
+        
+        # Apply attention scores to value matrix
+        weighted_values = torch.matmul(attention_scores, value)  # Shape [B, C, E]
+        
+        # Combine weighted values for all channels
+        combined = weighted_values.sum(dim=1)  # Shape [B, E]
+        
+        return combined
+
+
 class PatchEmbedPerChannel(nn.Module):
     """Image to Patch Embedding."""
 
@@ -40,8 +67,41 @@ class PatchEmbedPerChannel(nn.Module):
             self.channel_pool = nn.AdaptiveAvgPool1d(1)
         elif channel_pool == "max":
             self.channel_pool = nn.AdaptiveMaxPool1d(1)
+        elif channel_pool == "attention":
+            print("Using Channel Attention")
+            self.channel_pool = ChannelAttention(embed_dim)
         else:
             self.channel_pool = None
+        # print("Using Channel Attention")
+        # self.channel_pool = ChannelAttention(embed_dim)
+
+        # self.proj = nn.Conv3d(
+        #     1,
+        #     embed_dim*2,
+        #     kernel_size=(1, patch_size, patch_size),
+        #     stride=(1, patch_size, patch_size),
+        # )  # CHANGED
+        # self.bottleneck = nn.Linear(embed_dim*2, embed_dim)
+        self.proj = nn.Sequential(
+            nn.Conv3d(
+                1,
+                embed_dim//2,
+                kernel_size=(1, 4, 4),
+                stride=(1, 4, 4),
+            ),
+            nn.Conv3d(
+                embed_dim//2,
+                embed_dim//4,
+                kernel_size=(1, 4, 4),
+                stride=(1, 4, 4),
+            ),
+            nn.Conv3d(
+                embed_dim//4,
+                embed_dim,
+                kernel_size=(1, 1, 1),
+                stride=(1, 1, 1),
+            ),
+        )
 
         # self.proj = nn.Conv3d(
         #     1,
@@ -50,35 +110,35 @@ class PatchEmbedPerChannel(nn.Module):
         #     stride=(1, patch_size, patch_size),
         # )  # CHANGED
             
-        self.proj = nn.Conv2d(
-            in_chans,
-            embed_dim*in_chans,
-            kernel_size=(patch_size, patch_size),
-            stride=(patch_size, patch_size),
-            groups=in_chans,
-        )  # CHANGED
+        # self.proj = nn.Conv2d(
+        #     in_chans,
+        #     embed_dim*in_chans,
+        #     kernel_size=(patch_size, patch_size),
+        #     stride=(patch_size, patch_size),
+        #     groups=in_chans,
+        # )  # CHANGED
 
-        # self.channel_embed = nn.Embedding(in_chans, embed_dim)
+        self.channel_embed = nn.Embedding(in_chans, embed_dim)
         self.enable_sample = enable_sample
 
-        # trunc_normal_(self.channel_embed.weight, std=0.02)
+        trunc_normal_(self.channel_embed.weight, std=0.02)
 
     def forward(self, x, channel_mask_ratio=0.5, channel_ids=None):
         # embedding lookup
-        # if channel_ids is None:
-        #     channel_ids = torch.arange(x.shape[1], device=x.device).unsqueeze(0).repeat(x.shape[0], 1)
-        # cur_channel_embed = self.channel_embed(
-        #     channel_ids #FIXME: better channel embedding
-        # )  # B, Cin, embed_dim=Cout
-        # cur_channel_embed = cur_channel_embed.permute(0, 2, 1)  # B Cout Cin
+        if channel_ids is None:
+            channel_ids = torch.arange(x.shape[1], device=x.device).unsqueeze(0).repeat(x.shape[0], 1)
+        cur_channel_embed = self.channel_embed(
+            channel_ids #FIXME: better channel embedding
+        )  # B, Cin, embed_dim=Cout
+        cur_channel_embed = cur_channel_embed.permute(0, 2, 1)  # B Cout Cin
 
         B, Cin, H, W = x.shape
         # Note: The current number of channels (Cin) can be smaller or equal to in_chans
-        x = self.proj(x)  # B Cout*Cin H W
-        h, w = x.shape[-2:]
-        x = x.reshape(B, -1, Cin, h, w)  # B Cout Cin H W
-        Cout = x.shape[1]
-
+        # x = self.proj(x)  # B Cout*Cin H W
+        # h, w = x.shape[-2:]
+        # x = x.reshape(B, -1, Cin, h, w)  # B Cout Cin H W
+        # Cout = x.shape[1]
+        channel_mask_ratio = random.uniform(0.25, 0.75)
         if self.training and self.enable_sample:
             len_keep = int(Cin * (1 - channel_mask_ratio))
             noise = torch.rand(1, Cin, device=x.device)  # noise in [0, 1]
@@ -89,9 +149,9 @@ class PatchEmbedPerChannel(nn.Module):
 
             # keep the first subset
             ids_keep = ids_shuffle[:, :len_keep]
-            # x = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(B, 1, H, W))
+            x = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(B, 1, H, W))
             # x = torch.gather(x, dim=2, index=ids_keep.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).repeat(B, Cout, 1, H, W))
-            x = x[:, :, ids_keep].squeeze(2) # B Cout Cin H W
+            # x = x[:, :, ids_keep].squeeze(2) # B Cout Cin H W
             # x = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, H, W))
 
             # generate the binary mask: 0 is keep, 1 is remove
@@ -102,7 +162,7 @@ class PatchEmbedPerChannel(nn.Module):
             mask = torch.gather(mask, dim=1, index=ids_restore)
 
             # Update the embedding lookup
-            # cur_channel_embed = torch.gather(cur_channel_embed, 2, ids_keep.unsqueeze(1).repeat(1, cur_channel_embed.shape[1], 1))
+            cur_channel_embed = torch.gather(cur_channel_embed, 2, ids_keep.unsqueeze(1).repeat(1, cur_channel_embed.shape[1], 1))
             ######
             cin = len_keep
         else:
@@ -112,20 +172,26 @@ class PatchEmbedPerChannel(nn.Module):
 
         # shared projection layer across channels
         # x = self.proj(x).view(B, -1, Cin, H, W)  # B Cout Cin H W
-        # x = self.proj(x.unsqueeze(1))  # B Cout Cin H W
+        x = self.proj(x.unsqueeze(1))  # B Cout Cin H W
+        # x = self.bottleneck(x.permute(0, 2, 3, 4, 1)).permute(0, 4, 1, 2, 3)
 
         # channel specific offsets
-        # x += cur_channel_embed.unsqueeze(-1).unsqueeze(-1)
+        x += cur_channel_embed.unsqueeze(-1).unsqueeze(-1)
         # x += self.channel_embed[:, :, cur_channels, :, :]  # B Cout Cin H W
 
         if self.channel_pool is not None:
-            # preparing the output sequence
-            x = x.flatten(3)  # B Cout Cin HW
-            B, Cout, Cin, HW = x.shape
-            x = x.permute(0, 3, 1, 2).reshape(B, -1, Cin) # B HWCout Cin
-            x = self.channel_pool(x).reshape(B, HW, Cout) # B HW Cout
-            # x = x.reshape(B, Cin, -1)
-            # x = x.mean(dim=1)
+            if isinstance(self.channel_pool, ChannelAttention):
+                B, Cout, Cin, H, W = x.shape
+                x = x.permute(0, 3, 4, 2, 1).reshape(-1, Cin, Cout)
+                x = self.channel_pool(x).reshape(B, -1, Cout)
+            else:
+                # preparing the output sequence
+                x = x.flatten(3)  # B Cout Cin HW
+                B, Cout, Cin, HW = x.shape
+                x = x.permute(0, 3, 1, 2).reshape(B, -1, Cin) # B HWCout Cin
+                x = self.channel_pool(x).reshape(B, HW, Cout) # B HW Cout
+                # x = x.reshape(B, Cin, -1)
+                # x = x.mean(dim=1)
         else:
             x = x.flatten(2) # B Cout CinHW
             x = x.transpose(1, 2)  # B CinHW Cout
