@@ -22,7 +22,6 @@ def collpase_channels(x, reduce=None):
 class ChannelAttention(nn.Module):
     def __init__(self, embed_dim):
         super(ChannelAttention, self).__init__()
-        # This layer can be adjusted, here it's a simple linear transformation
         self.query = nn.Linear(embed_dim, embed_dim)
         self.key = nn.Linear(embed_dim, embed_dim)
         self.value = nn.Linear(embed_dim, embed_dim)
@@ -42,7 +41,6 @@ class ChannelAttention(nn.Module):
         weighted_values = torch.matmul(attention_scores, value)  # Shape [B, C, E]
         
         # Combine weighted values for all channels
-        # Here we sum along the C dimension, but you can also average or take the max
         combined = weighted_values.sum(dim=1)  # Shape [B, E]
         
         return combined
@@ -74,20 +72,43 @@ class PatchEmbedPerChannel(nn.Module):
             self.channel_pool = ChannelAttention(embed_dim)
         else:
             self.channel_pool = None
-        print("Using Channel Attention")
-        self.channel_pool = ChannelAttention(embed_dim)
+        # print("Using Channel Attention")
+        # self.channel_pool = ChannelAttention(embed_dim)
 
-        self.proj = nn.Conv3d(
-            1,
-            embed_dim,
-            kernel_size=(1, patch_size, patch_size),
-            stride=(1, patch_size, patch_size),
-        )  # CHANGED
-        # self.bottleneck = nn.Sequential(
-        #     nn.Linear(embed_dim * 2, embed_dim),
-        #     nn.ReLU(),
-        #     nn.Linear(embed_dim, embed_dim),
-        # )
+        # self.proj = nn.Conv3d(
+        #     1,
+        #     embed_dim*2,
+        #     kernel_size=(1, patch_size, patch_size),
+        #     stride=(1, patch_size, patch_size),
+        # )  # CHANGED
+        # self.bottleneck = nn.Linear(embed_dim*2, embed_dim)
+        self.proj = nn.Sequential(
+            nn.Conv3d(
+                1,
+                embed_dim//2,
+                kernel_size=(1, 4, 4),
+                stride=(1, 4, 4),
+            ),
+            nn.Conv3d(
+                embed_dim//2,
+                embed_dim//4,
+                kernel_size=(1, 4, 4),
+                stride=(1, 4, 4),
+            ),
+            nn.Conv3d(
+                embed_dim//4,
+                embed_dim,
+                kernel_size=(1, 1, 1),
+                stride=(1, 1, 1),
+            ),
+        )
+
+        # self.proj = nn.Conv3d(
+        #     1,
+        #     embed_dim,
+        #     kernel_size=(1, patch_size, patch_size),
+        #     stride=(1, patch_size, patch_size),
+        # )  # CHANGED
             
         # self.proj = nn.Conv2d(
         #     in_chans,
