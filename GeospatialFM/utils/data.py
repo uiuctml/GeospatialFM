@@ -1,8 +1,9 @@
 from GeospatialFM.data import *
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.distributed import DistributedSampler
 from dataclasses import dataclass
 from multiprocessing import Value
+from .precision import get_autocast
 
 class SharedEpoch:
     def __init__(self, epoch: int = 0):
@@ -52,3 +53,35 @@ def get_data(cfg, ddp=False):
         test=DataInfo(test_dl),
     )
     return data
+
+class DictDataset(Dataset):
+    def __init__(self, dict_data, feature_key='img_feature'):
+        self.dataset = dict_data
+        self.num_samples = len(self.dataset['label'])
+        self.feature_key = feature_key
+
+    def __getitem__(self, index):
+        feature = self.dataset[self.feature_key][index]
+        label = self.dataset['label'][index]
+        return dict(feature=feature, label=label)
+
+    def __len__(self):
+        return len(self.dataset['label'])
+    
+def extract_features(model, data, args):
+    device = torch.device(args.device)
+    autocast = get_autocast(args.precision)
+    model.eval()
+    features = dict(label=[], img_feature=[])
+    dataloader = data.dataloader
+    for i, batch in enumerate(dataloader):
+        images = batch['image'] if args.finetune_modal == 'OPTICAL' else batch['radar']
+        label = batch['label']
+        images = images.to(device=device, non_blocking=True)
+        with autocast() and torch.no_grad():
+            model_out = model(images, return_dict=True)['cls_token'].detach().cpu()
+        features['label'].append(label.detach().cpu())
+        features['img_feature'].append(model_out)
+    features['label'] = torch.cat(features['label'], dim=0)
+    features['img_feature'] = torch.cat(features['img_feature'], dim=0)
+    return features
