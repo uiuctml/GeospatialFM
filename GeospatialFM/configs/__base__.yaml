@@ -22,12 +22,12 @@ TRAINER:
   metric_for_best_model: accuracy
   greater_is_better: true
   # Logging
-  logging_dir: "./results/logs"
+  logging_dir: "./results_wyx/logs"
   logging_strategy: steps
   logging_steps: 10
   report_to: wandb
   # Checkpoints & Output
-  output_dir: "./results/models"
+  output_dir: "./results_wyx/models"
   save_total_limit: 5
   overwrite_output_dir: false
   # Other
