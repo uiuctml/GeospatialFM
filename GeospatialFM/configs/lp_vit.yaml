@@ -1,5 +1,5 @@
 MODEL:
-  architecture: cvit_base_patch16_224
+  architecture: vit_base_patch16_224
   OPTICAL:
     use_head: true
     head_kwargs:
@@ -9,7 +9,7 @@ MODEL:
     head_kwargs:
       use_bias: true
 DATASET:
-  name: EuroSAT
+  name: BigEarthNet
 TRAINER:
   # Training related
   num_train_epochs: 100

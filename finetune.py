@@ -301,7 +301,7 @@ if __name__ == '__main__':
         model.load_state_dict(head_state_dict, strict=True)
 
     model = model.to(training_args.device)
-    model.encoder.patch_embed.requires_grad_(False)
+    # model.encoder.patch_embed.requires_grad_(False)
 
     random_seed(0, args.rank)
     if training_args.distributed:
@@ -334,8 +334,8 @@ if __name__ == '__main__':
     for epoch in trange(training_args.epochs):
         finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, training_args)
         evaluate_finetune(model, data, loss, epoch, training_args, val_split='val', eval_metric=cfg.DATASET['eval_metric'])
-        if cfg.TRAINER.save_frequency > 0 and (epoch + 1) % cfg.TRAINER.save_frequency == 0:
-            torch.save(model.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], f'ft_ckpt_epoch{epoch+1}.pth'))
+        # if cfg.TRAINER.save_frequency > 0 and (epoch + 1) % cfg.TRAINER.save_frequency == 0:
+            # torch.save(model.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], f'ft_ckpt_epoch{epoch+1}.pth'))
     final_metrics = evaluate_finetune(model, data, loss, epoch+1, training_args, val_split='test', eval_metric=cfg.DATASET['eval_metric'])
     if training_args.save_csv and is_master(args):
         save_dict = dict(
@@ -353,5 +353,5 @@ if __name__ == '__main__':
             df = df_new
         df.to_csv(save_path, index=False)
     # save model
-    if is_master(args):
-        torch.save(model.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], 'ft_model.pth'))
+    # if is_master(args):
+    #     torch.save(model.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], 'ft_model.pth'))
