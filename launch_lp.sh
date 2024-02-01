@@ -7,7 +7,7 @@ do
         # MODEL.load_pretrained_from=dir \
         # TRAINER.learning_rate=$i TRAINER.weight_decay=$j
 
-        CUDA_VISIBLE_DEVICES=0 python -m lp --exp_name mae_rca_vit \
+        CUDA_VISIBLE_DEVICES=3 python -m lp --exp_name mae_ec_vit \
         --config_file GeospatialFM/configs/lp_cvit.yaml --debug \
         MODEL.load_pretrained_from=dir \
         TRAINER.learning_rate=$i TRAINER.weight_decay=$j
