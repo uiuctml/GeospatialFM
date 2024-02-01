@@ -6,6 +6,8 @@ import torch
 from .vision_transformer import *
 from typing import Optional
 
+SENTINEL_WV = [442.7, 492.4, 559.8, 664.6, 704.1, 740.5, 782.8, 832.8, 864.7, 945.1, 1373.5, 1613.7, 2202.4]
+
 def collpase_channels(x, reduce=None):
     assert len(x.shape) == 3
     if reduce == "mean":
@@ -82,21 +84,31 @@ class PatchEmbedPerChannel(nn.Module):
         #     stride=(1, patch_size, patch_size),
         # )  # CHANGED
         # self.bottleneck = nn.Linear(embed_dim*2, embed_dim)
+            
+        # self.proj = nn.Sequential(
+        #     nn.Conv3d(
+        #         1,
+        #         embed_dim//4,
+        #         kernel_size=(1, 4, 4),
+        #         stride=(1, 4, 4),
+        #     ),
+        #     nn.Conv3d(
+        #         embed_dim//4,
+        #         embed_dim, #2
+        #         kernel_size=(1, 4, 4),
+        #         stride=(1, 4, 4),
+        #     )
+        # )
+            
         self.proj = nn.Sequential(
             nn.Conv3d(
                 1,
-                embed_dim//2,
-                kernel_size=(1, 4, 4),
-                stride=(1, 4, 4),
+                embed_dim*2, #2
+                kernel_size=(1, patch_size, patch_size),
+                stride=(1, patch_size, patch_size),
             ),
             nn.Conv3d(
-                embed_dim//2,
-                embed_dim//4,
-                kernel_size=(1, 4, 4),
-                stride=(1, 4, 4),
-            ),
-            nn.Conv3d(
-                embed_dim//4,
+                embed_dim*2,
                 embed_dim,
                 kernel_size=(1, 1, 1),
                 stride=(1, 1, 1),
@@ -127,6 +139,7 @@ class PatchEmbedPerChannel(nn.Module):
         # embedding lookup
         if channel_ids is None:
             channel_ids = torch.arange(x.shape[1], device=x.device).unsqueeze(0).repeat(x.shape[0], 1)
+            # channel_ids = torch.tensor(SENTINEL_WV, device=x.device).unsqueeze(0).repeat(x.shape[0], 1)
         cur_channel_embed = self.channel_embed(
             channel_ids #FIXME: better channel embedding
         )  # B, Cin, embed_dim=Cout
@@ -136,9 +149,9 @@ class PatchEmbedPerChannel(nn.Module):
         # Note: The current number of channels (Cin) can be smaller or equal to in_chans
         # x = self.proj(x)  # B Cout*Cin H W
         # h, w = x.shape[-2:]
-        # x = x.reshape(B, -1, Cin, h, w)  # B Cout Cin H W
+        # x = x.reshape(B, -1, Cin, h, w)  # B Cout Cin, H W
         # Cout = x.shape[1]
-        channel_mask_ratio = random.uniform(0.25, 0.75)
+        # channel_mask_ratio = random.uniform(0.25, 0.75) if channel_mask_ratio != 0 else 0
         if self.training and self.enable_sample:
             len_keep = int(Cin * (1 - channel_mask_ratio))
             noise = torch.rand(1, Cin, device=x.device)  # noise in [0, 1]
