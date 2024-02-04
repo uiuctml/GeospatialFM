@@ -296,26 +296,19 @@ if __name__ == '__main__':
     print(f'cache path: {cache_path}')
     
     data = get_data(cfg, ddp=training_args.distributed)
-    parse_splits = ['train', 'val']
+    parse_splits = ['train', 'val', 'test']
     data_feat = dict()
     # check if chache_path is empty
-    if len(os.listdir(cache_path)) > 0:
-        print('Loading cached features...')
-        for split in parse_splits:
-            cache_file = os.path.join(cache_path, f"{split}.pkl")
-            with open(cache_file, 'rb') as f:
-                data_split = pickle.load(f)
+    for split in parse_splits:
+        if os.path.exists(os.path.join(cache_path, f"{split}_0.pkl")) or os.path.exists(os.path.join(cache_path, f"{split}.pkl")):
+            print(f'Loading cached {split} features...')
+            data_split = load_features(cache_path, split=split)
             data_feat[split] = data_split
-    else:
-        print('Extracting features...')
-        for split in parse_splits:
-            data_split = extract_features(feature_extractor, data[split], training_args)
-            cache_file = os.path.join(cache_path, f"{split}.pkl")
-            with open(cache_file, 'wb') as f:
-                pickle.dump(data_split, f)
+        else:
+            print(f'Extracting {split} features...')
+            data_split = extract_features(feature_extractor, data[split], training_args, split=split, cache_path=cache_path)
             data_feat[split] = data_split
-
-    test_data = data['test'].dataloader
+    # test_data = data['test'].dataloader
     del data
     del feature_extractor
     data = data_feat
@@ -325,9 +318,8 @@ if __name__ == '__main__':
         shuffle = True if split == 'train' else False
         dataloader = DataLoader(dataset, batch_size=1024, shuffle=shuffle, num_workers=8, pin_memory=True)
         data[split] = dataloader
-    data['test'] = test_data
+    # data['test'] = test_data
     print(f"Training Samples: {len(data['train'].dataset)}\tValidation Samples: {len(data['val'].dataset)}\tTest Samples: {len(data['test'].dataset)}")
-
 
     model = task_head.to(device)
     steps = len(data['train']) // cfg.TRAINER['gradient_accumulation_steps'] * cfg['TRAINER']['num_train_epochs']
@@ -349,15 +341,15 @@ if __name__ == '__main__':
     for epoch in trange(training_args.epochs):
         finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, training_args)
         evaluate_finetune(model, data, loss, epoch, training_args, val_split='val', eval_metric=cfg.DATASET['eval_metric'])
-    head_weights = model.state_dict().copy()
-    del model
-    models = construct_downstream_models(cfg)
+    # head_weights = model.state_dict().copy()
+    # del model
+    # models = construct_downstream_models(cfg)
 
-    model = models[args.finetune_modal]
-    model.head.load_state_dict(head_weights)
-    model = model.to(device)
+    # model = models[args.finetune_modal]
+    # model.head.load_state_dict(head_weights)
+    # model = model.to(device)
 
-    final_metrics = evaluate_finetune(model, data, loss, epoch+1, training_args, val_split='test', eval_metric=cfg.DATASET['eval_metric'], input_key='image')
+    final_metrics = evaluate_finetune(model, data, loss, epoch+1, training_args, val_split='test', eval_metric=cfg.DATASET['eval_metric'])
     if training_args.save_csv and is_master(args):
         save_dict = dict(
             epochs = training_args.epochs,
@@ -375,4 +367,4 @@ if __name__ == '__main__':
         df.to_csv(save_path, index=False)
     # save model
     if is_master(args):
-        torch.save(model.head.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], 'lp_model.pth'))
+        torch.save(model.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], 'lp_model.pth'))
