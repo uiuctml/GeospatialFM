@@ -1,0 +1,21 @@
+DATASET:
+  root: ./data/geospatial
+  name: OSCD
+  train_transforms:
+    normalize: true
+    standardize: false
+  eval_transforms:
+    normalize: true
+    standardize: false
+  kwargs:
+    bands: all
+    patch_size: 96
+  eval_metric: f1 
+  task_type: multilabel
+  use_train_transform: true
+  train_frac: 1.0 
+  val_frac: 1.0 
+  train_split: train
+  task_head_kwargs:
+    head_type: unet # unet/linear
+    num_classes: 1 

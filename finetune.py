@@ -31,6 +31,9 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
     end = time.time()
     optimizer.zero_grad()
 
+    oscd = True if args.dataset == 'OSCD' else False # CHANGE
+    head_type = args.head_type # CHANGE
+
     for i, batch in enumerate(dataloader):
         i_accum = i // args.accum_freq
         step = num_batches_per_epoch * epoch + i_accum
@@ -38,16 +41,25 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
         scheduler(step)
 
         # images, radar, label = batch['image'], batch['radar'], batch['label']
-        images = batch['image'] if args.finetune_modal == 'OPTICAL' else batch['radar']
-        label = batch['label']
-        images = images.to(device=device, non_blocking=True)
-        label = label.to(device=device, non_blocking=True)  
+        if oscd: # CHANGE 
+            image_1 = batch['image1'].to(device=device, non_blocking=True)
+            image_2 = batch['image2'].to(device=device, non_blocking=True)
+            label = batch['mask'].view(batch['mask'].size(0), -1).to(device=device, non_blocking=True)
+        else:
+            images = batch['image'] if args.finetune_modal == 'OPTICAL' else batch['radar']
+            label = batch['label']
+            images = images.to(device=device, non_blocking=True)
+            label = label.to(device=device, non_blocking=True) 
 
         data_time_m.update(time.time() - end)
         
         # if args.accum_freq == 1:
         with autocast():
-            model_out = model(images)
+            if oscd: # CHANGE
+                model_out = model(torch.abs(image_1-image_2)) if head_type == 'linear' else model(image_1, image_2)
+                label= label.to(dtype=model_out.dtype)
+            else:
+                model_out = model(images)
             losses = loss(model_out, label, output_dict=True)
 
             total_loss = sum(losses.values())
@@ -72,7 +84,7 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
         end = time.time()
         batch_count = i_accum + 1
         if is_master(args) and (i_accum % args.log_every_n_steps == 0 or batch_count == num_batches_per_epoch):
-            batch_size = len(images)
+            batch_size = len(images) if not oscd else len(image_1) # CHANGE
             num_samples = batch_count * batch_size * args.accum_freq
             samples_per_epoch = dataloader.num_samples
             percent_complete = 100.0 * batch_count / num_batches_per_epoch
@@ -122,7 +134,7 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
     # end for
 
 def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metric='accuracy'):
-    assert eval_metric in ['accuracy', 'mAP']
+    assert eval_metric in ['accuracy', 'mAP', 'f1'] # CHANGE
     metrics = {}
     if not is_master(args):
         return metrics
@@ -136,7 +148,13 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
     # input_dtype = get_input_dtype(args.precision)
 
     if val_split in data and (args.val_frequency and ((epoch % args.val_frequency) == 0 or epoch == args.epochs)):
+        oscd = None # CHANGE
         if eval_metric == 'mAP':
+            all_preds = []
+            all_labels = []
+        elif eval_metric == 'f1': # CHANGE
+            oscd = True
+            head_type = args.head_type 
             all_preds = []
             all_labels = []
         dataloader = data[val_split].dataloader
@@ -146,15 +164,23 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
         cumulative_losses = defaultdict(float)
         with torch.no_grad():
             for i, batch in enumerate(dataloader):
-                images = batch['image'] if args.finetune_modal == 'OPTICAL' else batch['radar']
-                label = batch['label']
-                images = images.to(device=device, non_blocking=True)
-                label = label.to(device=device, non_blocking=True) 
-
-                batch_size = len(images)
+                if oscd is not None: # CHANGE 
+                    image_1 = batch['image1'].to(device=device, non_blocking=True)
+                    image_2 = batch['image2'].to(device=device, non_blocking=True)
+                    label = batch['mask'].view(batch['mask'].size(0), -1).to(device=device, non_blocking=True)
+                else:
+                    images = batch['image'] if args.finetune_modal == 'OPTICAL' else batch['radar']
+                    label = batch['label']
+                    images = images.to(device=device, non_blocking=True)
+                    label = label.to(device=device, non_blocking=True) 
+                batch_size = len(images) if not oscd else len(image_1)
 
                 with autocast():
-                    model_out = model(images)
+                    if oscd is not None: # CHANGE
+                        model_out = model(torch.abs(image_1-image_2)) if head_type == 'linear' else model(image_1, image_2)
+                        label = label.to(dtype=model_out.dtype)
+                    else:
+                        model_out = model(images)
                     losses = loss(model_out, label, output_dict=True)
 
                     total_loss = sum(losses.values())
@@ -164,7 +190,7 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
                         preds = torch.argmax(model_out, dim=1)
                         image_acc = (preds == label).sum().item() / len(label)
                         losses['image_acc'] = image_acc
-                    elif eval_metric == 'mAP':
+                    elif eval_metric in ['mAP', 'f1']: # CHANGE
                         model_out = F.sigmoid(model_out)
                         all_preds.append(model_out.cpu())
                         all_labels.append(label.cpu())
@@ -203,6 +229,19 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
                 _all_labels = torch.cat(all_labels, dim=0).float()
                 mAP = average_precision_score(_all_labels.numpy(), _all_preds.numpy(), average='macro')
                 metrics['mAP'] = mAP
+            elif eval_metric == 'f1': # CHANGE: add eval_metric for oscd
+                # TODO: check f1_score from sklearn.metrics library (also check for average param)
+                # TODO: add precision and recall metric
+                _all_preds = torch.cat(all_preds, dim=0).float()
+                _all_labels = torch.cat(all_labels, dim=0).float()
+                threshold = 0.5
+                _all_preds = (_all_preds >= threshold).to(torch.int)
+                precison = precision_score(_all_labels.numpy(), _all_preds.numpy(), average='macro')
+                recall = recall_score(_all_labels.numpy(), _all_preds.numpy(), average='macro')
+                f1 = f1_score(_all_labels.numpy(), _all_preds.numpy(), average='macro')
+                metrics['precision'] = precison
+                metrics['recall'] = recall
+                metrics['f1'] = f1
 
             metrics.update({"epoch": epoch, "num_samples": num_samples})
             # if gen_loss is not None:
@@ -279,7 +318,9 @@ if __name__ == '__main__':
         save_csv = True,
         checkpoint_path = cfg['TRAINER']['logging_dir'],
         mask_ratio = cfg['MODEL']['mask_ratio'],
-    )
+        dataset = cfg['DATASET']['name'],
+        head_type = cfg['DATASET']['task_head_kwargs']['head_type']
+    ) # CHANGE
     training_args = argparse.Namespace(**vars(args), **training_args)
     # training_args.device = f'cuda:{training_args.device_ids[0]}'
 
@@ -305,7 +346,7 @@ if __name__ == '__main__':
 
     random_seed(0, args.rank)
     if training_args.distributed:
-        ddp_args = {} # TODO: add ddp args
+        ddp_args = {'find_unused_parameters': True } # TODO: add ddp args
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[device], **ddp_args)
 
     # if len(training_args.device_ids) > 1:
