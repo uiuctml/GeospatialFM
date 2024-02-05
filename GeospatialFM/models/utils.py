@@ -9,6 +9,7 @@ from .channel_attn_vit import ChannelViTEncoder
 from .mae import CrossModalMAEViT
 from collections import OrderedDict
 import numpy as np
+import torch.nn.functional as F
 
 class ViTModel(nn.Module):
     def __init__(self, encoder, head):
@@ -20,7 +21,17 @@ class ViTModel(nn.Module):
         x = self.encoder(x, return_dict=True)['cls_token']
         x = self.head(x)
         return x
+
+# CHANGE
+class ViTModelOSCD(ViTModel):
+    def __init__(self, encoder, head):
+        super().__init__(encoder, head)
     
+    def forward(self, x1, x2):
+        x = self.encoder(x1, x2) 
+        x = self.head(x)
+        return x
+        
 def unwrap_model(state_dict):
     new_state_dict = OrderedDict()
     for key, value in state_dict.items():
@@ -151,6 +162,31 @@ def construct_downstream_models(cfg, modals=['OPTICAL', 'RADAR']):
         head_kwargs['use_bias'] = modal_cfg['head_kwargs']['use_bias']
         head_kwargs['in_features'] = num_features
 
+        # CHANGE: oscd get_segmentation_model
+        if cfg.DATASET['name'] == 'OSCD':
+            if task_head_kwargs['head_type'] == 'unet':
+                feature_indices=(0, 4, 6, 8, 10, 12)
+                feature_channels=(1, 2, 8, 32, 128, 512)
+                encoder = get_segmentation_model(encoder, feature_indices, feature_channels, num_classes=task_head_kwargs['num_classes'])
+                head = get_segmentation_unet(
+                    feature_channels, 
+                    num_classes=task_head_kwargs['num_classes'],
+                    bilinear=True, 
+                    concat_mult=1, 
+                    dropout_rate=0.3, 
+                    patch_size=cfg.DATASET['kwargs']['patch_size']
+                )
+                model = model = ViTModelOSCD(encoder, head)
+                models[modal] = model
+                continue
+            elif task_head_kwargs['head_type'] == 'linear':
+                head = nn.Linear(head_kwargs['in_features'], cfg.DATASET['kwargs']['patch_size'] ** 2 , bias=head_kwargs['use_bias'])
+                model = ViTModel(encoder, head)
+                models[modal] = model
+                continue
+            else:
+                raise NotImplementedError
+
         head = construct_head(head_kwargs)
         model = ViTModel(encoder, head)
         models[modal] = model
@@ -171,3 +207,134 @@ def construct_head(head_cfg):
 #     sar_encoder = sar.base_model if hasattr(sar, 'base_model') else sar
 #     crop = CROP().align_pretrained(optical_encoder, sar_encoder)
 #     return crop
+
+def get_segmentation_model(backbone, feature_indices, feature_channels, num_classes=1):
+    model = SegmentationEncoder(backbone, feature_indices, feature_channels, diff=True)
+    return model
+
+def get_segmentation_unet(feature_channels, num_classes=1, bilinear=True, concat_mult=1, dropout_rate=0.3, patch_size=96):
+    unet = UNet(feature_channels, num_classes, bilinear=True, concat_mult=1, dropout_rate=0.3, patch_size=patch_size)
+    return unet
+
+class SegmentationEncoder(torch.nn.Module):
+    def __init__(self, backbone, feature_indices, feature_channels, diff=True):
+        super().__init__()
+        self.feature_indices = list(sorted(feature_indices))
+
+        self._out_channels = feature_channels  
+        self._in_channels = 3
+
+        self.encoder = backbone 
+        self.diff = diff # if set to True, we simply do |image1 - image2| and then feed it into encoder
+
+    def forward(self, x1, x2):
+        features = [self.concatenate(x1, x2)]
+        i = 0
+        for name, module in self.encoder.named_children():
+            if name in ['patch_embed', 'norm', 'head']:
+                x1 = module(x1)
+                x2 = module(x2)
+                if i in self.feature_indices:
+                    features.append(self.concatenate(x1, x2))
+                if i == self.feature_indices[-1]:
+                    break
+                i += 1 # increment i
+            elif name.startswith('blocks'): # always when i = 1
+                tmp = i # tmp = 1
+                update = 0
+                for j, block in enumerate(self.encoder.blocks):
+                    x1 = block(x1)
+                    x2 = block(x2)
+                    if j + tmp in self.feature_indices:
+                        features.append(self.concatenate(x1, x2))
+                    # no need to incremenet j since it will be auto incremented
+                    update = j + tmp
+                # done with all blocks, update i
+                i = update + 1
+            else:
+                raise NotImplementedError
+
+        return features
+
+    def concatenate(self, x1, x2):
+        if self.diff:
+            return torch.abs(x1 - x2)
+        else:
+            torch.cat([x1, x2], 1)
+
+class OutConv(nn.Module):
+    def __init__(self, in_channels, out_channels, patch=96):
+        super(OutConv, self).__init__()
+        self.patch = patch
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+        self.pooling = nn.AdaptiveAvgPool2d((self.patch, self.patch))
+        self.linear = nn.Linear(self.patch ** 2, self.patch ** 2)
+
+    def forward(self, x):
+        x = self.conv(x)
+        #x = self.pooling(x).view(x.size(0), -1)
+        #x = self.linear(x)
+        return x
+
+class UNet(nn.Module):
+    def __init__(self, feature_channels, n_classes=1, concat_mult=1, bilinear=True, dropout_rate=0.3, patch_size=96):
+        super(UNet, self).__init__()
+        self.patch = patch_size
+        self.n_classes = n_classes # n_classes=1 in our case
+        self.bilinear = bilinear
+        factor = 2 if bilinear else 1
+        self.feature_channels = feature_channels
+        self.dropout = torch.nn.Dropout2d(dropout_rate)
+        for i in range(0, len(feature_channels) - 1):
+            in_ch = feature_channels[i + 1] * concat_mult
+            setattr(self, 'shrink%d' % i,
+                    nn.Conv2d(in_ch, feature_channels[i] * concat_mult, kernel_size=3, stride=1, padding=1))
+            setattr(self, 'shrink2%d' % i,
+                    nn.Conv2d(feature_channels[i] * concat_mult * 2, feature_channels[i] * concat_mult, kernel_size=3, stride=1, padding=1, bias=False))
+            setattr(self, 'batchnorm%d' % i,
+                    nn.BatchNorm2d(feature_channels[i] * concat_mult))
+        self.conv = OutConv(feature_channels[0] * concat_mult, self.n_classes, self.patch)
+        self.concat_mult = concat_mult
+        #self.encoder = encoder
+
+    def forward(self, features):
+        #features = self.encoder(*in_x)
+        features = features[1:]
+
+        # resize the vit features
+        batch_size, seq_length, embedding_dim = features[-1].shape
+        height_width = int(seq_length ** 0.5)
+        for i in range(len(features)):
+            x = features[i].permute(0, 2, 1).view(batch_size, embedding_dim, height_width, height_width)
+            x = F.interpolate(x, scale_factor=2 ** (len(features)-1-i))
+            x = nn.Conv2d(
+                embedding_dim, 
+                self.feature_channels[i],
+                kernel_size=1,
+                stride=1,
+                padding=0,
+                device=x.device,
+                dtype=x.dtype
+            )(x) 
+            features[i] = x
+        x = features[-1]
+
+        for i in range(len(features) - 2, -1, -1):
+            conv = getattr(self, 'shrink%d' % i)
+            x = F.interpolate(x, scale_factor=2)
+            x = conv(x)
+            if features[i].shape[-1] != x.shape[-1]:
+                x2 = F.interpolate(features[i], scale_factor=2)
+            else:
+                x2 = features[i]
+            x = torch.cat([x, x2], 1)
+            conv2 = getattr(self, 'shrink2%d' % i)
+            x = conv2(x)
+            bn = getattr(self, 'batchnorm%d' % i)
+            x = bn(x)
+            x = F.relu(x)
+            x = self.dropout(x)
+        logits = self.conv(x)
+        logits = nn.AdaptiveAvgPool2d((self.patch, self.patch))(logits).view(x.size(0), -1)
+        logits = nn.Linear(self.patch ** 2, self.patch ** 2, device=logits.device)(logits)
+        return logits
