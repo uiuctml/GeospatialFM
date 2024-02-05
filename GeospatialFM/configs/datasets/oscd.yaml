@@ -14,7 +14,7 @@ DATASET:
   task_type: change_detection
   use_train_transform: true
   train_frac: 1.0 
-  val_frac: 1.0 
+  val_frac: 0.1
   train_split: train
   task_head_kwargs:
     head_type: unet 

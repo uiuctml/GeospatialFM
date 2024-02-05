@@ -13,15 +13,15 @@ DATASET:
 TRAINER:
   # Training related
   num_train_epochs: 10
-  per_device_train_batch_size: 256
+  per_device_train_batch_size: 64
   per_device_eval_batch_size: 512
-  gradient_accumulation_steps: 2
+  gradient_accumulation_steps: 4
   learning_rate: 1e-3
   weight_decay: 0.05
   # dataloader
   dataloader_num_workers: 8
   dataloader_pin_memory: true
-  dataloader_drop_last: false
+  dataloader_drop_last: true
   # Logging
   report_to: wandb
   logging_steps: 50
