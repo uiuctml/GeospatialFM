@@ -48,6 +48,16 @@ class TransformSample():
         self.sar_transform = sar_transform
 
     def transform_img(self, sample):
+        if 'image1' in sample:
+            # OSCD
+            image1 = sample['image1']
+            image1 = self.transform(image1)
+            sample['image1'] = image1
+            image2 = sample['image2']
+            image2 = self.transform(image2)
+            sample['image2'] = image2
+            return sample
+             
         img = sample['image']
         img = self.transform(img)
         sample['image'] = img
