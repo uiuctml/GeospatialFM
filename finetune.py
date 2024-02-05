@@ -44,7 +44,7 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
         if oscd: # CHANGE 
             image_1 = batch['image1'].to(device=device, non_blocking=True)
             image_2 = batch['image2'].to(device=device, non_blocking=True)
-            label = batch['mask'].view(batch['mask'].size(0), -1).to(device=device, non_blocking=True)
+            label = batch['mask'].view(batch['mask'].size(0), -1).to(device=device, non_blocking=True).float()
         else:
             images = batch['image'] if args.finetune_modal == 'OPTICAL' else batch['radar']
             label = batch['label']
@@ -57,13 +57,13 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
         with autocast():
             if oscd: # CHANGE
                 model_out = model(torch.abs(image_1-image_2)) if head_type == 'linear' else model(image_1, image_2)
-                label= label.to(dtype=model_out.dtype)
             else:
                 model_out = model(images)
             losses = loss(model_out, label, output_dict=True)
 
             total_loss = sum(losses.values())
             losses["loss"] = total_loss
+            print(losses)
 
         total_loss.backward()
 
@@ -167,7 +167,7 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
                 if oscd is not None: # CHANGE 
                     image_1 = batch['image1'].to(device=device, non_blocking=True)
                     image_2 = batch['image2'].to(device=device, non_blocking=True)
-                    label = batch['mask'].view(batch['mask'].size(0), -1).to(device=device, non_blocking=True)
+                    label = batch['mask'].view(batch['mask'].size(0), -1).to(device=device, non_blocking=True).float()
                 else:
                     images = batch['image'] if args.finetune_modal == 'OPTICAL' else batch['radar']
                     label = batch['label']
@@ -178,7 +178,6 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
                 with autocast():
                     if oscd is not None: # CHANGE
                         model_out = model(torch.abs(image_1-image_2)) if head_type == 'linear' else model(image_1, image_2)
-                        label = label.to(dtype=model_out.dtype)
                     else:
                         model_out = model(images)
                     losses = loss(model_out, label, output_dict=True)
