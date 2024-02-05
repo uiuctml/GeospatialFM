@@ -9,7 +9,7 @@ MODEL:
     head_kwargs:
       use_bias: true
 DATASET:
-  name: So2Sat
+  name: OSCD
 TRAINER:
   # Training related
   num_train_epochs: 10
