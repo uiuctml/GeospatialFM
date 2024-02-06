@@ -90,7 +90,7 @@ class mySo2Sat(So2Sat):
             img_size = s2.shape[1:]
             s2 = torch.cat((torch.zeros((1, *img_size)), s2[:8], torch.zeros((2, *img_size)), s2[8:]), dim=0)
 
-        sample = {"image": torch.cat([s1, s2]).float(), "label": label}
+        sample = {"image": s2.float(), "radar": s1.float(), "label": label}
 
         if self.transforms is not None:
             sample = self.transforms(sample)
@@ -106,8 +106,9 @@ def sort_sentinel2_bands(x: str) -> str:
     return x
 
 class myOSCD(OSCD):
-    def __init__(self, patch_size, **kwargs):
+    def __init__(self, patch_size, overlap=0.5, **kwargs):
         self.patch_size = patch_size
+        self.overlap = overlap
         super().__init__(**kwargs)
 
 
@@ -125,8 +126,7 @@ class myOSCD(OSCD):
         image2 = self._load_image(files["images2"], files["limit"])
         mask = self._load_target(str(files["mask"]), files["limit"])
 
-        # image = torch.cat([image1, image2])
-        sample = {"image1": image1, "image2": image2, "mask": mask}
+        sample = {"image1": image1, "image2": image2, "mask": mask.unsqueeze(0)}
 
         if self.transforms is not None:
             sample = self.transforms(sample)
@@ -177,7 +177,7 @@ class myOSCD(OSCD):
 
             img = rasterio.open(images1[0]) # for each region, the width and height are the same across img1 and img2 and across all bands
             img_width, img_height = img.width, img.height
-            img_limits = product(range(0, img_height, self.patch_size), range(0, img_width, self.patch_size))
+            img_limits = product(range(0, img_height, int(self.patch_size*self.overlap)), range(0, img_width, int(self.patch_size*self.overlap)))
 
             for l in img_limits:
                 if l[0] + self.patch_size < img_height and l[1] + self.patch_size < img_width:

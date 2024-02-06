@@ -13,11 +13,11 @@ DATASET:
   root: ./data/geospatial
   name: BigEarthNet
   train_transforms:
-    normalize: true
-    standardize: false
+    normalize: false
+    standardize: true
   eval_transforms:
-    normalize: true
-    standardize: false
+    normalize: false
+    standardize: true
   kwargs:
     bands: all
     num_classes: 19
