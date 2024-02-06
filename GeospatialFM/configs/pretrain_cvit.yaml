@@ -23,6 +23,7 @@ DATASET:
     num_classes: 19
     pad_s2: true
   eval_metric: classification
+  task_type: pretrain
   use_train_transform: true
   train_frac: 1
   val_frac: 0.1
