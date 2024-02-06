@@ -62,7 +62,7 @@ def get_datasets(data_cfg):
     print(f"Training Dataset: {data_cfg['name']}")
     data_cfg['kwargs']['root'] = osp.join(data_cfg['root'], data_cfg['name'])
     # data_mean_std = get_mean_std(data_cfg)
-    if data_cfg['task_type'] in ['classification', 'multilabel']:
+    if data_cfg['task_type'] in ['classification', 'multilabel', 'pretrain']:
         eval_transform = make_classification_eval_transform(**data_cfg['eval_transforms'])
         train_transform = make_classification_train_transform(**data_cfg['train_transforms']) if data_cfg['use_train_transform'] else eval_transform
     elif data_cfg['task_type'] in ['change_detection']:

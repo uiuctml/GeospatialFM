@@ -92,7 +92,7 @@ class RandomResizedCropALL(object):
         i, j, h, w = transforms.RandomResizedCrop.get_params(image, self.scale, self.ratio)
         for key, val in samples.items():
             if key not in self.ignored_keys:
-                samples[key] = F.resized_crop(val, i, j, h, w, self.size, interpolation=self.interpolation, antialias=self.antialias)
+                samples[key] = F.resized_crop(val, i, j, h, w, [self.size, self.size], interpolation=self.interpolation, antialias=self.antialias)
         return samples
     
 class ResizeALL(object):
