@@ -56,7 +56,12 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
         # if args.accum_freq == 1:
         with autocast():
             if oscd: # CHANGE
+<<<<<<< Updated upstream
                 model_out = model(image_1, image_2).flatten()
+=======
+                model_out = model(torch.abs(image_1-image_2)) if head_type == 'linear' else model(image_1, image_2)
+                #label= label.to(dtype=model_out.dtype)
+>>>>>>> Stashed changes
             else:
                 model_out = model(images)
             losses = loss(model_out, label, output_dict=True)
