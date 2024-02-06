@@ -1,5 +1,5 @@
 DATASET:
-  root: ./data/geospatial
+  root: ./oscd
   name: OSCD
   train_transforms:
     crop_size: 224
