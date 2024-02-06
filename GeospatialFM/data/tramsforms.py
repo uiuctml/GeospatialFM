@@ -88,7 +88,8 @@ class RandomResizedCropALL(object):
         self.ignored_keys = ignored_keys
     
     def __call__(self, samples):
-        i, j, h, w = transforms.RandomResizedCrop.get_params(samples.values()[0], self.scale, self.ratio)
+        image = samples['image'] if 'image' in samples else samples['image1']
+        i, j, h, w = transforms.RandomResizedCrop.get_params(image, self.scale, self.ratio)
         for key, val in samples.items():
             if key not in self.ignored_keys:
                 samples[key] = F.resized_crop(val, i, j, h, w, self.size, interpolation=self.interpolation, antialias=self.antialias)
