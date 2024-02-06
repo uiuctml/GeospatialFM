@@ -1,0 +1,28 @@
+DATASET:
+  root: ./data/geospatial
+  name: OSCD
+  train_transforms:
+    crop_size: 224
+    hflip_prob: 0.5
+    normalize: false
+    standardize: true
+  eval_transforms:
+    resize_size: 224
+    normalize: false
+    standardize: true
+  kwargs:
+    bands: all
+    patch_size: 128
+  eval_metric: f1 
+  task_type: change_detection
+  use_train_transform: true
+  train_frac: 1.0 
+  val_frac: 1.0
+  train_split: train
+  task_head_kwargs:
+    head_type: pspnet 
+    use_mlp: false
+    in_features: 768
+    num_classes: 1
+    hidden_dim: 512
+    image_size: 128

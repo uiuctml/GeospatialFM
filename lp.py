@@ -1,4 +1,5 @@
 import argparse
+from  torch.utils.data import DataLoader, Dataset
 
 from GeospatialFM.data import get_datasets
 from GeospatialFM.models import *
@@ -11,28 +12,22 @@ from GeospatialFM.loss import *
 from tqdm import trange
 import random
 import pandas as pd
+import pickle
 
 def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
     device = torch.device(args.device)
     autocast = get_autocast(args.precision)
     model.train()
 
-    data['train'].set_epoch(epoch)
-    dataloader = data['train'].dataloader
-    num_batches_per_epoch = dataloader.num_batches // args.accum_freq
-    sample_digits = math.ceil(math.log(dataloader.num_samples + 1, 10))
-
-    if args.accum_freq > 1:
-        accum_images, accum_radar, accum_label, accum_features = [], [], [], {}
+    dataloader = data['train']
+    num_batches_per_epoch = len(dataloader) // args.accum_freq
+    sample_digits = math.ceil(math.log(len(dataloader.dataset) + 1, 10))
 
     losses_m = {}
     batch_time_m = AverageMeter()
     data_time_m = AverageMeter()
     end = time.time()
     optimizer.zero_grad()
-
-    oscd = True if args.dataset == 'OSCD' else False # CHANGE
-    head_type = args.head_type # CHANGE
 
     for i, batch in enumerate(dataloader):
         i_accum = i // args.accum_freq
@@ -41,24 +36,16 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
         scheduler(step)
 
         # images, radar, label = batch['image'], batch['radar'], batch['label']
-        if oscd: # CHANGE 
-            image_1 = batch['image1'].to(device=device, non_blocking=True)
-            image_2 = batch['image2'].to(device=device, non_blocking=True)
-            label = batch['mask'].flatten().to(device=device, non_blocking=True).float()
-        else:
-            images = batch['image'] if args.finetune_modal == 'OPTICAL' else batch['radar']
-            label = batch['label']
-            images = images.to(device=device, non_blocking=True)
-            label = label.to(device=device, non_blocking=True) 
+        feature = batch['feature']
+        label = batch['label']
+        feature = feature.to(device=device, non_blocking=True)
+        label = label.to(device=device, non_blocking=True)  
 
         data_time_m.update(time.time() - end)
         
         # if args.accum_freq == 1:
         with autocast():
-            if oscd: # CHANGE
-                model_out = model(image_1, image_2).flatten()
-            else:
-                model_out = model(images)
+            model_out = model(feature)
             losses = loss(model_out, label, output_dict=True)
 
             total_loss = sum(losses.values())
@@ -83,9 +70,9 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
         end = time.time()
         batch_count = i_accum + 1
         if is_master(args) and (i_accum % args.log_every_n_steps == 0 or batch_count == num_batches_per_epoch):
-            batch_size = len(images) if not oscd else len(image_1) # CHANGE
+            batch_size = len(feature)
             num_samples = batch_count * batch_size * args.accum_freq
-            samples_per_epoch = dataloader.num_samples
+            samples_per_epoch = len(dataloader.dataset)
             percent_complete = 100.0 * batch_count / num_batches_per_epoch
 
             # NOTE loss is coarsely sampled, just master node and per log update
@@ -102,12 +89,12 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
             )
             samples_per_second = args.accum_freq * args.batch_size / batch_time_m.val
             samples_per_second_per_gpu = args.accum_freq * args.batch_size / batch_time_m.val
-            logging.info(
-                f"Train Epoch: {epoch} [{num_samples:>{sample_digits}}/{samples_per_epoch} ({percent_complete:.0f}%)] "
-                f"Data (t): {data_time_m.avg:.3f} "
-                f"Batch (t): {batch_time_m.avg:.3f}, {samples_per_second:#g}/s, {samples_per_second_per_gpu:#g}/s/gpu "
-                f"LR: {optimizer.param_groups[0]['lr']:5f} " + loss_log
-            )
+            # logging.info(
+            #     f"Train Epoch: {epoch} [{num_samples:>{sample_digits}}/{samples_per_epoch} ({percent_complete:.0f}%)] "
+            #     f"Data (t): {data_time_m.avg:.3f} "
+            #     f"Batch (t): {batch_time_m.avg:.3f}, {samples_per_second:#g}/s, {samples_per_second_per_gpu:#g}/s/gpu "
+            #     f"LR: {optimizer.param_groups[0]['lr']:5f} " + loss_log
+            # )
 
             # Save train loss / etc. Using non avg meter values as loggers have their own smoothing
             log_data = {
@@ -132,8 +119,8 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
             data_time_m.reset()
     # end for
 
-def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metric='accuracy'):
-    assert eval_metric in ['accuracy', 'mAP', 'f1'] # CHANGE
+def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metric='accuracy', input_key='feature'):
+    assert eval_metric in ['accuracy', 'mAP']
     metrics = {}
     if not is_master(args):
         return metrics
@@ -147,38 +134,25 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
     # input_dtype = get_input_dtype(args.precision)
 
     if val_split in data and (args.val_frequency and ((epoch % args.val_frequency) == 0 or epoch == args.epochs)):
-        oscd = None # CHANGE
         if eval_metric == 'mAP':
             all_preds = []
             all_labels = []
-        elif eval_metric == 'f1': # CHANGE
-            oscd = True
-            head_type = args.head_type 
-            all_preds = []
-            all_labels = []
-        dataloader = data[val_split].dataloader
+        dataloader = data[val_split]
         num_samples = 0
-        samples_per_val = dataloader.num_samples
+        samples_per_val = len(dataloader.dataset)
 
         cumulative_losses = defaultdict(float)
         with torch.no_grad():
             for i, batch in enumerate(dataloader):
-                if oscd is not None: # CHANGE 
-                    image_1 = batch['image1'].to(device=device, non_blocking=True)
-                    image_2 = batch['image2'].to(device=device, non_blocking=True)
-                    label = batch['mask'].flatten().to(device=device, non_blocking=True).float()
-                else:
-                    images = batch['image'] if args.finetune_modal == 'OPTICAL' else batch['radar']
-                    label = batch['label']
-                    images = images.to(device=device, non_blocking=True)
-                    label = label.to(device=device, non_blocking=True) 
-                batch_size = len(images) if not oscd else len(image_1)
+                input = batch[input_key]
+                label = batch['label']
+                input = input.to(device=device, non_blocking=True)
+                label = label.to(device=device, non_blocking=True) 
+
+                batch_size = len(input)
 
                 with autocast():
-                    if oscd is not None: # CHANGE
-                        model_out = model(image_1, image_2).flatten()
-                    else:
-                        model_out = model(images)
+                    model_out = model(input)
                     losses = loss(model_out, label, output_dict=True)
 
                     total_loss = sum(losses.values())
@@ -188,9 +162,8 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
                         preds = torch.argmax(model_out, dim=1)
                         image_acc = (preds == label).sum().item() / len(label)
                         losses['image_acc'] = image_acc
-                    elif eval_metric in ['mAP', 'f1']: # CHANGE
+                    elif eval_metric == 'mAP':
                         model_out = F.sigmoid(model_out)
-                        model_out = (model_out >= 0.5).to(torch.float32)
                         all_preds.append(model_out.cpu())
                         all_labels.append(label.cpu())
                         # _all_preds = torch.cat(all_preds, dim=0).float()
@@ -228,17 +201,6 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
                 _all_labels = torch.cat(all_labels, dim=0).float()
                 mAP = average_precision_score(_all_labels.numpy(), _all_preds.numpy(), average='macro')
                 metrics['mAP'] = mAP
-            elif eval_metric == 'f1': # CHANGE: add eval_metric for oscd
-                # TODO: check f1_score from sklearn.metrics library (also check for average param)
-                # TODO: add precision and recall metric
-                _all_preds = torch.cat(all_preds, dim=0).float().flatten()
-                _all_labels = torch.cat(all_labels, dim=0).float().flatten()
-                precison = precision_score(_all_labels.numpy(), _all_preds.numpy(), average='binary')
-                recall = recall_score(_all_labels.numpy(), _all_preds.numpy(), average='binary')
-                f1 = f1_score(_all_labels.numpy(), _all_preds.numpy(), average='binary')
-                metrics['precision'] = precison
-                metrics['recall'] = recall
-                metrics['f1'] = f1
 
             metrics.update({"epoch": epoch, "num_samples": num_samples})
             # if gen_loss is not None:
@@ -315,65 +277,78 @@ if __name__ == '__main__':
         save_csv = True,
         checkpoint_path = cfg['TRAINER']['logging_dir'],
         mask_ratio = cfg['MODEL']['mask_ratio'],
-        dataset = cfg['DATASET']['name'],
-        head_type = cfg['DATASET']['task_head_kwargs']['head_type']
-    ) # CHANGE
+    )
     training_args = argparse.Namespace(**vars(args), **training_args)
-    # training_args.device = f'cuda:{training_args.device_ids[0]}'
+    assert training_args.distributed == False, 'Distributed training is not supported for linear probing.'
 
     random_seed(0, args.rank)
     models = construct_downstream_models(cfg)
-    # save_path = os.path.join(cfg.TRAINER['ckpt_dir'], 'final_model.pth')
-    # state_dict = unwrap_model(torch.load(save_path, map_location='cpu'))
-    # optical_state_dict, radar_state_dict = decompose_model(state_dict)
-
-    # models['OPTICAL'].encoder.load_state_dict(optical_state_dict, strict=False)
-    # models['RADAR'].encoder.load_state_dict(radar_state_dict, strict=False)
 
     model = models[args.finetune_modal]
-    if training_args.lpft:
-        head_path = os.path.join(cfg['TRAINER']['output_dir'], 'lp_model.pth')
-        assert os.path.exists(head_path), f'LP model not found at {head_path}'
-        head_state_dict = torch.load(head_path, map_location='cpu')
-        # model.head.load_state_dict(head_state_dict, strict=True)
-        model.load_state_dict(head_state_dict, strict=True)
+    feature_extractor = model.encoder.requires_grad_(False)
+    task_head = model.head
+    feature_extractor = feature_extractor.to(device)
 
-    model = model.to(training_args.device)
-    # model.encoder.patch_embed.requires_grad_(False)
-
-    random_seed(0, args.rank)
-    if training_args.distributed:
-        ddp_args = {'find_unused_parameters': False } # TODO: add ddp args
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[device], **ddp_args)
-
-    # if len(training_args.device_ids) > 1:
-    #     model = torch.nn.DataParallel(model, device_ids=training_args.device_ids)
-
-    data = get_data(cfg, ddp=training_args.distributed)
+    cache_dir = os.path.join(cfg['LOGGER']['dir'], 'cache')
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_path = os.path.join(cache_dir, f"{cfg.DATASET['name']}_{cfg['NAME']}")
+    os.makedirs(cache_path, exist_ok=True)
+    print(f'cache path: {cache_path}')
     
-    steps = data['train'].dataloader.num_batches // cfg.TRAINER['gradient_accumulation_steps'] * cfg['TRAINER']['num_train_epochs']
-    warmup_steps = data['train'].dataloader.num_batches // cfg.TRAINER['gradient_accumulation_steps'] * cfg['TRAINER']['warmup_epochs']
-    optimizer = torch.optim.AdamW(model.parameters(), lr=cfg['TRAINER']['learning_rate'], weight_decay=cfg['TRAINER']['weight_decay'])
+    data = get_data(cfg, ddp=training_args.distributed)
+    parse_splits = ['train', 'val', 'test']
+    data_feat = dict()
+    # check if chache_path is empty
+    for split in parse_splits:
+        if os.path.exists(os.path.join(cache_path, f"{split}_0.pkl")) or os.path.exists(os.path.join(cache_path, f"{split}.pkl")):
+            print(f'Loading cached {split} features...')
+            data_split = load_features(cache_path, split=split)
+            data_feat[split] = data_split
+        else:
+            print(f'Extracting {split} features...')
+            data_split = extract_features(feature_extractor, data[split], training_args, split=split, cache_path=cache_path)
+            data_feat[split] = data_split
+    # test_data = data['test'].dataloader
+    del data
+    del feature_extractor
+    data = data_feat
 
-    logging.info(f"Hyperparameters: LR: {cfg['TRAINER']['learning_rate']}, weight decay: {cfg['TRAINER']['weight_decay']}")
-    if is_master(args) and training_args.save_logs:
+    for split in parse_splits:
+        dataset = DictDataset(data[split])
+        shuffle = True if split == 'train' else False
+        dataloader = DataLoader(dataset, batch_size=1024, shuffle=shuffle, num_workers=8, pin_memory=True)
+        data[split] = dataloader
+    # data['test'] = test_data
+    print(f"Training Samples: {len(data['train'].dataset)}\tValidation Samples: {len(data['val'].dataset)}\tTest Samples: {len(data['test'].dataset)}")
+
+    model = task_head.to(device)
+    steps = len(data['train']) // cfg.TRAINER['gradient_accumulation_steps'] * cfg['TRAINER']['num_train_epochs']
+    warmup_steps = len(data['train']) // cfg.TRAINER['gradient_accumulation_steps'] * cfg['TRAINER']['warmup_epochs']
+    optimizer = torch.optim.AdamW(model.parameters(), lr=cfg['TRAINER']['learning_rate'], weight_decay=0)
+
+    logging.info(f"Linear Probing Hyperparameters: LR: {cfg['TRAINER']['learning_rate']}")
+    if training_args.save_logs:
         with open(os.path.join(training_args.checkpoint_path, "results.jsonl"), "a+") as f:
                 f.write("===================================\n")
-                f.write(f"Hyperparameters: LR: {cfg['TRAINER']['learning_rate']}, weight decay: {cfg['TRAINER']['weight_decay']}\n")
+                f.write(f"Linear Probing Hyperparameters: LR: {cfg['TRAINER']['learning_rate']}\n")
                 f.write("===================================\n")
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=steps, eta_min=1e-7)
     scheduler = get_scheduler(cfg['TRAINER']['lr_scheduler_type'], optimizer, cfg['TRAINER']['learning_rate'], warmup_steps, steps, cfg['TRAINER']['scheduler_kwargs'])
     print(f"Task type: {cfg.DATASET['task_type']}")
     loss = get_loss(cfg.DATASET['task_type'])
     print(f"Evaluation metric: {cfg.DATASET['eval_metric']}")
-    if training_args.lpft:
-        evaluate_finetune(model, data, loss, 0, training_args, val_split='val', eval_metric=cfg.DATASET['eval_metric'])
 
     for epoch in trange(training_args.epochs):
         finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, training_args)
         evaluate_finetune(model, data, loss, epoch, training_args, val_split='val', eval_metric=cfg.DATASET['eval_metric'])
-        # if cfg.TRAINER.save_frequency > 0 and (epoch + 1) % cfg.TRAINER.save_frequency == 0:
-            # torch.save(model.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], f'ft_ckpt_epoch{epoch+1}.pth'))
+    # head_weights = model.state_dict().copy()
+    # del model
+    # models = construct_downstream_models(cfg)
+
+    # model = models[args.finetune_modal]
+    # model.head.load_state_dict(head_weights)
+    # model = model.to(device)
+
     final_metrics = evaluate_finetune(model, data, loss, epoch+1, training_args, val_split='test', eval_metric=cfg.DATASET['eval_metric'])
     if training_args.save_csv and is_master(args):
         save_dict = dict(
@@ -382,7 +357,7 @@ if __name__ == '__main__':
             weight_decay = cfg['TRAINER']['weight_decay'],
             **final_metrics
         )
-        save_path = os.path.join(training_args.checkpoint_path, 'ft_metrics.csv')
+        save_path = os.path.join(training_args.checkpoint_path, 'lp_metrics.csv')
         df_new = pd.DataFrame(save_dict, index=[0])
         if os.path.exists(save_path):
             df = pd.read_csv(save_path)
@@ -391,5 +366,5 @@ if __name__ == '__main__':
             df = df_new
         df.to_csv(save_path, index=False)
     # save model
-    # if is_master(args):
-    #     torch.save(model.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], 'ft_model.pth'))
+    if is_master(args):
+        torch.save(model.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], 'lp_model.pth'))

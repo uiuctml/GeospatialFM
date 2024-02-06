@@ -4,10 +4,13 @@ import torchgeo.models as tgm
 import torch.nn as nn
 import timm
 from .vision_transformer import ViTEncoder, ViTDecoder
-from .channel_vit import ChannelViTEncoder
+from .channel_attn_vit import ChannelViTEncoder
+from .pspnet import *
+# from .channel_vit import ChannelViTEncoder
 from .mae import CrossModalMAEViT
 from collections import OrderedDict
 import numpy as np
+import torch.nn.functional as F
 
 class ViTModel(nn.Module):
     def __init__(self, encoder, head):
@@ -19,7 +22,17 @@ class ViTModel(nn.Module):
         x = self.encoder(x, return_dict=True)['cls_token']
         x = self.head(x)
         return x
+
+# CHANGE
+class ViTCDModel(ViTModel):
+    def __init__(self, encoder, head):
+        super().__init__(encoder, head)
     
+    def forward(self, x1, x2):
+        x = self.encoder(x1, x2) 
+        x = self.head(x)
+        return x
+        
 def unwrap_model(state_dict):
     new_state_dict = OrderedDict()
     for key, value in state_dict.items():
@@ -151,22 +164,22 @@ def construct_downstream_models(cfg, modals=['OPTICAL', 'RADAR']):
         head_kwargs['in_features'] = num_features
 
         head = construct_head(head_kwargs)
-        model = ViTModel(encoder, head)
+
+        if cfg.DATASET['task_type'] == 'change_detection':
+            encoder = CDEncoder(encoder, diff=True, use_mlp=head_kwargs['use_mlp'])
+            encoder.requires_grad_(False)
+            model = model = ViTCDModel(encoder, head)
+        else:  
+            model = ViTModel(encoder, head)
         models[modal] = model
     return models
 
 def construct_head(head_cfg):
+    print(f"Constructing {head_cfg['head_type']} head...")
     if head_cfg['head_type'] == 'linear':
         head = nn.Linear(head_cfg['in_features'], head_cfg['num_classes'], bias=head_cfg['use_bias'])
+    elif head_cfg['head_type'] == 'pspnet':
+        head = PSPNetDecoder(head_cfg['in_features'], head_cfg['num_classes'], head_cfg['hidden_dim'], head_cfg['image_size'])
     else:
         raise NotImplementedError
     return head
-
-
-# def build_crop(cfg):
-#     optical = construct_model(cfg['MODEL'])
-#     optical_encoder = optical.base_model if hasattr(optical, 'base_model') else optical
-#     sar = construct_model(cfg['SAR_MODEL'])
-#     sar_encoder = sar.base_model if hasattr(sar, 'base_model') else sar
-#     crop = CROP().align_pretrained(optical_encoder, sar_encoder)
-#     return crop

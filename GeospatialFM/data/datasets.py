@@ -1,7 +1,12 @@
-from torchgeo.datasets import BigEarthNet, So2Sat
+from torchgeo.datasets import BigEarthNet, So2Sat, OSCD
 import torch
 from torch import Tensor
 import numpy as np
+import rasterio # CHANGE
+from itertools import product # CHANGE
+from PIL import Image # CHANGE
+import os # CHANGE
+import glob # CHANGE
 
 class myBigEarthNet(BigEarthNet):
     RGB_INDEX = [3, 2, 1]
@@ -85,9 +90,144 @@ class mySo2Sat(So2Sat):
             img_size = s2.shape[1:]
             s2 = torch.cat((torch.zeros((1, *img_size)), s2[:8], torch.zeros((2, *img_size)), s2[8:]), dim=0)
 
-        sample = {"image": torch.cat([s1, s2]).float(), "label": label}
+        sample = {"image": s2.float(), "radar": s1.float(), "label": label}
 
         if self.transforms is not None:
             sample = self.transforms(sample)
 
         return sample
+
+def sort_sentinel2_bands(x: str) -> str:
+    """Sort Sentinel-2 band files in the correct order."""
+    x = os.path.basename(x).split("_")[-1]
+    x = os.path.splitext(x)[0]
+    if x == "B8A":
+        x = "B08A"
+    return x
+
+class myOSCD(OSCD):
+    def __init__(self, patch_size, overlap=0.5, **kwargs):
+        self.patch_size = patch_size
+        self.overlap = overlap
+        super().__init__(**kwargs)
+
+
+    def __getitem__(self, index: int) -> dict[str, Tensor]:
+        """Return an index within the dataset.
+
+        Args:
+            index: index to return
+
+        Returns:
+            data and label at that index
+        """
+        files = self.files[index]
+        image1 = self._load_image(files["images1"], files["limit"])
+        image2 = self._load_image(files["images2"], files["limit"])
+        mask = self._load_target(str(files["mask"]), files["limit"])
+
+        sample = {"image1": image1, "image2": image2, "mask": mask.unsqueeze(0)}
+
+        if self.transforms is not None:
+            sample = self.transforms(sample)
+
+        return sample
+
+
+    def __len__(self) -> int:
+        """Return the number of data points in the dataset.
+
+        Returns:
+            length of the dataset
+        """
+        return len(self.files)
+
+
+    def _load_files(self):
+        regions = []
+        labels_root = os.path.join(
+            self.root,
+            f"Onera Satellite Change Detection dataset - {self.split.capitalize()} "
+            + "Labels",
+        )
+        images_root = os.path.join(
+            self.root, "Onera Satellite Change Detection dataset - Images"
+        )
+        folders = glob.glob(os.path.join(labels_root, "*/"))
+        for folder in folders:
+            region = folder.split(os.sep)[-2]
+            mask = os.path.join(labels_root, region, "cm", "cm.png")
+
+            def get_image_paths(ind: int) -> list[str]:
+                return sorted(
+                    glob.glob(
+                        os.path.join(images_root, region, f"imgs_{ind}_rect", "*.tif")
+                    ),
+                    key=sort_sentinel2_bands,
+                )
+
+            images1, images2 = get_image_paths(1), get_image_paths(2)
+            if self.bands == "rgb":
+                images1, images2 = images1[1:4][::-1], images2[1:4][::-1]
+
+            with open(os.path.join(images_root, region, "dates.txt")) as f:
+                dates = tuple(
+                    line.split()[-1] for line in f.read().strip().splitlines()
+                )
+
+            img = rasterio.open(images1[0]) # for each region, the width and height are the same across img1 and img2 and across all bands
+            img_width, img_height = img.width, img.height
+            img_limits = product(range(0, img_height, int(self.patch_size*self.overlap)), range(0, img_width, int(self.patch_size*self.overlap)))
+
+            for l in img_limits:
+                if l[0] + self.patch_size < img_height and l[1] + self.patch_size < img_width:
+                    regions.append(
+                        dict(
+                            region=region,
+                            images1=images1, # list of paths to 13 band's tif for img1, so len(images1)=13
+                            images2=images2, # list of paths to 13 band's tif for img1, so len(images2)=13
+                            mask=mask, # path to the label
+                            dates=dates,
+                            limit=(l[0], l[1], l[0] + self.patch_size, l[1] + self.patch_size) # crop coordinate: top left, bot right
+                        )
+                    )
+        return regions
+
+    def _load_image(self, paths, limit) -> Tensor:
+        """Load a single image.
+
+        Args:
+            path: path to the image
+            limit: the crop coordinate
+
+        Returns:
+            the image
+        """
+        images: list["np.typing.NDArray[np.int_]"] = []
+        for path in paths:
+            with Image.open(path) as img:
+                # crop the image
+                img_array = np.array(img)
+                img_cropped = img_array[limit[0]:limit[2], limit[1]:limit[3]]
+                images.append(img_cropped)
+        array: "np.typing.NDArray[np.int_]" = np.stack(images, axis=0).astype(np.int_)
+        tensor = torch.from_numpy(array).float()
+        return tensor
+
+    def _load_target(self, path: str, limit) -> Tensor:
+        """Load the target mask for a single image.
+
+        Args:
+            path: path to the image
+
+        Returns:
+            the target mask
+        """
+        filename = os.path.join(path)
+        with Image.open(filename) as img:
+            array: "np.typing.NDArray[np.int_]" = np.array(img.convert("L"))
+            array_cropped = array[limit[0]:limit[2], limit[1]:limit[3]]
+            tensor = torch.from_numpy(array_cropped)
+            tensor = torch.clamp(tensor, min=0, max=1)
+            tensor = tensor.to(torch.long)
+            return tensor

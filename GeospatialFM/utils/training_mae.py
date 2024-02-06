@@ -72,6 +72,8 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
     batch_time_m = AverageMeter()
     data_time_m = AverageMeter()
     end = time.time()
+    optimizer.zero_grad()
+
     for i, batch in enumerate(dataloader):
         i_accum = i // args.accum_freq
         step = num_batches_per_epoch * epoch + i_accum
@@ -85,94 +87,97 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
         # label = label.to(device=device, non_blocking=True)
 
         data_time_m.update(time.time() - end)
-        optimizer.zero_grad()
 
-        if args.accum_freq == 1:
-            with autocast():
-                model_out = model(images, radar, args.mask_ratio, args.channel_mask_ratio)
-                # logit_scale = model_out.get("logit_scale").mean()
-                logit_scale = model_out['logit_scale']
-                # model_out['logit_scale'] = logit_scale
-                # model_out['labels'] = label
-                if isinstance(loss, list):
-                    losses = {}
-                    for l in loss:
-                        losses.update(l(**model_out, output_dict=True))
-                else:
-                    losses = loss(**model_out, output_dict=True)
+        # if args.accum_freq == 1:
+        with autocast():
+            model_out = model(images, radar, args.mask_ratio, args.channel_mask_ratio)
+            # logit_scale = model_out.get("logit_scale").mean()
+            logit_scale = model_out['logit_scale']
+            # model_out['logit_scale'] = logit_scale
+            # model_out['labels'] = label
+            if isinstance(loss, list):
+                losses = {}
+                for l in loss:
+                    losses.update(l(**model_out, output_dict=True))
+            else:
+                losses = loss(**model_out, output_dict=True)
 
-                total_loss = sum(losses.values())
-                losses["loss"] = total_loss
+            total_loss = sum(losses.values())
+            losses["loss"] = total_loss
 
-            total_loss.backward()
-        else:
-            # raise NotImplementedError
-            # TODO: combine MAE with CLIP loss
-            # First, cache the features without any gradient tracking.
-            with torch.no_grad():
-                with autocast():
-                    model_out = model(images, radar)
+        total_loss.backward()
 
-                    for f in ("logit_scale", "logit_bias"):
-                        model_out.pop(f, None)
+        if (i + 1) % args.accum_freq == 0:
+            optimizer.step()
+            optimizer.zero_grad() 
+        # else:
+        #     # raise NotImplementedError
+        #     # TODO: combine MAE with CLIP loss
+        #     # First, cache the features without any gradient tracking.
+        #     with torch.no_grad():
+        #         with autocast():
+        #             model_out = model(images, radar)
 
-                    for key, val in model_out.items():
-                        if key in accum_features:
-                            accum_features[key].append(val)
-                        else:
-                            accum_features[key] = [val]
+        #             for f in ("logit_scale", "logit_bias"):
+        #                 model_out.pop(f, None)
 
-                accum_images.append(images)
-                accum_radar.append(radar)
+        #             for key, val in model_out.items():
+        #                 if key in accum_features:
+        #                     accum_features[key].append(val)
+        #                 else:
+        #                     accum_features[key] = [val]
 
-            # # If (i + 1) % accum_freq is not zero, move on to the next batch.
-            if ((i + 1) % args.accum_freq) > 0:
-                # FIXME this makes data time logging unreliable when accumulating
-                continue
+        #         accum_images.append(images)
+        #         accum_radar.append(radar)
+
+        #     # # If (i + 1) % accum_freq is not zero, move on to the next batch.
+        #     if ((i + 1) % args.accum_freq) > 0:
+        #         # FIXME this makes data time logging unreliable when accumulating
+        #         continue
 
             # # Now, ready to take gradients for the last accum_freq batches.
             # # Re-do the forward pass for those batches, and use the cached features from the other batches as negatives.
             # # Call backwards each time, but only step optimizer at the end.
-            optimizer.zero_grad()
-            for j in range(args.accum_freq):
-                images = accum_images[j]
-                radar = accum_radar[j]
-                with autocast():
-                    model_out = model(images, radar)
+            # optimizer.zero_grad()
+            # for j in range(args.accum_freq):
+            #     images = accum_images[j]
+            #     radar = accum_radar[j]
+            #     with autocast():
+            #         model_out = model(images, radar)
 
-                    inputs_no_accum = {}
-                    inputs_no_accum["logit_scale"] = logit_scale = model_out.pop("logit_scale")
-                    if "logit_bias" in model_out:
-                        inputs_no_accum["logit_bias"] = model_out.pop("logit_bias")
+            #         inputs_no_accum = {}
+            #         inputs_no_accum["logit_scale"] = logit_scale = model_out.pop("logit_scale")
+            #         if "logit_bias" in model_out:
+            #             inputs_no_accum["logit_bias"] = model_out.pop("logit_bias")
 
-                    inputs = {}
-                    for key, val in accum_features.items():
-                        accumulated = accum_features[key]
-                        inputs[key] = torch.cat(accumulated[:j] + [model_out[key]] + accumulated[j + 1:])
+            #         inputs = {}
+            #         for key, val in accum_features.items():
+            #             accumulated = accum_features[key]
+            #             inputs[key] = torch.cat(accumulated[:j] + [model_out[key]] + accumulated[j + 1:])
 
-                    if isinstance(loss, list):
-                        losses = {}
-                        for l in loss:
-                            losses.update(l(**inputs, **inputs_no_accum, output_dict=True))
-                    else:
-                        losses = loss(**inputs, **inputs_no_accum, output_dict=True)
+            #         if isinstance(loss, list):
+            #             losses = {}
+            #             for l in loss:
+            #                 losses.update(l(**inputs, **inputs_no_accum, output_dict=True))
+            #         else:
+            #             losses = loss(**inputs, **inputs_no_accum, output_dict=True)
 
-                    losses = loss(**inputs, **inputs_no_accum, output_dict=True)
-                    del inputs
-                    del inputs_no_accum
-                    total_loss = sum(losses.values())
-                    losses["loss"] = total_loss
+            #         losses = loss(**inputs, **inputs_no_accum, output_dict=True)
+            #         del inputs
+            #         del inputs_no_accum
+            #         total_loss = sum(losses.values())
+            #         losses["loss"] = total_loss
 
-                total_loss.backward()
+            #     total_loss.backward()
 
         if args.grad_clip_norm is not None:
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip_norm, norm_type=2.0)
-        optimizer.step()
+        # optimizer.step()
         # scheduler.step()
 
         # reset gradient accum, if enabled
-        if args.accum_freq > 1:
-            accum_images, accum_radar, accum_features = [], [], {}
+        # if args.accum_freq > 1:
+        #     accum_images, accum_radar, accum_features = [], [], {}
 
         # Note: we clamp to 4.6052 = ln(100), as in the original paper.
         with torch.no_grad():

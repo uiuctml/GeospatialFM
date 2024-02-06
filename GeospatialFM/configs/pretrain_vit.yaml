@@ -1,19 +1,5 @@
 MODEL:
   architecture: vit_base_patch16_224
-  DECODER:
-    kwargs:
-      out_chans: 15
-      num_heads: 16
-      mlp_ratio: 4.0
-      qkv_bias: True
-      init_values: null
-      decoder_embed_dim: 512 
-      decoder_depth: 8
-      decoder_num_heads: 16
-      num_patches: 196
-      patch_size: 16
-      num_register_tokens: 0
-      embed_dim: 768
 LOSS:
   MAE:
     scale: 1.0
@@ -24,16 +10,17 @@ DATASET:
   root: ./data/geospatial
   name: BigEarthNet
   train_transforms:
-    normalize: true
-    standardize: false
+    normalize: false
+    standardize: true
   eval_transforms:
-    normalize: true
-    standardize: false
+    normalize: false
+    standardize: true
   kwargs:
     bands: all
     num_classes: 19
     pad_s2: true
   eval_metric: classification
+  task_type: pretrain
   use_train_transform: true
   train_frac: 1
   val_frac: 0.1
