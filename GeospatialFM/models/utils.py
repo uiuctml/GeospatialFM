@@ -5,7 +5,7 @@ import torch.nn as nn
 import timm
 from .vision_transformer import ViTEncoder, ViTDecoder
 from .channel_attn_vit import ChannelViTEncoder
-from .task_heads import *
+from .pspnet import *
 # from .channel_vit import ChannelViTEncoder
 from .mae import CrossModalMAEViT
 from collections import OrderedDict
@@ -166,9 +166,10 @@ def construct_downstream_models(cfg, modals=['OPTICAL', 'RADAR']):
         head = construct_head(head_kwargs)
 
         if cfg.DATASET['task_type'] == 'change_detection':
-            encoder = SegmentationEncoder(encoder, head_kwargs['feature_indices'], head_kwargs['feature_channels'], diff=True)
+            encoder = CDEncoder(encoder, diff=True, use_mlp=head_kwargs['use_mlp'])
+            encoder.requires_grad_(False)
             model = model = ViTCDModel(encoder, head)
-        else:
+        else:  
             model = ViTModel(encoder, head)
         models[modal] = model
     return models
@@ -177,15 +178,8 @@ def construct_head(head_cfg):
     print(f"Constructing {head_cfg['head_type']} head...")
     if head_cfg['head_type'] == 'linear':
         head = nn.Linear(head_cfg['in_features'], head_cfg['num_classes'], bias=head_cfg['use_bias'])
-    elif head_cfg['head_type'] == 'unet':
-        head = UNet(
-            head_cfg['feature_channels'], 
-            n_classes=head_cfg['num_classes'],
-            bilinear=True, 
-            concat_mult=1, 
-            dropout_rate=0.3, 
-            patch_size=head_cfg['patch_size']
-        )
+    elif head_cfg['head_type'] == 'pspnet':
+        head = PSPNetDecoder(head_cfg['in_features'], head_cfg['num_classes'], head_cfg['hidden_dim'], head_cfg['image_size'])
     else:
         raise NotImplementedError
     return head

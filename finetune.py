@@ -44,7 +44,7 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
         if oscd: # CHANGE 
             image_1 = batch['image1'].to(device=device, non_blocking=True)
             image_2 = batch['image2'].to(device=device, non_blocking=True)
-            label = batch['mask'].view(batch['mask'].size(0), -1).to(device=device, non_blocking=True).float()
+            label = batch['mask'].flatten().to(device=device, non_blocking=True).float()
         else:
             images = batch['image'] if args.finetune_modal == 'OPTICAL' else batch['radar']
             label = batch['label']
@@ -56,14 +56,13 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
         # if args.accum_freq == 1:
         with autocast():
             if oscd: # CHANGE
-                model_out = model(torch.abs(image_1-image_2)) if head_type == 'linear' else model(image_1, image_2)
+                model_out = model(image_1, image_2).flatten()
             else:
                 model_out = model(images)
             losses = loss(model_out, label, output_dict=True)
 
             total_loss = sum(losses.values())
             losses["loss"] = total_loss
-            print(losses)
 
         total_loss.backward()
 
@@ -167,7 +166,7 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
                 if oscd is not None: # CHANGE 
                     image_1 = batch['image1'].to(device=device, non_blocking=True)
                     image_2 = batch['image2'].to(device=device, non_blocking=True)
-                    label = batch['mask'].view(batch['mask'].size(0), -1).to(device=device, non_blocking=True).float()
+                    label = batch['mask'].flatten().to(device=device, non_blocking=True).float()
                 else:
                     images = batch['image'] if args.finetune_modal == 'OPTICAL' else batch['radar']
                     label = batch['label']
@@ -177,7 +176,7 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
 
                 with autocast():
                     if oscd is not None: # CHANGE
-                        model_out = model(torch.abs(image_1-image_2)) if head_type == 'linear' else model(image_1, image_2)
+                        model_out = model(image_1, image_2).flatten()
                     else:
                         model_out = model(images)
                     losses = loss(model_out, label, output_dict=True)
@@ -191,6 +190,7 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
                         losses['image_acc'] = image_acc
                     elif eval_metric in ['mAP', 'f1']: # CHANGE
                         model_out = F.sigmoid(model_out)
+                        model_out = (model_out >= 0.5).to(torch.float32)
                         all_preds.append(model_out.cpu())
                         all_labels.append(label.cpu())
                         # _all_preds = torch.cat(all_preds, dim=0).float()
@@ -231,13 +231,11 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
             elif eval_metric == 'f1': # CHANGE: add eval_metric for oscd
                 # TODO: check f1_score from sklearn.metrics library (also check for average param)
                 # TODO: add precision and recall metric
-                _all_preds = torch.cat(all_preds, dim=0).float()
-                _all_labels = torch.cat(all_labels, dim=0).float()
-                threshold = 0.5
-                _all_preds = (_all_preds >= threshold).to(torch.int)
-                precison = precision_score(_all_labels.numpy(), _all_preds.numpy(), average='macro')
-                recall = recall_score(_all_labels.numpy(), _all_preds.numpy(), average='macro')
-                f1 = f1_score(_all_labels.numpy(), _all_preds.numpy(), average='macro')
+                _all_preds = torch.cat(all_preds, dim=0).float().flatten()
+                _all_labels = torch.cat(all_labels, dim=0).float().flatten()
+                precison = precision_score(_all_labels.numpy(), _all_preds.numpy(), average='binary')
+                recall = recall_score(_all_labels.numpy(), _all_preds.numpy(), average='binary')
+                f1 = f1_score(_all_labels.numpy(), _all_preds.numpy(), average='binary')
                 metrics['precision'] = precison
                 metrics['recall'] = recall
                 metrics['f1'] = f1
@@ -345,7 +343,7 @@ if __name__ == '__main__':
 
     random_seed(0, args.rank)
     if training_args.distributed:
-        ddp_args = {'find_unused_parameters': True } # TODO: add ddp args
+        ddp_args = {'find_unused_parameters': False } # TODO: add ddp args
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[device], **ddp_args)
 
     # if len(training_args.device_ids) > 1:

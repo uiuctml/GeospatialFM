@@ -2,26 +2,27 @@ DATASET:
   root: ./data/geospatial
   name: OSCD
   train_transforms:
-    normalize: true
-    standardize: false
+    crop_size: 224
+    hflip_prob: 0.5
+    normalize: false
+    standardize: true
   eval_transforms:
-    normalize: true
-    standardize: false
+    resize_size: 224
+    normalize: false
+    standardize: true
   kwargs:
     bands: all
-    patch_size: 96
+    patch_size: 128
   eval_metric: f1 
   task_type: change_detection
   use_train_transform: true
   train_frac: 1.0 
-  val_frac: 0.1
+  val_frac: 1.0
   train_split: train
   task_head_kwargs:
-    head_type: unet 
-    num_classes: 1 
-    patch_size: 96
-    feature_indices: [0, 4, 6, 8, 10, 12]
-    feature_channels: [1, 2, 8, 32, 128, 512]
-  # task_head_kwargs:
-  #   head_type: linear
-  #   num_classes: 96*96
+    head_type: pspnet 
+    use_mlp: false
+    in_features: 768
+    num_classes: 1
+    hidden_dim: 512
+    image_size: 128
