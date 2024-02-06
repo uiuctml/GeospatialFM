@@ -4,12 +4,13 @@ from torch.utils.data import DataLoader, Subset, ConcatDataset
 import torchgeo.datasets as tgds
 import torchgeo.datamodules as tgdm
 
-from .tramsforms import make_classification_eval_transform, make_classification_train_transform, TransformSample
+from .tramsforms import *
 from .datasets import *
 
 MY_DATASETS = {
     "BigEarthNet": myBigEarthNet,
     "So2Sat": mySo2Sat,
+    "OSCD": myOSCD 
 }
 
 DATA_ROOT = './data'
@@ -26,16 +27,16 @@ S2C_MEAN = [1605.57504906, 1390.78157673, 1314.8729939, 1363.52445545, 1549.4437
 
 S2C_STD = [786.78685367, 850.34818441, 875.06484736, 1138.84957046, 1122.17775652, 1161.59187054, 1274.39184232, 1248.42891965, 1345.52684884, 577.31607053, 51.15431158, 1336.09932639, 1136.53823676]
 
-def get_mean_std(data_cfg):
-    if data_cfg['kwargs']['bands'] == 's1':
-        return S1_MEAN, S1_STD
-    elif data_cfg['kwargs']['bands'] == 'all':
-        return S1_MEAN + S2A_MEAN, S1_STD + S2A_STD  # For now, only support BigEarthNet
-    try:
-        dm = getattr(tgdm, data_cfg['name']+'DataModule')
-        return dm.mean, dm.std
-    except:
-        return None, None
+# def get_mean_std(data_cfg): # CHANGE
+#     if data_cfg['kwargs']['bands'] == 's1':
+#         return S1_MEAN, S1_STD
+#     elif data_cfg['name'] != 'OSCD' and data_cfg['kwargs']['bands'] == 'all':
+#         return S1_MEAN + S2A_MEAN, S1_STD + S2A_STD  # For now, only support BigEarthNet
+#     try:
+#         dm = getattr(tgdm, data_cfg['name']+'DataModule')
+#         return dm.mean, dm.std
+#     except:
+#         return None, None
 
 def get_dataset(data_cfg, split='train', transforms=None):
     if data_cfg['name'] in MY_DATASETS:
@@ -45,26 +46,30 @@ def get_dataset(data_cfg, split='train', transforms=None):
     except:
         raise NotImplementedError
 
-def get_dataloaders(data_cfg):
-    data_cfg['kwargs']['root'] = osp.join(data_cfg['root'], data_cfg['name'])
-    train_dataset = get_dataset(data_cfg, split='train')
-    val_dataset = get_dataset(data_cfg, split='val')
-    test_dataset = get_dataset(data_cfg, split='test')
+# def get_dataloaders(data_cfg):
+#     data_cfg['kwargs']['root'] = osp.join(data_cfg['root'], data_cfg['name'])
+#     train_dataset = get_dataset(data_cfg, split='train')
+#     val_dataset = get_dataset(data_cfg, split='val')
+#     test_dataset = get_dataset(data_cfg, split='test')
     
-    train_dataloader = DataLoader(train_dataset, shuffle=True, **data_cfg['dataloader'])
-    val_dataloader = DataLoader(val_dataset, shuffle=False, **data_cfg['dataloader'])
-    test_dataloader = DataLoader(test_dataset, shuffle=False, **data_cfg['dataloader'])
+#     train_dataloader = DataLoader(train_dataset, shuffle=True, **data_cfg['dataloader'])
+#     val_dataloader = DataLoader(val_dataset, shuffle=False, **data_cfg['dataloader'])
+#     test_dataloader = DataLoader(test_dataset, shuffle=False, **data_cfg['dataloader'])
 
-    return train_dataloader, val_dataloader, test_dataloader
+    # return train_dataloader, val_dataloader, test_dataloader
 
 def get_datasets(data_cfg):
     print(f"Training Dataset: {data_cfg['name']}")
     data_cfg['kwargs']['root'] = osp.join(data_cfg['root'], data_cfg['name'])
-    data_mean_std = get_mean_std(data_cfg)
-    train_transform_func = make_classification_train_transform(**data_cfg['train_transforms'], mean_std=data_mean_std)
-    eval_transform_func = make_classification_eval_transform(**data_cfg['eval_transforms'], mean_std=data_mean_std)
-    eval_transform = TransformSample(eval_transform_func)
-    train_transform = TransformSample(train_transform_func) if data_cfg['use_train_transform'] else eval_transform
+    # data_mean_std = get_mean_std(data_cfg)
+    if data_cfg['task_type'] in ['classification', 'multilabel', 'pretrain']:
+        eval_transform = make_classification_eval_transform(**data_cfg['eval_transforms'])
+        train_transform = make_classification_train_transform(**data_cfg['train_transforms']) if data_cfg['use_train_transform'] else eval_transform
+    elif data_cfg['task_type'] in ['change_detection']:
+        eval_transform = make_segmentation_eval_transform(**data_cfg['eval_transforms'])
+        train_transform = make_segmentation_train_transform(**data_cfg['train_transforms']) if data_cfg['use_train_transform'] else eval_transform
+    # eval_transform = TransformSample(eval_transform_func)
+    # train_transform = TransformSample(train_transform_func) if data_cfg['use_train_transform'] else eval_transform
     train_dataset = get_dataset(data_cfg, split='train', transforms=train_transform)
     test_dataset = get_dataset(data_cfg, split='test', transforms=eval_transform)
     try:

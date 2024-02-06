@@ -1,5 +1,5 @@
 MODEL:
-  architecture: vit_base_patch16_224
+  architecture: cvit_base_patch16_224
   OPTICAL:
     use_head: true
     head_kwargs:
@@ -19,7 +19,7 @@ TRAINER:
   learning_rate: 1e-3
   weight_decay: 0.05
   # dataloader
-  dataloader_num_workers: 4
+  dataloader_num_workers: 8
   dataloader_pin_memory: true
   dataloader_drop_last: true
   # Logging
