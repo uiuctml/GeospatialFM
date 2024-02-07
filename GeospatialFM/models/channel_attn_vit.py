@@ -4,9 +4,11 @@ import random
 from torch.nn import functional as F
 import torch
 from .vision_transformer import *
+from .pos_embed import ChannelEmbedding
 from typing import Optional
 
 SENTINEL_WV = [442.7, 492.4, 559.8, 664.6, 704.1, 740.5, 782.8, 832.8, 864.7, 945.1, 1373.5, 1613.7, 2202.4]
+# SENTINEL_WV = [4.427, 4.924, 5.598, 6.646, 7.041, 7.405, 7.828, 8.328, 8.647, 9.451, 13.735, 16.137, 22.024]
 
 def collpase_channels(x, reduce=None):
     assert len(x.shape) == 3
@@ -74,31 +76,6 @@ class PatchEmbedPerChannel(nn.Module):
             self.channel_pool = ChannelAttention(embed_dim)
         else:
             self.channel_pool = None
-        # print("Using Channel Attention")
-        # self.channel_pool = ChannelAttention(embed_dim)
-
-        # self.proj = nn.Conv3d(
-        #     1,
-        #     embed_dim*2,
-        #     kernel_size=(1, patch_size, patch_size),
-        #     stride=(1, patch_size, patch_size),
-        # )  # CHANGED
-        # self.bottleneck = nn.Linear(embed_dim*2, embed_dim)
-            
-        # self.proj = nn.Sequential(
-        #     nn.Conv3d(
-        #         1,
-        #         embed_dim//4,
-        #         kernel_size=(1, 4, 4),
-        #         stride=(1, 4, 4),
-        #     ),
-        #     nn.Conv3d(
-        #         embed_dim//4,
-        #         embed_dim, #2
-        #         kernel_size=(1, 4, 4),
-        #         stride=(1, 4, 4),
-        #     )
-        # )
             
         self.proj = nn.Sequential(
             nn.Conv3d(
@@ -112,38 +89,36 @@ class PatchEmbedPerChannel(nn.Module):
                 embed_dim,
                 kernel_size=(1, 1, 1),
                 stride=(1, 1, 1),
+                bias=False,
             ),
         )
 
-        # self.proj = nn.Conv3d(
-        #     1,
-        #     embed_dim,
-        #     kernel_size=(1, patch_size, patch_size),
-        #     stride=(1, patch_size, patch_size),
-        # )  # CHANGED
-            
-        # self.proj = nn.Conv2d(
-        #     in_chans,
-        #     embed_dim*in_chans,
-        #     kernel_size=(patch_size, patch_size),
-        #     stride=(patch_size, patch_size),
-        #     groups=in_chans,
-        # )  # CHANGED
+        # self.channel_embed = nn.Embedding(in_chans, embed_dim)
+        self.channel_embed = ChannelEmbedding(in_chans, embed_dim)  # dynamic but fixed sin-cos embedding
 
-        self.channel_embed = nn.Embedding(in_chans, embed_dim)
         self.enable_sample = enable_sample
 
-        trunc_normal_(self.channel_embed.weight, std=0.02)
+        # trunc_normal_(self.channel_embed.weight, std=0.02)
+        self.initialize_weights()
 
-    def forward(self, x, channel_mask_ratio=0.5, channel_ids=None):
+    def initialize_weights(self):
+        # TODO: Initialize self.proj
+        # initialize patch_embed like nn.Linear (instead of nn.Conv3d)
+        try:
+            w = self.proj.weight.data
+            torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
+        except:
+            w1 = self.proj[0].weight.data
+            w2 = self.proj[1].weight.data
+            torch.nn.init.xavier_uniform_(w1.view([w1.shape[0], -1]))
+            torch.nn.init.xavier_uniform_(w2.view([w2.shape[0], -1]))
+
+    def forward(self, x, channel_mask_ratio=0.5, channel_ids=SENTINEL_WV):
         # embedding lookup
         if channel_ids is None:
-            channel_ids = torch.arange(x.shape[1], device=x.device).unsqueeze(0).repeat(x.shape[0], 1)
-            # channel_ids = torch.tensor(SENTINEL_WV, device=x.device).unsqueeze(0).repeat(x.shape[0], 1)
-        cur_channel_embed = self.channel_embed(
-            channel_ids #FIXME: better channel embedding
-        )  # B, Cin, embed_dim=Cout
-        cur_channel_embed = cur_channel_embed.permute(0, 2, 1)  # B Cout Cin
+            channel_ids = np.arange(x.shape[1])
+        cur_channel_embed = self.channel_embed(channel_ids)  # 1, Cin, embed_dim=Cout
+        cur_channel_embed = cur_channel_embed.permute(0, 2, 1)  # 1 Cout Cin
 
         B, Cin, H, W = x.shape
         # Note: The current number of channels (Cin) can be smaller or equal to in_chans
@@ -155,7 +130,6 @@ class PatchEmbedPerChannel(nn.Module):
         if self.training and self.enable_sample:
             len_keep = int(Cin * (1 - channel_mask_ratio))
             noise = torch.rand(1, Cin, device=x.device)  # noise in [0, 1]
-            # noise = torch.rand(B, Cin, device=x.device)  # noise in [0, 1]
             # sort noise for each sample
             ids_shuffle = torch.argsort(noise, dim=1)  # ascend: small is keep, large is remove
             ids_restore = torch.argsort(ids_shuffle, dim=1)
@@ -163,9 +137,6 @@ class PatchEmbedPerChannel(nn.Module):
             # keep the first subset
             ids_keep = ids_shuffle[:, :len_keep]
             x = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(B, 1, H, W))
-            # x = torch.gather(x, dim=2, index=ids_keep.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).repeat(B, Cout, 1, H, W))
-            # x = x[:, :, ids_keep].squeeze(2) # B Cout Cin H W
-            # x = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, H, W))
 
             # generate the binary mask: 0 is keep, 1 is remove
             mask = torch.ones([1, Cin], device=x.device)
@@ -184,9 +155,7 @@ class PatchEmbedPerChannel(nn.Module):
             ids_restore = torch.arange(Cin, device=x.device) # TODO: check this
 
         # shared projection layer across channels
-        # x = self.proj(x).view(B, -1, Cin, H, W)  # B Cout Cin H W
         x = self.proj(x.unsqueeze(1))  # B Cout Cin H W
-        # x = self.bottleneck(x.permute(0, 2, 3, 4, 1)).permute(0, 4, 1, 2, 3)
 
         # channel specific offsets
         x += cur_channel_embed.unsqueeze(-1).unsqueeze(-1)
@@ -203,8 +172,6 @@ class PatchEmbedPerChannel(nn.Module):
                 B, Cout, Cin, HW = x.shape
                 x = x.permute(0, 3, 1, 2).reshape(B, -1, Cin) # B HWCout Cin
                 x = self.channel_pool(x).reshape(B, HW, Cout) # B HW Cout
-                # x = x.reshape(B, Cin, -1)
-                # x = x.mean(dim=1)
         else:
             x = x.flatten(2) # B Cout CinHW
             x = x.transpose(1, 2)  # B CinHW Cout
@@ -232,7 +199,7 @@ class ChannelViTEncoder(ViTEncoder):
         self.patch_embed = PatchEmbedPerChannel(img_size, patch_size, in_chans, embed_dim, channel_pool=self.channel_pool)
         
     # ViT Forward path
-    def forward(self, x, channel_ids=None, return_dict=False):
+    def forward(self, x, channel_ids=SENTINEL_WV, return_dict=False):
         x, _, _, _ = self.patch_embed(x, 0, channel_ids)
         # if self.collpase_embed:
         #     x = collpase_channels(x, 'mean')
@@ -278,7 +245,7 @@ class ChannelViTEncoder(ViTEncoder):
         return pos_embed
 
     # Encoder for MAE
-    def forward_encoder(self, x, mask_ratio=0.75, channel_mask_ratio=0.5, channel_ids=None, return_dict=False):
+    def forward_encoder(self, x, mask_ratio=0.75, channel_mask_ratio=0.5, channel_ids=SENTINEL_WV, return_dict=False):
         # embed patches
         x, _channel_mask, channel_ids_restore, cin = self.patch_embed(x, channel_mask_ratio, channel_ids)
         channel_mask = _channel_mask.unsqueeze(1).expand(-1, self.patch_size**2, -1).flatten(1)
