@@ -7,9 +7,11 @@
 # Position embedding utils
 # --------------------------------------------------------
 
+from typing import Any
 import numpy as np
 
 import torch
+import torch.nn as nn
 
 # --------------------------------------------------------
 # 2D sine-cosine position embedding
@@ -65,6 +67,43 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
 
     emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
     return emb
+
+
+class ChannelEmbedding(nn.Module):
+    def __init__(self, in_chans, embed_dim) -> None:
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.in_chans = in_chans
+        self.channel_embed = nn.Parameter(torch.zeros(1, in_chans, embed_dim), requires_grad=False) 
+
+    def __call__(self, channel_idx: list):
+        if hasattr(self, 'channel_idx') and self.channel_idx == channel_idx:
+            return self.channel_embed
+        self.channel_idx = channel_idx
+        # fixed sin-cos embedding
+        channel_embed = self.get_1d_sincos_channel_embed_from_idx(self.channel_embed.shape[-1], self.channel_idx)
+        self.channel_embed.data.copy_(torch.from_numpy(channel_embed).to(self.channel_embed.device).unsqueeze(0).float())
+        return self.channel_embed
+
+    def get_1d_sincos_channel_embed_from_idx(self, embed_dim, channel_idx):
+        """
+        embed_dim: output dimension for each position
+        channel_idx: a list of channel_idx to be encoded: size (C,)
+        out: (C, D)
+        """
+        assert embed_dim % 2 == 0
+        omega = np.arange(embed_dim // 2, dtype=np.float32)
+        omega /= embed_dim / 2.
+        omega = 1. / 10000**omega  # (D/2,)
+
+        channel_idx = np.array(channel_idx).reshape(-1)  # (M,)
+        out = np.einsum('m,d->md', channel_idx, omega)  # (M, D/2), outer product
+
+        emb_sin = np.sin(out) # (M, D/2)
+        emb_cos = np.cos(out) # (M, D/2)
+
+        emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
+        return emb
 
 
 # --------------------------------------------------------
