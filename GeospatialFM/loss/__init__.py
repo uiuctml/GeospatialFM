@@ -19,6 +19,8 @@ def get_loss_list(loss_cfg):
             loss_list.append(SpectralInterpolationLoss(**loss_kwargs))
         elif loss_name == 'BCE':
             loss_list.append(MultilabelBCELoss(**loss_kwargs))
+        elif loss_name == 'CrossModalLoss':
+            loss_list.append(CrossModalMSELoss(**loss_kwargs))
         else:
             raise NotImplementedError
     return loss_list

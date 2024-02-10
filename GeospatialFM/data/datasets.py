@@ -33,24 +33,20 @@ class myBigEarthNet(BigEarthNet):
 
         sample: dict[str, Tensor] = {"image": image, "label": label.float()}
 
-        if self.transforms is not None:
-            sample = self.transforms(sample)
+        if self.bands == 'all':
+            sample['radar'] = sample['image'][:2]
+            sample['image'] = sample['image'][2:]
 
         image = sample['image']
-
-        if self.bands == 'all':
-            radar = image[:2]
-            image = image[2:]
         if self.pad_s2:
             assert image.shape[0] == 12
             img_size = image.shape[1:]
             image = torch.cat((image[:10], torch.zeros((1, *img_size)), image[10:]), dim=0)
-        if self.rgb:
-            image = image[self.RGB_INDEX]
-
+        # if self.rgb:
+        #     image = image[self.RGB_INDEX]
         sample['image'] = image
-        if self.bands == 'all':
-            sample['radar'] = radar
+        if self.transforms is not None:
+            sample = self.transforms(sample)
 
         return sample
 
@@ -90,7 +86,11 @@ class mySo2Sat(So2Sat):
             img_size = s2.shape[1:]
             s2 = torch.cat((torch.zeros((1, *img_size)), s2[:8], torch.zeros((2, *img_size)), s2[8:]), dim=0)
 
-        sample = {"image": s2.float(), "radar": s1.float(), "label": label}
+        sample = {'label': label}
+        if s1.shape[0] > 0:
+            sample['radar'] = s1
+        if s2.shape[0] > 0:
+            sample['image'] = s2
 
         if self.transforms is not None:
             sample = self.transforms(sample)

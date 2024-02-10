@@ -88,7 +88,10 @@ class RandomResizedCropALL(object):
         self.ignored_keys = ignored_keys
     
     def __call__(self, samples):
-        image = samples['image'] if 'image' in samples else samples['image1']
+        if 'image' in samples: image = samples['image']
+        elif 'image1' in samples: image = samples['image1']
+        elif 'radar' in samples: image = samples['radar']
+        else: raise ValueError('No image found in samples')
         i, j, h, w = transforms.RandomResizedCrop.get_params(image, self.scale, self.ratio)
         for key, val in samples.items():
             if key not in self.ignored_keys:
@@ -132,7 +135,51 @@ class StandardizeALL(object):
     def __call__(self, samples):
         for key, val in samples.items():
             if key not in self.ignored_keys:
-                samples[key] = (val / 10000.0).to(torch.float)
+                if key == 'radar':
+                    samples[key] = (val / -1000.0).to(torch.float)
+                else:
+                    samples[key] = (val / 10000.0).to(torch.float)
+        return samples
+    
+class NormalizeALL(object):
+    """Normalize the input PIL Image."""
+    
+    def __init__(self, mean, std, ignored_keys=['label', 'mask']):
+        self.mean = mean
+        self.std = std
+        self.ignored_keys = ignored_keys
+    
+    def __call__(self, samples):
+        img = []
+        split_point = 0
+        if 'radar' in samples.keys() and 'radar' not in self.ignored_keys:
+            img.append(samples['radar'])
+            split_point = samples['radar'].shape[0]
+        if 'image' in samples.keys() and 'image' not in self.ignored_keys:
+            img.append(samples['image'])
+        
+        if len(img) > 0:
+            img = torch.cat(img, dim=0)
+            if img.shape[0] < len(self.mean) and split_point == 0:
+                mean = self.mean[-img.shape[0]:]
+                std = self.std[-img.shape[0]:]
+            elif img.shape[0] < len(self.mean) and split_point > 0:
+                mean = self.mean[:split_point]
+                std = self.std[:split_point]
+            else:
+                mean = self.mean
+                std = self.std
+            assert img.shape[0] == len(mean) == len(std)
+            img = F.normalize(img, mean, std)
+            if 'radar' in samples.keys() and 'radar' not in self.ignored_keys:
+                samples['radar'] = img[:split_point].float()
+            if 'image' in samples.keys() and 'image' not in self.ignored_keys:
+                samples['image'] = img[split_point:].float()
+        else:
+            assert 'image1' in samples.keys() and 'image2' in samples.keys()
+            samples['image1'] = F.normalize(samples['image1'], self.mean, self.std).float()
+            samples['image2'] = F.normalize(samples['image2'], self.mean, self.std).float()
+
         return samples
 
 def make_classification_train_transform(
@@ -152,7 +199,7 @@ def make_classification_train_transform(
     if standardize:
         transforms_list.append(StandardizeALL())
     elif normalize:
-        raise NotImplementedError
+        transforms_list.append(NormalizeALL(mean_std[0], mean_std[1]))
     return transforms.Compose(transforms_list)
 
 def make_classification_eval_transform(
@@ -173,7 +220,7 @@ def make_classification_eval_transform(
     if standardize:
         transforms_list.append(StandardizeALL())
     elif normalize:
-        raise NotImplementedError
+        transforms_list.append(NormalizeALL(mean_std[0], mean_std[1]))
     return transforms.Compose(transforms_list)
 
 def make_segmentation_train_transform(
@@ -196,7 +243,7 @@ def make_segmentation_train_transform(
     if standardize:
         transforms_list.append(StandardizeALL())
     elif normalize:
-        raise NotImplementedError
+        transforms_list.append(NormalizeALL(mean_std[0], mean_std[1]))
     return transforms.Compose(transforms_list)
 
 def make_segmentation_eval_transform(
@@ -215,7 +262,7 @@ def make_segmentation_eval_transform(
     if standardize:
         transforms_list.append(StandardizeALL())
     elif normalize:
-        raise NotImplementedError
+        transforms_list.append(NormalizeALL(mean_std[0], mean_std[1]))
     return transforms.Compose(transforms_list)
 
 
