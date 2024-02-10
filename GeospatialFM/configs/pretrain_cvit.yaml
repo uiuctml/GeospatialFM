@@ -3,21 +3,20 @@ MODEL:
 LOSS:
   Spectral:
     scale: 1.0
-    recon_all: true
   MAE:
     scale: 1.0
-    recon_all: true
-    cross_modal_recon: false
-    channel_reweight: true
+  CrossModalLoss:
+    scale: 1.0
+    use_mask: false
 DATASET:
   root: ./data/geospatial
   name: BigEarthNet
   train_transforms:
-    normalize: false
-    standardize: true
+    normalize: true
+    standardize: false
   eval_transforms:
-    normalize: false
-    standardize: true
+    normalize: true
+    standardize: false
   kwargs:
     bands: all
     num_classes: 19
@@ -31,9 +30,9 @@ DATASET:
 TRAINER:
   # Training related
   num_train_epochs: 20
-  per_device_train_batch_size: 320
+  per_device_train_batch_size: 160
   per_device_eval_batch_size: 320
-  gradient_accumulation_steps: 1
+  gradient_accumulation_steps: 2
   learning_rate: 1.5e-4
   weight_decay: 0.05
   # dataloader

@@ -164,12 +164,9 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
                         losses['image_acc'] = image_acc
                     elif eval_metric == 'mAP':
                         model_out = F.sigmoid(model_out)
+                        model_out = (model_out >= 0.5).to(torch.float32)
                         all_preds.append(model_out.cpu())
                         all_labels.append(label.cpu())
-                        # _all_preds = torch.cat(all_preds, dim=0).float()
-                        # _all_labels = torch.cat(all_labels, dim=0).float()
-                        # mAP = average_precision_score(_all_labels.cpu().numpy(), _all_preds.cpu().numpy(), average='macro')
-                        # losses['mAP'] = mAP
 
                 num_samples += batch_size
 
