@@ -4,12 +4,12 @@ DATASET:
   train_transforms:
     crop_size: 224
     hflip_prob: 0.5
-    normalize: false
-    standardize: true
+    normalize: true
+    standardize: false
   eval_transforms:
     resize_size: 224
-    normalize: false
-    standardize: true
+    normalize: true
+    standardize: false
   kwargs:
     bands: all
     patch_size: 128
