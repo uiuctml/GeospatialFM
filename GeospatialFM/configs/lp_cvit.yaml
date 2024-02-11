@@ -9,7 +9,7 @@ MODEL:
     head_kwargs:
       use_bias: true
 DATASET:
-  name: EuroSAT
+  name: BigEarthNet
 TRAINER:
   # Training related
   num_train_epochs: 100
