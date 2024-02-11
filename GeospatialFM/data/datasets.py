@@ -37,16 +37,17 @@ class myBigEarthNet(BigEarthNet):
             sample['radar'] = sample['image'][:2]
             sample['image'] = sample['image'][2:]
 
+        # if self.rgb:
+        #     image = image[self.RGB_INDEX]
+        if self.transforms is not None:
+            sample = self.transforms(sample)
+
         image = sample['image']
         if self.pad_s2:
             assert image.shape[0] == 12
             img_size = image.shape[1:]
             image = torch.cat((image[:10], torch.zeros((1, *img_size)), image[10:]), dim=0)
-        # if self.rgb:
-        #     image = image[self.RGB_INDEX]
         sample['image'] = image
-        if self.transforms is not None:
-            sample = self.transforms(sample)
 
         return sample
 
