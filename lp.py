@@ -164,7 +164,7 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
                         losses['image_acc'] = image_acc
                     elif eval_metric == 'mAP':
                         model_out = F.sigmoid(model_out)
-                        model_out = (model_out >= 0.5).to(torch.float32)
+                        # model_out = (model_out >= 0.5).to(torch.float32)
                         all_preds.append(model_out.cpu())
                         all_labels.append(label.cpu())
 

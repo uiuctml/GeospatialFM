@@ -1,4 +1,4 @@
-for i in 9e-2
+for i in 5e-3 1e-2 5e-2 7e-2 1e-1
 do
     for j in 0
     do  
