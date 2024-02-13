@@ -41,8 +41,8 @@ TRAINER_EXTRA:
     threshold: 0.0
 LOGGER:
   project: "GeoFoundation"
-  entity: "ehzoahis"
-  dir: "./results/"
+  entity: "yuxuanw"
+  dir: "./results_wyx/"
 DATASET:
   root: ./data/geospatial
   name: ''

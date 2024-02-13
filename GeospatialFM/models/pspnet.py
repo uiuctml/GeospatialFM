@@ -17,7 +17,7 @@ class PyramidPoolingModule(nn.Module):
             p = F.relu(p, inplace=True)
             p = F.interpolate(p, size=(h, w), mode='bilinear', align_corners=False)
             pooled_features.append(p)
-        return torch.cat(pooled_features, dim=1)
+        return torch.cat(pooled_features, dim=1).contiguous()
 
 
 class PSPNetDecoder(nn.Module):
@@ -40,7 +40,7 @@ class PSPNetDecoder(nn.Module):
         num_patches_side = int(N ** 0.5)
         H, W = num_patches_side, num_patches_side
         assert H * W == N, 'Number of patches must be a square number'
-        vit_features = x.permute(0, 2, 1).reshape(B, D, H, W)
+        vit_features = x.permute(0, 2, 1).reshape(B, D, H, W).contiguous()
         
         # Pyramid Pooling Module
         ppm_features = self.pyramid_pooling(vit_features)

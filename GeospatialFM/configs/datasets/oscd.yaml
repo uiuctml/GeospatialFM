@@ -1,9 +1,11 @@
 DATASET:
-  root: ./oscd
+  root: ./data/geospatial
   name: OSCD
   train_transforms:
     crop_size: 224
     hflip_prob: 0.5
+    vflip_prob: 0.5
+    random_rotate: true
     normalize: true
     standardize: false
   eval_transforms:

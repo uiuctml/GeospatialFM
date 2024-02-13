@@ -28,7 +28,9 @@ def get_loss_list(loss_cfg):
 def get_loss(task_type):
     if task_type == 'classification':
         return CrossEntropyLoss()
-    elif task_type == 'multilabel' or task_type == 'change_detection':
+    elif task_type == 'change_detection':
         return MultilabelBCELoss()
+    elif task_type == 'multilabel':
+        return MultiLabelSoftMarginLoss()
     else:
         raise NotImplementedError
