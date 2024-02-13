@@ -64,6 +64,19 @@ class RandomHorizontalFlipALL(object):
                     samples[key] = F.hflip(val)
         return samples
 
+class RandomVerticalFlipALL(object):
+    def __init__(self, p=0.5, ignored_keys=['label']):
+        self.p = p
+        self.ignored_keys = ignored_keys
+    
+    def __call__(self, samples):
+        if random.random() > self.p:
+            for key, val in samples.items():
+                if key not in self.ignored_keys:
+                    samples[key] = F.vflip(val)
+        return samples
+
+
 class RandomRotationALL(object):
     def __init__(self, degrees, ignored_keys=['label']):
         self.degrees = (-degrees, degrees)
@@ -228,6 +241,7 @@ def make_segmentation_train_transform(
     resize_size: int = 224,
     interpolation=transforms.InterpolationMode.BICUBIC, # BILINEAR
     hflip_prob: float = 0.5,
+    vflip_prob: float = 0.5,
     random_rotate: bool = True,
     mean_std: tuple = (None, None),
     normalize: bool = False,
@@ -237,8 +251,10 @@ def make_segmentation_train_transform(
     transforms_list = [ResizeALL(resize_size, interpolation=interpolation, ignored_keys=['label', 'mask'])]
     if hflip_prob > 0.0:
         transforms_list.append(RandomHorizontalFlipALL(p=hflip_prob))
+    if vflip_prob > 0.0:
+        transforms_list.append(RandomVerticalFlipALL(p=vflip_prob))
     if random_rotate:
-        transforms_list.append(RandomRotationALL(degrees=30))
+        transforms_list.append(RandomRotationALL(degrees=90))
     transforms_list.append(MaybeToTensorALL())
     if standardize:
         transforms_list.append(StandardizeALL())
