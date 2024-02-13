@@ -55,9 +55,12 @@ def get_datasets(data_cfg):
     print(f"Training Dataset: {data_cfg['name']}")
     data_cfg['kwargs']['root'] = osp.join(data_cfg['root'], data_cfg['name'])
     data_mean_std = get_mean_std(data_cfg)
-    if data_cfg['task_type'] in ['classification', 'multilabel', 'pretrain']:
-        eval_transform = make_classification_eval_transform(**data_cfg['eval_transforms'], mean_std=data_mean_std)
+    if data_cfg['task_type'] in ['classification', 'multilabel']:
+        eval_transform = make_eval_transform(**data_cfg['eval_transforms'], mean_std=data_mean_std)
         train_transform = make_classification_train_transform(**data_cfg['train_transforms'], mean_std=data_mean_std) if data_cfg['use_train_transform'] else eval_transform
+    if data_cfg['task_type'] in ['pretrain']:
+        eval_transform = make_eval_transform(**data_cfg['eval_transforms'], mean_std=data_mean_std)
+        train_transform = make_pretrain_transform(**data_cfg['train_transforms'], mean_std=data_mean_std) if data_cfg['use_train_transform'] else eval_transform
     elif data_cfg['task_type'] in ['change_detection']:
         eval_transform = make_segmentation_eval_transform(**data_cfg['eval_transforms'], mean_std=data_mean_std)
         train_transform = make_segmentation_train_transform(**data_cfg['train_transforms'], mean_std=data_mean_std) if data_cfg['use_train_transform'] else eval_transform

@@ -195,7 +195,8 @@ class NormalizeALL(object):
 
         return samples
 
-def make_classification_train_transform(
+
+def make_pretrain_train_transform(
     *,
     crop_size: int = 224,
     interpolation=transforms.InterpolationMode.BICUBIC, # BILINEAR
@@ -215,7 +216,7 @@ def make_classification_train_transform(
         transforms_list.append(NormalizeALL(mean_std[0], mean_std[1]))
     return transforms.Compose(transforms_list)
 
-def make_classification_eval_transform(
+def make_eval_transform(
     *,
     resize_size: int = 256,
     interpolation=transforms.InterpolationMode.BICUBIC, # BILINEAR
@@ -235,6 +236,27 @@ def make_classification_eval_transform(
     elif normalize:
         transforms_list.append(NormalizeALL(mean_std[0], mean_std[1]))
     return transforms.Compose(transforms_list)
+
+def make_classification_train_transform(
+    *,
+    crop_size: int = 224,
+    interpolation=transforms.InterpolationMode.BICUBIC, # BILINEAR
+    hflip_prob: float = 0.5,
+    mean_std: tuple = (None, None),
+    normalize: bool = False,
+    standardize: bool = True,
+    **kwargs
+):
+    transforms_list = [RandomResizedCropALL(crop_size, interpolation=interpolation, scale=(0.8, 1.0))]
+    if hflip_prob > 0.0:
+        transforms_list.append(RandomHorizontalFlipALL(p=hflip_prob))
+    transforms_list.append(MaybeToTensorALL())
+    if standardize:
+        transforms_list.append(StandardizeALL())
+    elif normalize:
+        transforms_list.append(NormalizeALL(mean_std[0], mean_std[1]))
+    return transforms.Compose(transforms_list)
+
 
 def make_segmentation_train_transform(
     *,
