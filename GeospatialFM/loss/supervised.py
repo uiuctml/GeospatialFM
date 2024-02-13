@@ -32,7 +32,8 @@ class MultilabelBCELoss(nn.Module):
         self.lambda_ = scale
 
     def forward(self, logits, labels, output_dict=False, **kwargs):
-        bce = F.binary_cross_entropy_with_logits(logits, labels) * self.lambda_
+        labels = labels.to(torch.float32)
+        bce = F.binary_cross_entropy_with_logits(logits.flatten(), labels.flatten()) * self.lambda_
         if output_dict:
             return dict(bce=bce)
         return bce

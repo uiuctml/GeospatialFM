@@ -28,7 +28,11 @@ class ViTCDModel(ViTModel):
     def __init__(self, encoder, head):
         super().__init__(encoder, head)
     
-    def forward(self, x1, x2):
+    def forward(self, x1, x2=None):
+        if isinstance(x1, tuple):
+            x1, x2 = x1
+        else:
+            assert x2 is not None, 'image2 must be provided'
         x = self.encoder(x1, x2) 
         x = self.head(x)
         return x
