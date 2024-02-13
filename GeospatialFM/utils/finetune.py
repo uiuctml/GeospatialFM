@@ -128,7 +128,7 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
     assert input_keyword in ['image', 'radar', 'feature', 'images'] # CHANGE
     assert target_keyword in ['label', 'mask'] # CHANGE
     assert eval_metric in ['accuracy', 'mAP', 'f1'] # CHANGE
-    eval_fn = get_eval_fn(eval_metric)
+    eval_meter = get_eval_meter(eval_metric)
     metrics = {}
     if not is_master(args):
         return metrics
@@ -164,8 +164,9 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
                     total_loss = sum(losses.values())
                     losses["loss"] = total_loss
                     
-                    image_metric = eval_fn(model_out, label, return_dict=True)
-                    losses.update(image_metric)
+                    eval_meter.update(model_out, label)
+                    eval_metric = eval_meter.get_metrics()
+                    # losses.update(eval_metric)
 
                 num_samples += batch_size
 
@@ -175,12 +176,14 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
                     except:
                         cumulative_losses[key] += val * batch_size
 
+                eval_metric.update(cumulative_losses)
+
                 if is_master(args) and (i % 100) == 0:
                     loss_log = f"Eval Epoch: {epoch} [{num_samples} / {samples_per_val}]" 
                     loss_log += " ".join(
                         [
                             f"{key.replace('_', ' ')}: {val / num_samples:.6f}" 
-                            for key, val in cumulative_losses.items()
+                            for key, val in eval_metric.items()
                         ]
                     )
                     logging.info(loss_log)
@@ -188,6 +191,7 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
             for key, val in cumulative_losses.items():
                 metrics[key] = val / num_samples
 
+            metrics.update(eval_meter.get_metrics())
             metrics.update({"epoch": epoch, "num_samples": num_samples})
 
     if not metrics:
