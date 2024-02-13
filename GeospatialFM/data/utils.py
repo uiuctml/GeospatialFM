@@ -33,7 +33,7 @@ def get_mean_std(data_cfg): # CHANGE
     elif data_cfg['name'] != 'OSCD' and data_cfg['kwargs']['bands'] == 'all':
         return S1_MEAN + S2A_MEAN, S1_STD + S2A_STD  # For now, only support BigEarthNet
     try:
-        dm = getattr(tgdm, data_cfg['name']+'DataModule')
+        dm = getattr(tgdm, data_cfg['name']+'DataModule')()
         if data_cfg['name'] == 'So2Sat':
             version = data_cfg['kwargs']['version']
             mean = dm.means_per_version[version]
@@ -51,30 +51,19 @@ def get_dataset(data_cfg, split='train', transforms=None):
     except:
         raise NotImplementedError
 
-# def get_dataloaders(data_cfg):
-#     data_cfg['kwargs']['root'] = osp.join(data_cfg['root'], data_cfg['name'])
-#     train_dataset = get_dataset(data_cfg, split='train')
-#     val_dataset = get_dataset(data_cfg, split='val')
-#     test_dataset = get_dataset(data_cfg, split='test')
-    
-#     train_dataloader = DataLoader(train_dataset, shuffle=True, **data_cfg['dataloader'])
-#     val_dataloader = DataLoader(val_dataset, shuffle=False, **data_cfg['dataloader'])
-#     test_dataloader = DataLoader(test_dataset, shuffle=False, **data_cfg['dataloader'])
-
-    # return train_dataloader, val_dataloader, test_dataloader
-
 def get_datasets(data_cfg):
     print(f"Training Dataset: {data_cfg['name']}")
     data_cfg['kwargs']['root'] = osp.join(data_cfg['root'], data_cfg['name'])
     data_mean_std = get_mean_std(data_cfg)
-    if data_cfg['task_type'] in ['classification', 'multilabel', 'pretrain']:
-        eval_transform = make_classification_eval_transform(**data_cfg['eval_transforms'], mean_std=data_mean_std)
+    if data_cfg['task_type'] in ['classification', 'multilabel']:
+        eval_transform = make_eval_transform(**data_cfg['eval_transforms'], mean_std=data_mean_std)
         train_transform = make_classification_train_transform(**data_cfg['train_transforms'], mean_std=data_mean_std) if data_cfg['use_train_transform'] else eval_transform
+    if data_cfg['task_type'] in ['pretrain']:
+        eval_transform = make_eval_transform(**data_cfg['eval_transforms'], mean_std=data_mean_std)
+        train_transform = make_pretrain_transform(**data_cfg['train_transforms'], mean_std=data_mean_std) if data_cfg['use_train_transform'] else eval_transform
     elif data_cfg['task_type'] in ['change_detection']:
         eval_transform = make_segmentation_eval_transform(**data_cfg['eval_transforms'], mean_std=data_mean_std)
         train_transform = make_segmentation_train_transform(**data_cfg['train_transforms'], mean_std=data_mean_std) if data_cfg['use_train_transform'] else eval_transform
-    # eval_transform = TransformSample(eval_transform_func)
-    # train_transform = TransformSample(train_transform_func) if data_cfg['use_train_transform'] else eval_transform
     train_dataset = get_dataset(data_cfg, split='train', transforms=train_transform)
     test_dataset = get_dataset(data_cfg, split='test', transforms=eval_transform)
     try:

@@ -32,7 +32,20 @@ class MultilabelBCELoss(nn.Module):
         self.lambda_ = scale
 
     def forward(self, logits, labels, output_dict=False, **kwargs):
-        bce = F.binary_cross_entropy_with_logits(logits, labels) * self.lambda_
+        labels = labels.to(torch.float32)
+        bce = F.binary_cross_entropy_with_logits(logits.flatten(), labels.flatten()) * self.lambda_
         if output_dict:
             return dict(bce=bce)
         return bce
+
+class MultiLabelSoftMarginLoss(nn.Module):
+    def __init__(self, scale=1.0):
+        super().__init__()
+        self.lambda_ = scale
+
+    def forward(self, logits, labels, output_dict=False, **kwargs):
+        labels = labels.to(torch.float32)
+        loss = F.multilabel_soft_margin_loss(logits, labels) * self.lambda_
+        if output_dict:
+            return dict(multi_label_loss=loss)
+        return loss

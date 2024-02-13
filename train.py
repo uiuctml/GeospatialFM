@@ -60,7 +60,7 @@ model = model.to(training_args.device)
     # model = torch.nn.DataParallel(model, device_ids=training_args.device_ids)
 random_seed(0, args.rank)
 if training_args.distributed:
-    ddp_args = {} # TODO: add ddp args
+    ddp_args = {'find_unused_parameters': False} # TODO: add ddp args
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[device], **ddp_args)
 
 data = get_data(cfg, ddp=training_args.distributed)

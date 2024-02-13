@@ -29,23 +29,38 @@ class ChannelAttention(nn.Module):
         self.query = nn.Linear(embed_dim, embed_dim)
         self.key = nn.Linear(embed_dim, embed_dim)
         self.value = nn.Linear(embed_dim, embed_dim)
+        self.scale_factor = 1 / embed_dim ** 0.5
+        self.norm = nn.LayerNorm(embed_dim, eps=1e-6)
+        self.mlp = nn.Sequential(
+            nn.Linear(embed_dim, embed_dim * 4),
+            nn.GELU(),
+            nn.Linear(embed_dim * 4, embed_dim),
+        )
         
     def forward(self, x):
         # Assuming x is of shape [B, C, E]
         # Compute query, key, value matrices
+        x = self.norm(x)
         query = self.query(x)  # Shape [B, C, E]
         key = self.key(x)      # Shape [B, C, E]
         value = self.value(x)  # Shape [B, C, E]
         
         # Calculate attention scores
         attention_scores = torch.matmul(query, key.transpose(-2, -1))  # Shape [B, C, C]
+        attention_scores *= self.scale_factor
         attention_scores = F.softmax(attention_scores, dim=-1)
         
         # Apply attention scores to value matrix
         weighted_values = torch.matmul(attention_scores, value)  # Shape [B, C, E]
         
+        x = x + weighted_values
+        # Layer Norm
+        x = self.norm(x)
+        # MLP
+        x = self.mlp(x)
+
         # Combine weighted values for all channels
-        combined = weighted_values.sum(dim=1)  # Shape [B, E]
+        combined = x.sum(dim=1)  # Shape [B, E]
         
         return combined
 
@@ -68,8 +83,10 @@ class PatchEmbedPerChannel(nn.Module):
         self.patch_size = patch_size
         self.num_patches = num_patches
         if channel_pool == "mean":
+            print("using mean")
             self.channel_pool = nn.AdaptiveAvgPool1d(1)
         elif channel_pool == "max":
+            print("Using Max")
             self.channel_pool = nn.AdaptiveMaxPool1d(1)
         elif channel_pool == "attention":
             print("Using Channel Attention")
@@ -194,7 +211,7 @@ class ChannelViTEncoder(ViTEncoder):
                  **kwargs):
         super().__init__(img_size, patch_size, in_chans, embed_dim, **kwargs) # TODO: check this
         # Additional args for Channel_ViT
-        self.channel_pool = channel_pool
+        self.channel_pool = "attention"
         # override the patch embedding
         self.patch_embed = PatchEmbedPerChannel(img_size, patch_size, in_chans, embed_dim, channel_pool=self.channel_pool)
         
