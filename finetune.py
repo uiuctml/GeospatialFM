@@ -55,7 +55,7 @@ if __name__ == '__main__':
         checkpoint_path = cfg['TRAINER']['logging_dir'],
         mask_ratio = cfg['MODEL']['mask_ratio'],
         dataset = cfg['DATASET']['name'],
-        head_type = cfg['DATASET']['task_head_kwargs']['head_type']
+        head_type = cfg['DATASET']['task_head_kwargs']['head_type'],
     ) # CHANGE
     training_args = argparse.Namespace(**vars(args), **training_args)
     # training_args.device = f'cuda:{training_args.device_ids[0]}'
@@ -94,7 +94,6 @@ if __name__ == '__main__':
                 f.write("===================================\n")
                 f.write(f"Hyperparameters: LR: {cfg['TRAINER']['learning_rate']}, weight decay: {cfg['TRAINER']['weight_decay']}\n")
                 f.write("===================================\n")
-    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=steps, eta_min=1e-7)
     scheduler = get_scheduler(cfg['TRAINER']['lr_scheduler_type'], optimizer, cfg['TRAINER']['learning_rate'], warmup_steps, steps, cfg['TRAINER']['scheduler_kwargs'])
     print(f"Task type: {cfg.DATASET['task_type']}")
     loss = get_loss(cfg.DATASET['task_type'])

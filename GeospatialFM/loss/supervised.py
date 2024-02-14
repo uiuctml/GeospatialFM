@@ -47,5 +47,5 @@ class MultiLabelSoftMarginLoss(nn.Module):
         labels = labels.to(torch.float32)
         loss = F.multilabel_soft_margin_loss(logits, labels) * self.lambda_
         if output_dict:
-            return dict(multi_label_loss=loss)
+            return dict(MultiLabelLoss=loss)
         return loss
