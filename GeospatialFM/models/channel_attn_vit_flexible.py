@@ -123,7 +123,7 @@ class ChannelViTEncoder(ViTEncoder):
                  **kwargs):
         super().__init__(img_size, patch_size, in_chans, embed_dim, **kwargs) # TODO: check this
         # Additional args for Channel_ViT
-        self.channel_pool = "attention"
+        self.channel_pool = channel_pool
         # override the patch embedding
         self.patch_embed = PatchEmbedPerChannel(img_size, patch_size, in_chans, embed_dim)
         if channel_pool == "mean":
