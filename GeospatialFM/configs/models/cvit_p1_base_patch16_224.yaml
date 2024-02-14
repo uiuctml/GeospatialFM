@@ -3,7 +3,7 @@ MODEL:
   cross_modal: true
   unified_decoder: true
   mask_ratio: 0.75
-  channel_mask_ratio: 0.25
+  channel_mask_ratio: 0.75
   use_clip: false
   use_siglip: false
   OPTICAL:
@@ -22,7 +22,7 @@ MODEL:
       init_values: null
       num_register_tokens: 0
       channel_pool: max
-      pool_position: 0
+      pool_position: 1
   RADAR:
     channel_vit: false
     kwargs:

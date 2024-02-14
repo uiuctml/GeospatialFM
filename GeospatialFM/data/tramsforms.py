@@ -79,11 +79,13 @@ class RandomVerticalFlipALL(object):
 
 class RandomRotationALL(object):
     def __init__(self, degrees, ignored_keys=['label']):
-        self.degrees = (-degrees, degrees)
+        # self.degrees = (-degrees, degrees)
+        self.degrees = [0, 90, 180, 270]
         self.ignored_keys = ignored_keys
     
     def __call__(self, samples):
-        angle = float(torch.empty(1).uniform_(float(self.degrees[0]), float(self.degrees[1])).item())
+        # angle = float(torch.empty(1).uniform_(float(self.degrees[0]), float(self.degrees[1])).item())
+        angle = random.choice(self.degrees)
         for key, val in samples.items():
             if key not in self.ignored_keys:
                 samples[key] = F.rotate(val, angle)
@@ -196,7 +198,7 @@ class NormalizeALL(object):
         return samples
 
 
-def make_pretrain_train_transform(
+def make_pretrain_transform(
     *,
     crop_size: int = 224,
     interpolation=transforms.InterpolationMode.BICUBIC, # BILINEAR

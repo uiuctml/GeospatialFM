@@ -67,15 +67,6 @@ class PatchEmbedPerChannel(nn.Module):
         self.img_size = img_size
         self.patch_size = patch_size
         self.num_patches = num_patches
-        if channel_pool == "mean":
-            self.channel_pool = nn.AdaptiveAvgPool1d(1)
-        elif channel_pool == "max":
-            self.channel_pool = nn.AdaptiveMaxPool1d(1)
-        elif channel_pool == "attention":
-            print("Using Channel Attention")
-            self.channel_pool = ChannelAttention(embed_dim)
-        else:
-            self.channel_pool = None
             
         self.proj = nn.Sequential(
             nn.Conv3d(
@@ -102,7 +93,6 @@ class PatchEmbedPerChannel(nn.Module):
         self.initialize_weights()
 
     def initialize_weights(self):
-        # TODO: Initialize self.proj
         # initialize patch_embed like nn.Linear (instead of nn.Conv3d)
         try:
             w = self.proj.weight.data
@@ -121,12 +111,6 @@ class PatchEmbedPerChannel(nn.Module):
         cur_channel_embed = cur_channel_embed.permute(0, 2, 1)  # 1 Cout Cin
 
         B, Cin, H, W = x.shape
-        # Note: The current number of channels (Cin) can be smaller or equal to in_chans
-        # x = self.proj(x)  # B Cout*Cin H W
-        # h, w = x.shape[-2:]
-        # x = x.reshape(B, -1, Cin, h, w)  # B Cout Cin, H W
-        # Cout = x.shape[1]
-        # channel_mask_ratio = random.uniform(0.25, 0.75) if channel_mask_ratio != 0 else 0
         if self.training and self.enable_sample:
             len_keep = int(Cin * (1 - channel_mask_ratio))
             noise = torch.rand(1, Cin, device=x.device)  # noise in [0, 1]
@@ -161,20 +145,6 @@ class PatchEmbedPerChannel(nn.Module):
         x += cur_channel_embed.unsqueeze(-1).unsqueeze(-1)
         # x += self.channel_embed[:, :, cur_channels, :, :]  # B Cout Cin H W
 
-        if self.channel_pool is not None:
-            if isinstance(self.channel_pool, ChannelAttention):
-                B, Cout, Cin, H, W = x.shape
-                x = x.permute(0, 3, 4, 2, 1).reshape(-1, Cin, Cout)
-                x = self.channel_pool(x).reshape(B, -1, Cout)
-            else:
-                # preparing the output sequence
-                x = x.flatten(3)  # B Cout Cin HW
-                B, Cout, Cin, HW = x.shape
-                x = x.permute(0, 3, 1, 2).reshape(B, -1, Cin) # B HWCout Cin
-                x = self.channel_pool(x).reshape(B, HW, Cout) # B HW Cout
-        else:
-            x = x.flatten(2) # B Cout CinHW
-            x = x.transpose(1, 2)  # B CinHW Cout
         # expand mask and ids_restore to B
         mask = mask.expand(B, -1)
         ids_restore = ids_restore.expand(B, -1)
@@ -191,21 +161,51 @@ class ChannelViTEncoder(ViTEncoder):
                  in_chans=3,
                  embed_dim=768,
                  channel_pool='max',
+                 pool_position=0,
                  **kwargs):
         super().__init__(img_size, patch_size, in_chans, embed_dim, **kwargs) # TODO: check this
         # Additional args for Channel_ViT
         self.channel_pool = channel_pool
         # override the patch embedding
         self.patch_embed = PatchEmbedPerChannel(img_size, patch_size, in_chans, embed_dim, channel_pool=self.channel_pool)
+        if channel_pool == "mean":
+            self.channel_pool = nn.AdaptiveAvgPool1d(1)
+        elif channel_pool == "max":
+            self.channel_pool = nn.AdaptiveMaxPool1d(1)
+        elif channel_pool == "attention":
+            print("Using Channel Attention")
+            self.channel_pool = ChannelAttention(embed_dim)
+        else:
+            raise NotImplementedError
+        assert pool_position in [0, 1]
+        self.pool_position = pool_position
         
     # ViT Forward path
     def forward(self, x, channel_ids=SENTINEL_WV, return_dict=False):
         x, _, _, _ = self.patch_embed(x, 0, channel_ids)
-        # if self.collpase_embed:
-        #     x = collpase_channels(x, 'mean')
+        if self.pool_position == 0:
+            if isinstance(self.channel_pool, ChannelAttention):
+                B, Cout, Cin, H, W = x.shape
+                x = x.permute(0, 3, 4, 2, 1).reshape(-1, Cin, Cout)
+                x = self.channel_pool(x).reshape(B, -1, Cout)
+            else:
+                # preparing the output sequence
+                x = x.flatten(3)  # B Cout Cin HW
+                B, Cout, Cin, HW = x.shape
+                x = x.permute(0, 3, 1, 2).reshape(B, -1, Cin) # B HWCout Cin
+                x = self.channel_pool(x).reshape(B, HW, Cout) # B HW Cout
+            
+            pos_embed = self.pos_embed[:, 1:, :]
+            x = x + pos_embed # B HW Cout 
+        else:
+            x = x.flatten(3) # B Cout Cin HW
+            x = x.permute(0, 2, 3, 1) # B Cin HW Cout
 
-        # add pos embed w/o cls token
-        x = x + self.pos_embed[:, 1:, :]
+            pos_embed = self.interpolate_positional_encoder(cin) # TODO: check this
+            x = x + pos_embed # B Cin HW Cout
+
+        # # add pos embed w/o cls token
+        # x = x + self.pos_embed[:, 1:, :]
 
         # append cls token
         cls_token = self.cls_token + self.pos_embed[:, :1, :]
@@ -227,6 +227,20 @@ class ChannelViTEncoder(ViTEncoder):
             x = blk(x)
         x = self.norm(x)
 
+        if self.pool_position == 1:
+            post_tokens = x[:, :self.num_register_tokens+1]
+            patch_tokens = x[:, self.num_register_tokens+1:] # [B, CinL, Cout]
+            B, _, Cout = patch_tokens.shape
+            patch_tokens = patch_tokens.view(B, cin, -1, Cout) # [B, Cin, L, Cout]
+            if isinstance(self.channel_pool, ChannelAttention):
+                patch_tokens = patch_tokens.permute(0, 2, 1, 3).reshape(-1, cin, Cout)
+                patch_tokens = self.channel_pool(patch_tokens).reshape(B, -1, Cout)
+            else:
+                # preparing the output sequence
+                patch_tokens = patch_tokens.permute(0, 2, 3, 1).reshape(B, -1, Cin) # B LCout Cin
+                patch_tokens = self.channel_pool(patch_tokens).reshape(B, -1, Cout) # B HW Cout
+            x = torch.cat((post_tokens, patch_tokens), dim=1)
+
         cls_token = x[:, 0]
         register_tokens = x[:, 1:self.num_register_tokens+1] if self.num_register_tokens else None
         patch_tokens = x[:, self.num_register_tokens+1:]
@@ -241,7 +255,8 @@ class ChannelViTEncoder(ViTEncoder):
     def interpolate_positional_encoder(self, cin):
         pos_embed = self.pos_embed[:, 1:, :] # 1 HW Cout
         pos_embed = pos_embed.unsqueeze(1).repeat(1, cin, 1, 1).permute(0, 3, 1, 2) # 1 Cout Cin HW
-        pos_embed = pos_embed.flatten(2).transpose(1, 2) # 1 CinHW Cout
+        # pos_embed = pos_embed.flatten(2).transpose(1, 2) # 1 CinHW Cout
+        pos_embed = pos_embed.permute(0, 2, 3, 1) # 1 Cin HW Cout
         return pos_embed
 
     # Encoder for MAE
@@ -249,23 +264,30 @@ class ChannelViTEncoder(ViTEncoder):
         # embed patches
         x, _channel_mask, channel_ids_restore, cin = self.patch_embed(x, channel_mask_ratio, channel_ids)
         channel_mask = _channel_mask.unsqueeze(1).expand(-1, self.patch_size**2, -1).flatten(1)
-        if not self.channel_pool:
-            # channel_mask_patch = _channel_mask.unsqueeze(1).expand(-1, self.num_patches_per_channel, -1).flatten(1)
-            # keep_idx = torch.argwhere(channel_mask_patch[0] == 0).flatten().unsqueeze(0)
-            # pos_embed = torch.gather(self.pos_embed[:, 1:, :], 1, keep_idx.unsqueeze(-1).repeat(1, 1, self.embed_dim))
-            pos_embed = self.interpolate_positional_encoder(cin) # TODO: check this
-        else:
+        if self.pool_position == 0:
+            if isinstance(self.channel_pool, ChannelAttention):
+                B, Cout, Cin, H, W = x.shape
+                x = x.permute(0, 3, 4, 2, 1).reshape(-1, Cin, Cout)
+                x = self.channel_pool(x).reshape(B, -1, Cout)
+            else:
+                # preparing the output sequence
+                x = x.flatten(3)  # B Cout Cin HW
+                B, Cout, Cin, HW = x.shape
+                x = x.permute(0, 3, 1, 2).reshape(B, -1, Cin) # B HWCout Cin
+                x = self.channel_pool(x).reshape(B, HW, Cout) # B HW Cout
+
             pos_embed = self.pos_embed[:, 1:, :]
-        # print(x.shape, pos_embed.shape)
-        # if self.collpase_embed:
-        #     x = collpase_channels(x)
+            x = x + pos_embed # B HW Cout 
+            # masking: length -> length * mask_ratio
+            x, mask, ids_restore = self.random_masking(x, mask_ratio)           
+        else:
+            x = x.flatten(3) # B Cout Cin HW
+            x = x.permute(0, 2, 3, 1) # B Cin HW Cout
 
-        # add pos embed w/o cls token
-        # x = x + self.pos_embed[:, 1:, :]
-        x = x + pos_embed
-
-        # masking: length -> length * mask_ratio
-        x, mask, ids_restore = self.random_masking(x, mask_ratio)
+            pos_embed = self.interpolate_positional_encoder(cin) # TODO: check this
+            x = x + pos_embed # B Cin HW Cout
+            # masking: length -> length * mask_ratio
+            x, mask, ids_restore = self.random_masking_3D(x, mask_ratio)
 
         # append cls token
         cls_token = self.cls_token + self.pos_embed[:, :1, :]
@@ -286,10 +308,53 @@ class ChannelViTEncoder(ViTEncoder):
         # apply Transformer blocks
         for blk in self.blocks:
             x = blk(x)
-        x = self.norm(x)
+        x = self.norm(x) 
 
+        if self.pool_position == 1:
+            post_tokens = x[:, :self.num_register_tokens+1]
+            patch_tokens = x[:, self.num_register_tokens+1:] # [B, CinL, Cout]
+            B, _, Cout = patch_tokens.shape
+            patch_tokens = patch_tokens.view(B, cin, -1, Cout) # [B, Cin, L, Cout]
+            if isinstance(self.channel_pool, ChannelAttention):
+                patch_tokens = patch_tokens.permute(0, 2, 1, 3).reshape(-1, cin, Cout)
+                patch_tokens = self.channel_pool(patch_tokens).reshape(B, -1, Cout)
+            else:
+                # preparing the output sequence
+                patch_tokens = patch_tokens.permute(0, 2, 3, 1).reshape(B, -1, cin) # B LCout Cin
+                patch_tokens = self.channel_pool(patch_tokens).reshape(B, -1, Cout) # B HW Cout
+            x = torch.cat((post_tokens, patch_tokens), dim=1)
+            
         if return_dict:
             return dict(latent=x, mask=mask, ids_restore=ids_restore, 
                         channel_mask=channel_mask,) 
                         # channel_ids_restore=channel_ids_restore, kept_channels=cin)
         return x, mask, ids_restore, channel_mask#, channel_ids_restore, cin
+
+    def random_masking_3D(self, x, mask_ratio):
+        """
+        Perform per-sample random masking by per-sample shuffling.
+        Per-sample shuffling is done by argsort random noise.
+        x: [N, C, L, D], sequence
+        """
+        N, C, L, D = x.shape  # batch, length, dim
+        x = x.permute(0, 2, 3, 1).flatten(2)  # [N, L, D*C]
+        len_keep = int(L * (1 - mask_ratio))
+        
+        noise = torch.rand(N, L, device=x.device)  # noise in [0, 1]
+        
+        # sort noise for each sample
+        ids_shuffle = torch.argsort(noise, dim=1)  # ascend: small is keep, large is remove
+        ids_restore = torch.argsort(ids_shuffle, dim=1)
+
+        # keep the first subset
+        ids_keep = ids_shuffle[:, :len_keep]
+        x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D*C))
+
+        # generate the binary mask: 0 is keep, 1 is remove
+        mask = torch.ones([N, L], device=x.device)
+        mask[:, :len_keep] = 0
+        # unshuffle to get the binary mask
+        mask = torch.gather(mask, dim=1, index=ids_restore)
+        x_masked = x_masked.view(N, len_keep, D, C).permute(0, 3, 1, 2).reshape(N, -1, D)  # [N, CL, D]
+
+        return x_masked, mask, ids_restore
