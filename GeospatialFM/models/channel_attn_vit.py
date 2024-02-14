@@ -10,6 +10,61 @@ from typing import Optional
 SENTINEL_WV = [442.7, 492.4, 559.8, 664.6, 704.1, 740.5, 782.8, 832.8, 864.7, 945.1, 1373.5, 1613.7, 2202.4]
 # SENTINEL_WV = [4.427, 4.924, 5.598, 6.646, 7.041, 7.405, 7.828, 8.328, 8.647, 9.451, 13.735, 16.137, 22.024]
 
+def collpase_channels(x, reduce=None):
+    assert len(x.shape) == 3
+    if reduce == "mean":
+        return x.mean(dim=1)
+    elif reduce == "sum":
+        return x.sum(dim=1)
+    elif reduce == "flatten":
+        return x.view(x.shape[0], -1, x.shape[-1])
+    elif reduce is None:
+        return x
+    else:
+        raise NotImplementedError
+
+class ChannelAttention(nn.Module):
+    def __init__(self, embed_dim):
+        super(ChannelAttention, self).__init__()
+        self.query = nn.Linear(embed_dim, embed_dim)
+        self.key = nn.Linear(embed_dim, embed_dim)
+        self.value = nn.Linear(embed_dim, embed_dim)
+        self.scale_factor = 1 / embed_dim ** 0.5
+        self.norm = nn.LayerNorm(embed_dim, eps=1e-6)
+        self.mlp = nn.Sequential(
+            nn.Linear(embed_dim, embed_dim * 4),
+            nn.GELU(),
+            nn.Linear(embed_dim * 4, embed_dim),
+        )
+        
+    def forward(self, x):
+        # Assuming x is of shape [B, C, E]
+        # Compute query, key, value matrices
+        x = self.norm(x)
+        query = self.query(x)  # Shape [B, C, E]
+        key = self.key(x)      # Shape [B, C, E]
+        value = self.value(x)  # Shape [B, C, E]
+        
+        # Calculate attention scores
+        attention_scores = torch.matmul(query, key.transpose(-2, -1))  # Shape [B, C, C]
+        attention_scores *= self.scale_factor
+        attention_scores = F.softmax(attention_scores, dim=-1)
+        
+        # Apply attention scores to value matrix
+        weighted_values = torch.matmul(attention_scores, value)  # Shape [B, C, E]
+        
+        x = x + weighted_values
+        # Layer Norm
+        x = self.norm(x)
+        # MLP
+        x = self.mlp(x)
+
+        # Combine weighted values for all channels
+        combined = x.sum(dim=1)  # Shape [B, E]
+        
+        return combined
+
+
 class PatchEmbedPerChannel(nn.Module):
     """Image to Patch Embedding."""
 
@@ -26,6 +81,19 @@ class PatchEmbedPerChannel(nn.Module):
         self.img_size = img_size
         self.patch_size = patch_size
         self.num_patches = num_patches
+        """
+        if channel_pool == "mean":
+            print("using mean")
+            self.channel_pool = nn.AdaptiveAvgPool1d(1)
+        elif channel_pool == "max":
+            print("Using Max")
+            self.channel_pool = nn.AdaptiveMaxPool1d(1)
+        elif channel_pool == "attention":
+            print("Using Channel Attention")
+            self.channel_pool = ChannelAttention(embed_dim)
+        else:
+            self.channel_pool = None
+        """
             
         self.proj = nn.Sequential(
             nn.Conv3d(
