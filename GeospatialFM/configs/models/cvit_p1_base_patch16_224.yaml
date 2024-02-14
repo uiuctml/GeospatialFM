@@ -22,7 +22,8 @@ MODEL:
       init_values: null
       num_register_tokens: 0
       channel_pool: max
-      pool_position: 1
+      spectral_blocks: 0
+      sptial_spectral_blocks: 0
   RADAR:
     channel_vit: false
     kwargs:
