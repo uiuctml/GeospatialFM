@@ -171,6 +171,7 @@ def construct_downstream_models(cfg, modals=['OPTICAL', 'RADAR']):
 
         if cfg.DATASET['task_type'] == 'change_detection':
             encoder = CDEncoder(encoder, diff=True, use_mlp=head_kwargs['use_mlp'])
+            encoder.requires_grad = False
             model = ViTCDModel(encoder, head)
         else:  
             model = ViTModel(encoder, head)
