@@ -26,5 +26,5 @@ DATASET:
     use_mlp: false
     in_features: 768
     num_classes: 1
-    hidden_dim: 512
+    hidden_dim: 256
     image_size: 128
