@@ -76,7 +76,7 @@ if __name__ == '__main__':
 
     random_seed(0, args.rank)
     if training_args.distributed:
-        ddp_args = {'find_unused_parameters': True } # TODO: add ddp args
+        ddp_args = {'find_unused_parameters': False } # TODO: add ddp args
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[device], **ddp_args)
 
     # if len(training_args.device_ids) > 1:

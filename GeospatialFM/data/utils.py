@@ -33,7 +33,7 @@ def get_mean_std(data_cfg): # CHANGE
     elif data_cfg['name'] != 'OSCD' and data_cfg['kwargs']['bands'] == 'all':
         return S1_MEAN + S2A_MEAN, S1_STD + S2A_STD  # For now, only support BigEarthNet
     try:
-        dm = getattr(tgdm, data_cfg['name']+'DataModule')()
+        dm = getattr(tgdm, data_cfg['name']+'DataModule')
         if data_cfg['name'] == 'So2Sat':
             version = data_cfg['kwargs']['version']
             mean = dm.means_per_version[version]
