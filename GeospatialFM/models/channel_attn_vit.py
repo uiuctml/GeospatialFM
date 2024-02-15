@@ -123,29 +123,23 @@ class ChannelViTEncoder(ViTEncoder):
                  **kwargs):
         super().__init__(img_size, patch_size, in_chans, embed_dim, **kwargs) # TODO: check this
         # Additional args for Channel_ViT
-        self.channel_pool = "attention"
+        self.channel_pool = channel_pool
         # override the patch embedding
         self.patch_embed = PatchEmbedPerChannel(img_size, patch_size, in_chans, embed_dim)
         if channel_pool == "mean":
             self.channel_pool = nn.AdaptiveAvgPool1d(1)
         elif channel_pool == "max":
             self.channel_pool = nn.AdaptiveMaxPool1d(1)
-        elif channel_pool == "attention":
-            print("Using Channel Attention")
-            self.channel_pool = ChannelAttention(embed_dim)
         else:
             raise NotImplementedError
-        assert spectral_blocks + sptial_spectral_blocks <= self.num_layers, "number of total blocks should be less than the number of layers"
+        assert spectral_blocks + sptial_spectral_blocks <= self.n_blocks, "number of total blocks should be less than the number of layers"
         self.spectral_blocks = spectral_blocks
         self.sptial_spectral_blocks = sptial_spectral_blocks
-        self.spatial_blocks = self.num_layers - spectral_blocks - sptial_spectral_blocks
+        self.spatial_blocks = self.n_blocks - spectral_blocks - sptial_spectral_blocks
 
     def _pool_channel(self, x):
         B, Cin, HW, Cout = x.shape
-        if isinstance(self.channel_pool, ChannelAttention):
-            x = x.permute(0, 2, 1, 3).reshape(-1, Cin, Cout) # BHW Cin Cout
-        else:
-            x = x.permute(0, 3, 2, 1).reshape(B, -1, Cin) # B HWCout Cin
+        x = x.permute(0, 3, 2, 1).reshape(B, -1, Cin) # B HWCout Cin
         x = self.channel_pool(x).reshape(B, HW, Cout) # B HW Cout
         return x
 
@@ -162,19 +156,29 @@ class ChannelViTEncoder(ViTEncoder):
         return x
 
     def _pool_channel_with_extra_tokens(self, x, cin):
-        post_tokens = x[:, :self.num_register_tokens+1]
-        patch_tokens = x[:, self.num_register_tokens+1:] # [B, CinL, Cout]
+        if self.spectral_blocks == 0:
+            post_tokens = x.view(x.shape[0], cin, -1, x.shape[2])[:, :, :self.num_register_tokens+1, :].view(x.shape[0], -1, x.shape[2]).permute(0, 2, 1) # if spectral_blocks==0, we have each channel with one cls_token, extract, concat, and then pooling
+            post_tokens = self.channel_pool(post_tokens).permute(0, 2, 1)
+
+            patch_tokens = x.view(x.shape[0], cin, -1, x.shape[2])[:, :, self.num_register_tokens+1:, :]
+            patch_tokens = patch_tokens.reshape(x.shape[0], -1, x.shape[2])
+        else:
+            post_tokens = x[:, :self.num_register_tokens+1]
+            patch_tokens = x[:, self.num_register_tokens+1:] # [B, CinL, Cout]
         B, _, Cout = patch_tokens.shape
-        patch_tokens = patch_tokens.view(B, cin, -1, Cout).permute(0, 3, 1, 2) # [B, Cin, L, Cout] -> [B, Cout, Cin, L]
+        #patch_tokens = patch_tokens.view(B, cin, -1, Cout).permute(0, 3, 1, 2) # [B, Cin, L, Cout] -> [B, Cout, Cin, L]
+        patch_tokens = patch_tokens.view(B, cin, -1, Cout).permute(0, 3, 2, 1) # [B, Cin, L, Cout] -> [B, Cout, L, Cin]
+        patch_tokens = patch_tokens.reshape(B, -1, cin) # [B, Cout, L, Cin] -> [B, Cout * L, Cin]
         patch_tokens = self.channel_pool(patch_tokens) # [B, HW, Cout]
-        x = torch.cat((post_tokens, patch_tokens), dim=1)
+        patch_tokens = patch_tokens.view(B, Cout, -1).permute(0, 2, 1) # [B, L, Cout]
+        x = torch.cat((post_tokens, patch_tokens), dim=1) # [B, L+T, Cout]
         return x
 
     # ViT Forward path
     def forward(self, x, channel_ids=SENTINEL_WV, return_dict=False):
         x, _, _ = self.patch_embed(x, channel_mask_ratio=0, channel_ids=channel_ids)
         B, Cin, HW, Cout = x.shape
-        if self.spatial_blocks == self.num_layers:
+        if self.spatial_blocks == self.n_blocks:
             assert self.sptial_spectral_blocks == 0, "No spectral blocks are allowed"
             assert self.spectral_blocks == 0, "No spectral blocks are allowed"
             # Normal ViT
@@ -243,11 +247,11 @@ class ChannelViTEncoder(ViTEncoder):
     # Encoder for MAE
     def forward_encoder(self, x, mask_ratio=0.75, channel_mask_ratio=0.5, channel_ids=SENTINEL_WV, return_dict=False):
         # embed patches
-        x, _channel_mask, channel_ids_restore, cin = self.patch_embed(x, channel_mask_ratio, channel_ids)
+        x, _channel_mask, channel_ids_restore = self.patch_embed(x, channel_mask_ratio, channel_ids)
         channel_mask = _channel_mask.unsqueeze(1).expand(-1, self.patch_size**2, -1).flatten(1)
 
         B, Cin, HW, Cout = x.shape
-        if self.spatial_blocks == self.num_layers:
+        if self.spatial_blocks == self.n_blocks:
             assert self.sptial_spectral_blocks == 0, "No spectral blocks are allowed"
             assert self.spectral_blocks == 0, "No spectral blocks are allowed"
             # Normal ViT
@@ -261,6 +265,7 @@ class ChannelViTEncoder(ViTEncoder):
         # masking: length -> length * mask_ratio
         x, mask, ids_restore = self._random_masking(x, mask_ratio) # B Cin L Cout / B L Cout
         L = x.shape[-2]
+        num_patch_spectral_spatial = L * Cin
 
         # spectral only blocks
         if self.spectral_blocks > 0:
@@ -269,11 +274,25 @@ class ChannelViTEncoder(ViTEncoder):
             for blk in self.blocks[:self.spectral_blocks]:
                 x = blk(x)
             x = self._spectral2spatial(x, B) # BHW Cin Cout -> B CinHW Cout
+            x = x.view(x.shape[0], 1, x.shape[1], x.shape[2]) # B CinHW Cout -> B 1 CinHW Cout
 
         # append cls token
-        cls_token = self.cls_token + self.pos_embed[:, :1, :]
-        cls_tokens = cls_token.expand(x.shape[0], -1, -1)
-        x = torch.cat((cls_tokens, x), dim=1)
+        if self.spatial_blocks == self.n_blocks: # spectral_blocks == spatial_spectral_blocks == 0
+            cls_token = self.cls_token + self.pos_embed[:, :1, :]
+            cls_tokens = cls_token.expand(x.shape[0], -1, -1)
+            x = torch.cat((cls_tokens, x), dim=1)
+        else: 
+            if self.sptial_spectral_blocks == 0: # spectral_blocks != 0
+                # TODO: could move cls_token cat after channel pooling?
+                x = x.view(x.shape[0], Cin, x.shape[2] // Cin, x.shape[3]) # B 1 CinHW Cout -> B Cin HW Cout
+                cls_token = self.cls_token + self.pos_embed[:, :1, :]
+                cls_tokens = cls_token.expand(x.shape[0], x.shape[1], -1, -1)
+                x = torch.cat((cls_tokens, x), dim=2)
+                x = self._pool_channel(x) # no spatial_spectral_block afterward, do channel pooling
+            else: # spectral == 0 and spatial_spectral_blocks != 0 (i.e. we have the channel dim)
+                cls_token = self.cls_token + self.pos_embed[:, :1, :]
+                cls_tokens = cls_token.expand(x.shape[0], x.shape[1], -1, -1)
+                x = torch.cat((cls_tokens, x), dim=2)
 
         # append register tokens
         if self.register_tokens is not None:
@@ -286,9 +305,12 @@ class ChannelViTEncoder(ViTEncoder):
                 dim=1,
             )
 
-       if self.sptial_spectral_blocks > 0:
-            assert x.dim() == 3, "Input tensor should be B L Cout"
-            assert x.shape[1] == L * Cin + 1 + self.num_register_tokens
+        if self.sptial_spectral_blocks > 0:
+            # assert x.dim() == 3, "Input tensor should be B L Cout"
+            assert x.dim() == 4, "Input tensor should be B Cin L Cout; if going through specral block, then B 1 L*Cin Cout"
+            # assert x.shape[1] == L * Cin + 1 + self.num_register_tokens
+            assert x.shape[1] * x.shape[2] == num_patch_spectral_spatial + 1 + self.num_register_tokens or x.shape[1] * x.shape[2] == num_patch_spectral_spatial + 3 + self.num_register_tokens
+            x = x.view(x.shape[0], -1, x.shape[3])
             for blk in self.blocks[self.spectral_blocks:self.spectral_blocks+self.sptial_spectral_blocks]:
                 x = blk(x)
             x = self._pool_channel_with_extra_tokens(x, Cin) # B L+T Cout
