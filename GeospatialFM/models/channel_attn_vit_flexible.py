@@ -257,7 +257,6 @@ class ChannelViTEncoder(ViTEncoder):
             pos_embed = self.interpolate_positional_encoder(Cin)
         x = x + pos_embed # B Cin HW Cout
     
-        x = x + pos_embed # B Cin HW Cout
         # masking: length -> length * mask_ratio
         x, mask, ids_restore = self._random_masking(x, mask_ratio) # B Cin L Cout / B L Cout
         L = x.shape[-2]
