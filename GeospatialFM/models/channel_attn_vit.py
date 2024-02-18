@@ -152,7 +152,7 @@ class ChannelViTEncoder(ViTEncoder):
     
     def _pool_channel(self, x):
         B, Cin, HW, Cout = x.shape
-        x = x.permute(0, 3, 2, 1).reshape(B, -1, Cin) # B HWCout Cin
+        x = x.permute(0, 2, 3, 1).reshape(B, -1, Cin) # B HWCout Cin
         x = self.channel_pool(x).reshape(B, HW, Cout) # B HW Cout
         return x
     
