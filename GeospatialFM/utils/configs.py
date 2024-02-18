@@ -46,14 +46,16 @@ def setup(args, wandb=True):
     cfg = get_cfg_from_args(args)
     # setup the experiment name
     cfg['NAME'] = cfg['MODEL']['architecture'].replace('/', '')
-    if args.opts is not None and args.finetune is False:
-        for new_attr in args.opts:
-            name, val = new_attr.split('=')
-            name = name.split('.')[-1]
-            if name == 'freeze_encoder':
-                continue
-            name = COMMON_ACRONYM.get(name, name)
-            args.exp_name = args.exp_name + f'_{name}{val}' if args.exp_name is not None else f'{name}{val}'
+    # FIXME: this is a temporary removal for the name
+    #        should be re-added later
+    # if args.opts is not None and args.finetune is False:
+    #     for new_attr in args.opts:
+    #         name, val = new_attr.split('=')
+    #         name = name.split('.')[-1]
+    #         if name == 'freeze_encoder':
+    #             continue
+    #         name = COMMON_ACRONYM.get(name, name)
+    #         args.exp_name = args.exp_name + f'_{name}{val}' if args.exp_name is not None else f'{name}{val}'
     if args.exp_name is not None:
         cfg['NAME'] += f"_{args.exp_name}"
     if cfg['MODEL']['freeze_encoder']:
