@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from .vision_transformer import ViTEncoder
 from .channel_attn_vit import ChannelViTEncoder
-# from .channel_vit import ChannelViTEncoder
+# from .channel_attn_vit_archived import ChannelViTEncoder
 
 class CrossModalMAEViT(nn.Module):
     def __init__(self, 
