@@ -23,7 +23,7 @@ MODEL:
       num_register_tokens: 0
       channel_pool: max
       spectral_blocks: 0
-      sptial_spectral_blocks: 1
+      sptial_spectral_blocks: 12
   RADAR:
     channel_vit: false
     kwargs:
