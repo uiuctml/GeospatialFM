@@ -178,6 +178,7 @@ class ChannelViTEncoder(ViTEncoder):
         else:
             pos_embed = self.interpolate_positional_encoder(Cin)
         x = x + pos_embed # B Cin HW Cout
+        L = x.shape[-2]
 
         # spectral only blocks
         if self.spectral_blocks > 0:
