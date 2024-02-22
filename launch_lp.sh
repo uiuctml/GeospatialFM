@@ -1,4 +1,4 @@
-for i in 5e-2
+for i in 3e-2 7e-2 #1e-1 5e-3
 do
     for j in 0
     do  
@@ -7,7 +7,7 @@ do
         # MODEL.load_pretrained_from=dir \
         # TRAINER.learning_rate=$i TRAINER.weight_decay=$j
 
-        CUDA_VISIBLE_DEVICES=1 python -m lp --exp_name mae_cvit_0-0-12 \
+        CUDA_VISIBLE_DEVICES=3 python -m lp --exp_name mae_cvit_0-0-12 \
         --config_file GeospatialFM/configs/lp_cvit.yaml --debug \
         MODEL.load_pretrained_from=dir \
         TRAINER.learning_rate=$i TRAINER.weight_decay=$j \
