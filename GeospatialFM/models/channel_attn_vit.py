@@ -212,6 +212,8 @@ class ChannelViTEncoder(ViTEncoder):
             assert x.shape[1] == L * Cin + 1 + self.num_register_tokens
             for blk in self.blocks[self.spectral_blocks:self.spectral_blocks+self.sptial_spectral_blocks]:
                 x = blk(x)
+
+        if self.spatial_blocks != self.n_blocks:
             x = self._pool_channel_with_extra_tokens(x, Cin) # B HW+T Cout
 
         if self.spatial_blocks > 0:
