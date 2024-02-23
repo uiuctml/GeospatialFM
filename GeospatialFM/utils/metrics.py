@@ -84,7 +84,7 @@ class F1Meter(MetricTracker):
         self.outputs.append(output.flatten(1))
         self.targets.append(target.flatten(1))
 
-    def compute(self, average='macro'):
+    def compute(self, average='micro'):
         outputs = torch.sigmoid(torch.cat(self.outputs, dim=0))
         targets = torch.cat(self.targets, dim=0).to(torch.float32)
         preds = (outputs >= 0.5).to(torch.float32)
