@@ -1,4 +1,3 @@
-# from .vision_transformer import ViTEncoder, ViTDecoder
 import torch.nn as nn
 import numpy as np
 import torch
