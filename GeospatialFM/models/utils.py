@@ -4,10 +4,8 @@ import torchgeo.models as tgm
 import torch.nn as nn
 import timm
 from .vision_transformer import ViTEncoder, ViTDecoder
-from .channel_attn_vit import ChannelViTEncoder
+from .flexible_channel_vit import ChannelViTEncoder
 from .pspnet import *
-# from .channel_vit import ChannelViTEncoder
-# from .channel_attn_vit_archived import ChannelViTEncoder
 from .mae import CrossModalMAEViT
 from collections import OrderedDict
 import numpy as np
