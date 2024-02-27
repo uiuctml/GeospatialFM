@@ -1,6 +1,5 @@
 MODEL:
   architecture: vit_base_patch16_224
-  cross_modal: true
   unified_decoder: true
   mask_ratio: 0.75
   use_clip: false

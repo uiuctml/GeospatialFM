@@ -23,37 +23,26 @@ class MAELoss(nn.Module):
     def forward(self, optical_mask, radar_mask, 
                     optical_recon, radar_recon,
                     optical_target, radar_target,
+                    multi_mask=None, multi_recon=None,
                     output_dict=False, **kwargs):
         optical_recon_optical = optical_recon[:, :, :optical_target.shape[-1]]
         radar_recon_radar = radar_recon[:, :, -radar_target.shape[-1]:]
         optical_mse = self._forward_mse_one_modal(optical_recon_optical, optical_target, optical_mask) * self.lambda_
         radar_mse = self._forward_mse_one_modal(radar_recon_radar, radar_target, radar_mask) * self.lambda_
-        if output_dict:
-            return dict(optical_mse=optical_mse, radar_mse=radar_mse)
-        return optical_mse, radar_mse
+        if multi_recon is not None:
+            assert multi_mask is not None
+            multi_target = torch.cat([optical_target, radar_target], dim=-1)
+            multi_mse = self._forward_mse_one_modal(multi_recon, multi_target, multi_mask) * self.lambda_
 
-    # def forward(self, optical_mask, radar_mask, 
-    #                 optical_recon, radar_recon,
-    #                 optical_target, radar_target,
-    #                 output_dict=False, **kwargs):
-    #     if self.recon_all:
-    #         if self.channel_reweight:
-    #             optical_dim = optical_target.shape[-1]
-    #             radar_dim = radar_target.shape[-1]
-    #             scale = optical_dim / radar_dim
-    #             radar_recon[:, :, -radar_dim:] *= scale
-    #             optical_recon[:, :, -radar_dim:] *= scale
-    #             radar_target *= scale
-    #         combined_target = torch.cat([optical_target, radar_target], dim=-1)
-    #         optical_target = radar_target = combined_target
-    #     elif self.cross_modal_recon:
-    #         optical_target, radar_target = radar_target, optical_target
-    #     optical_mse = self._forward_mse_one_modal(optical_recon, optical_target, optical_mask) * self.lambda_
-    #     radar_mse = self._forward_mse_one_modal(radar_recon, radar_target, radar_mask) * self.lambda_ * self.radar_lambda_
-    #     if output_dict:
-    #         return dict(optical_mse=optical_mse, radar_mse=radar_mse)
-    #     return optical_mse, radar_mse
-    
+        if output_dict:
+            return_dict = dict(optical_mse=optical_mse, radar_mse=radar_mse)
+            if multi_recon is not None:
+                return_dict['multi_mse'] = multi_mse
+            return return_dict
+        
+        if multi_recon is not None:
+            return optical_mse, radar_mse, multi_mse
+        return optical_mse, radar_mse
 
 class CrossModalMSELoss(nn.Module):
     def __init__(self, scale=1.0, use_mask=False):
@@ -101,9 +90,18 @@ class SpectralInterpolationLoss(nn.Module):
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
         return loss
 
-    def forward(self, optical_recon, radar_recon, optical_target, optical_channel_mask, output_dict=False, **kwargs):
+    def forward(self, optical_recon, radar_recon, optical_target, optical_channel_mask, multi_recon=None, multi_channel_mask=None, output_dict=False, **kwargs):
         optical_channel_mse = self._forward_channel_mse_one_modal(optical_recon, optical_target, optical_channel_mask) * self.lambda_
         radar_channel_mse = self._forward_channel_mse_one_modal(radar_recon, optical_target, optical_channel_mask) * self.lambda_
+        if multi_recon is not None:
+            multi_channel_mse = self._forward_channel_mse_one_modal(multi_recon, optical_target, optical_channel_mask) * self.lambda_
         if output_dict:
-            return dict(optical_channel_mse=optical_channel_mse, radar_channel_mse=radar_channel_mse)
-        return optical_channel_mse, radar_channel_mse
+            return_dict = dict(optical_channel_mse=optical_channel_mse, radar_channel_mse=radar_channel_mse)
+            if multi_recon is not None:
+                return_dict['multi_channel_mse'] = multi_channel_mse
+            return return_dict
+        
+        if multi_recon is not None:
+            return optical_channel_mse, radar_channel_mse, multi_channel_mse
+        else:
+            return optical_channel_mse, radar_channel_mse

@@ -69,7 +69,7 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     return emb
 
 
-class ChannelEmbedding(nn.Module):
+class ContinuousChannelEmbedding(nn.Module):
     def __init__(self, in_chans, embed_dim) -> None:
         super().__init__()
         self.embed_dim = embed_dim
