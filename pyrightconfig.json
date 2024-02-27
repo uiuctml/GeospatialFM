@@ -1,0 +1,11 @@
+{
+    "include": [
+      "GeospatialFM"
+    ],
+  
+    "exclude": [
+      "results",
+      "data",
+      "save_fig",
+    ],
+}

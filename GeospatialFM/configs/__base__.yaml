@@ -66,7 +66,7 @@ DATASET:
   train_split: trainval
 MODEL:
   architecture: null
-  cross_modal: false
+  handle_modal: cross_modal
   unified_decoder: false
   mask_ratio: 0.
   channel_mask_ratio: 0.
@@ -76,7 +76,7 @@ MODEL:
   pretrained_ckpt: null
   OPTICAL:
     freeze_encoder: false
-    channel_vit: false
+    custom_vit: null
     kwargs:
       img_size: 224
       patch_size: 16
@@ -95,7 +95,7 @@ MODEL:
       use_bias: true
   RADAR:
     freeze_encoder: false
-    channel_vit: false
+    custom_vit: null
     kwargs:
       img_size: 224
       patch_size: 16
