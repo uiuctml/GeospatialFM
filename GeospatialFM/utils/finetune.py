@@ -19,6 +19,7 @@ from .precision import get_autocast
 from GeospatialFM.loss import *
 from .metrics import *
 from GeospatialFM.models.utils import ViTMMModel
+from GeospatialFM.models.multi_modal_channel_vit import MultiModalChannelViTEncoder
 
 def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args, input_keyword='image', target_keyword='label'):
     assert input_keyword in ['image', 'radar', 'feature', 'images', 'multi'] # CHANGE
@@ -164,7 +165,7 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
         with torch.no_grad():
             for i, batch in enumerate(dataloader):
               # images, radar, label = batch['image'], batch['radar'], batch['label']
-                if isinstance(model, ViTMMModel):
+                if isinstance(model, ViTMMModel) or isinstance(model, MultiModalChannelViTEncoder):
                     image, radar = batch['image'], batch['radar']
                     if input_keyword == 'image':
                         image = image.to(device=device, non_blocking=True)
