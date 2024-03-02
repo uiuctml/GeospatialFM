@@ -38,7 +38,7 @@ if __name__ == '__main__':
     device = init_distributed_device(args)
 
     cfg, _ = setup(args)
-    args.finetune_modal = args.finetune_modal.upper()
+    # args.finetune_modal = args.finetune_modal.upper()
 
     training_args = dict(
         # device_ids = args.device_ids,
@@ -61,9 +61,9 @@ if __name__ == '__main__':
     assert training_args.distributed == False, 'Distributed training is not supported for linear probing.'
 
     random_seed(0, args.rank)
-    models = construct_downstream_models(cfg)
+    model = construct_downstream_models(cfg, target_modal=args.finetune_modal)
 
-    model = models[args.finetune_modal]
+    # model = models[args.finetune_modal]
     feature_extractor = model.encoder.requires_grad_(False)
     task_head = model.head
     feature_extractor = feature_extractor.to(device)

@@ -140,7 +140,7 @@ class ViTEncoder(nn.Module):
         return x_masked, mask, ids_restore
     
     # ViT Forward path
-    def forward(self, x, return_dict=False):
+    def forward(self, x, return_dict=False, **kwargs):
         x = self.patch_embed(x)
 
         # add pos embed w/o cls token

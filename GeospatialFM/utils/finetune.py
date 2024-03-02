@@ -18,9 +18,10 @@ from .distributed import is_master
 from .precision import get_autocast
 from GeospatialFM.loss import *
 from .metrics import *
+from GeospatialFM.models.utils import ViTMMModel
 
 def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args, input_keyword='image', target_keyword='label'):
-    assert input_keyword in ['image', 'radar', 'feature', 'images'] # CHANGE
+    assert input_keyword in ['image', 'radar', 'feature', 'images', 'multi'] # CHANGE
     assert target_keyword in ['label', 'mask'] # CHANGE
 
     device = torch.device(args.device)
@@ -45,12 +46,27 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args, inp
         scheduler(step)
 
         # images, radar, label = batch['image'], batch['radar'], batch['label']
-        if input_keyword == 'images': # CHANGE
-            image_1 = batch['image1'].to(device=device, non_blocking=True)
-            image_2 = batch['image2'].to(device=device, non_blocking=True)
-            model_input = (image_1, image_2)
+        if isinstance(model, ViTMMModel):
+            image, radar = batch['image'], batch['radar']
+            if input_keyword == 'image':
+                image = image.to(device=device, non_blocking=True)
+                radar = None
+            elif input_keyword == 'radar':
+                image = None
+                radar = radar.to(device=device, non_blocking=True)
+            elif input_keyword == 'multi':
+                image = image.to(device=device, non_blocking=True)
+                radar = radar.to(device=device, non_blocking=True)
+            else:
+                raise NotImplementedError
+            model_input = (image, radar)
         else:
-            model_input = batch[input_keyword].to(device=device, non_blocking=True)
+            if input_keyword == 'images': # CHANGE
+                image_1 = batch['image1'].to(device=device, non_blocking=True)
+                image_2 = batch['image2'].to(device=device, non_blocking=True)
+                model_input = (image_1, image_2)
+            else:
+                model_input = batch[input_keyword].to(device=device, non_blocking=True)
 
         label = batch[target_keyword].to(device=device, non_blocking=True)
 
@@ -125,7 +141,7 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args, inp
     # end for
 
 def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metric='accuracy', input_keyword='image', target_keyword='label'):
-    assert input_keyword in ['image', 'radar', 'feature', 'images'] # CHANGE
+    assert input_keyword in ['image', 'radar', 'feature', 'images', 'multi'] # CHANGE
     assert target_keyword in ['label', 'mask'] # CHANGE
     assert eval_metric in ['accuracy', 'mAP', 'f1'] # CHANGE
     eval_meter = get_eval_meter(eval_metric)
@@ -147,12 +163,28 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
         cumulative_losses = defaultdict(float)
         with torch.no_grad():
             for i, batch in enumerate(dataloader):
-                if input_keyword == 'images': # CHANGE
-                    image_1 = batch['image1'].to(device=device, non_blocking=True)
-                    image_2 = batch['image2'].to(device=device, non_blocking=True)
-                    model_input = (image_1, image_2)
+              # images, radar, label = batch['image'], batch['radar'], batch['label']
+                if isinstance(model, ViTMMModel):
+                    image, radar = batch['image'], batch['radar']
+                    if input_keyword == 'image':
+                        image = image.to(device=device, non_blocking=True)
+                        radar = None
+                    elif input_keyword == 'radar':
+                        image = None
+                        radar = radar.to(device=device, non_blocking=True)
+                    elif input_keyword == 'multi':
+                        image = image.to(device=device, non_blocking=True)
+                        radar = radar.to(device=device, non_blocking=True)
+                    else:
+                        raise NotImplementedError
+                    model_input = (image, radar)
                 else:
-                    model_input = batch[input_keyword].to(device=device, non_blocking=True)
+                    if input_keyword == 'images': # CHANGE
+                        image_1 = batch['image1'].to(device=device, non_blocking=True)
+                        image_2 = batch['image2'].to(device=device, non_blocking=True)
+                        model_input = (image_1, image_2)
+                    else:
+                        model_input = batch[input_keyword].to(device=device, non_blocking=True)
 
                 label = batch[target_keyword].to(device=device, non_blocking=True)
                 batch_size = len(label)

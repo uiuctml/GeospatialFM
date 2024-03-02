@@ -15,7 +15,7 @@ def get_args_parser(add_help: bool = True):
 
     parser.add_argument("--device", type=int, default=0, help="GPU device to use")
     # parser.add_argument("--learning_rate", type=float, default=None, help="Override the Learning Rate from config (for sweep)")
-    parser.add_argument("--finetune_modal", default='OPTICAL', type=str, choices=['radar', 'optical'],help="the modal to finetune")
+    parser.add_argument("--finetune_modal", default='optical', type=str, choices=['radar', 'optical', 'multi_modal'],help="the modal to finetune")
     parser.add_argument("--finetune", action="store_true", default=False, help="Finetune mode")
     parser.add_argument("--lpft", action="store_true", default=False, help="LP-FT mode")
     parser.add_argument("--dist_backend", default='nccl', type=str, help="Distributed backend")
