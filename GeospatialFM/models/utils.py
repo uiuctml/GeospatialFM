@@ -23,6 +23,16 @@ class ViTModel(nn.Module):
         x = self.encoder(x, return_dict=True)['cls_token']
         x = self.head(x)
         return x
+    
+class ViTMMModel(ViTModel):
+    def __init__(self, encoder, head):
+        super().__init__(encoder, head)
+    
+    def forward(self, x):
+        assert len(x) == 2
+        x = self.encoder(*x, return_dict=True)['cls_token']
+        x = self.head(x)
+        return x
 
 # CHANGE
 class ViTCDModel(ViTModel):
@@ -46,9 +56,11 @@ def unwrap_model(state_dict):
     
     return new_state_dict
 
-def decompose_model(state_dict):
+def decompose_model(state_dict, target_modal='optical'):
+    # for cross_modal models only
     optical_model = OrderedDict()
     radar_model = OrderedDict()
+    models = {'optical': optical_model, 'radar': radar_model}
     for key, value in state_dict.items():
         try:
             key_prefix, key_name = key.split('.', 1)
@@ -56,12 +68,40 @@ def decompose_model(state_dict):
             print(key)
             continue
         if 'optical_encoder' in key_prefix:
-            optical_model[key_name] = value
+            models['optical'][key_name] = value
         elif 'radar_encoder' in key_prefix:
-            radar_model[key_name] = value
-    return optical_model, radar_model
+            models['radar'][key_name] = value
+    return models[target_modal]
 
-def get_pretrained_weight(cfg, arch, skip_modules=['patch_embed.proj.weight', 'patch_embed.proj.bias']):
+def tailor_model(state_dict, handle_modal='cross_modal', target_modal='optical'):
+    print(f'The model hanles modality by {handle_modal}...')
+    print(f'Targeting {target_modal} encoder...')
+    if handle_modal == 'multi_modal':
+        target_key = 'encoder'
+    else:
+        target_key = f'{target_modal}_encoder'
+    model = OrderedDict()
+    for key, value in state_dict.items():
+        try:
+            key_prefix, key_name = key.split('.', 1)
+        except:
+            continue
+        if target_key in key_prefix:
+            # if handle_modal == 'multi_modal' and target_modal != 'multi_modal':
+            #     if f'{target_modal}_spectral_blocks' in key_name:
+            #         name = key_name.replace(f'{target_modal}_spectral_blocks.', '')
+            #         model[f'blocks.{name}'] = value
+            #     elif model.get(key_name) is not None:
+            #         continue
+            #     else:
+            #         model[key_name] = value
+            # else:      
+            #     model[key_name] = value
+            model[key_name] = value
+
+    return model
+
+def get_pretrained_weight(cfg, arch, skip_modules=['patch_embed.proj.weight', 'patch_embed.proj.bias'], handle_modal='cross_modal', target_modal='optical'):
     model_cfg = cfg.MODEL
     load_pretrained_from = model_cfg['load_pretrained_from']
     pretrained_ckpt = model_cfg['pretrained_ckpt'] if model_cfg['pretrained_ckpt'] is not None else 'final_model.pth'
@@ -74,13 +114,22 @@ def get_pretrained_weight(cfg, arch, skip_modules=['patch_embed.proj.weight', 'p
         state_dict = timm.create_model(f'{arch}.{pretrained_ckpt}', pretrained=True).state_dict()
         for skip_module in skip_modules:
             del state_dict[skip_module]
-        state_dicts = {'OPTICAL': state_dict, 'RADAR': state_dict}
     elif load_pretrained_from == 'dir':
         save_path = os.path.join(cfg.TRAINER['ckpt_dir'], pretrained_ckpt)
         print(f"Loading pretrained weights from {save_path}...")
         state_dict = unwrap_model(torch.load(save_path, map_location='cpu'))
-        optical_state_dict, radar_state_dict = decompose_model(state_dict)
-        state_dicts = {'OPTICAL': optical_state_dict, 'RADAR': radar_state_dict}
+        state_dict = tailor_model(state_dict, handle_modal=handle_modal, target_modal=target_modal)
+        # if handle_modal == 'cross_modal':
+        #     state_dict = decompose_model(state_dict, target_modal=target_modal)
+        # else:
+        #     if target_modal == 'multi_modal':
+        #         state_dict = decompose_model(state_dict, target_modal='optical')
+        # if MM_model:
+        #     mm_state_dict = decompose_model(state_dict, MM_model=True)
+        #     state_dicts = {'MULTI_MODAL': mm_state_dict}
+        # else:
+        #     optical_state_dict, radar_state_dict = decompose_model(state_dict)
+        #     state_dicts = {'OPTICAL': optical_state_dict, 'RADAR': radar_state_dict}
     else:
         raise NotImplementedError
     return state_dicts
@@ -141,37 +190,50 @@ def construct_mae(model_cfg):
         raise NotImplementedError
     return mae
 
-def construct_downstream_models(cfg, modals=['OPTICAL', 'RADAR']):
+def construct_downstream_models(cfg, target_modal='optical'):
+    assert target_modal in ['optical', 'radar', 'multi_modal'], f'target_modal cannot be {target_modal}...'
     model_cfg = cfg.MODEL
     task_head_kwargs = cfg.DATASET['task_head_kwargs']
     arch = model_cfg['architecture']
-    models = {}
-    states_dicts = get_pretrained_weight(cfg, arch)
-    for modal in modals:
-        if not hasattr(model_cfg, modal): continue
-        modal_cfg = model_cfg[modal]
-        assert modal_cfg['use_head']
-        encoder = construct_encoder(modal_cfg, arch=arch)
-        if states_dicts is not None:
-            print(f"Loading pretrained weights for {modal} encoder...")
-            encoder_state_dict = states_dicts[modal]
-            encoder.load_state_dict(encoder_state_dict, strict=False)
+    state_dict = get_pretrained_weight(cfg, arch, handle_modal=model_cfg['handle_modal'], target_modal=target_modal)
 
-        num_features = encoder.num_features
-        head_kwargs = task_head_kwargs
-        head_kwargs['use_bias'] = modal_cfg['head_kwargs']['use_bias']
-        head_kwargs['in_features'] = num_features
+    if model_cfg['handle_modal'] == 'multi_modal':
+        config_key = 'MULTI_MODAL'
+    else:
+        config_key = target_modal.upper()
+    assert hasattr(model_cfg, target_modal.upper())
+    modal_cfg = model_cfg[config_key]
+    assert modal_cfg['use_head']
+    encoder = construct_encoder(modal_cfg, arch=arch)
+    print(f"Loading pretrained weights for {target_modal} encoder...")
+    encoder.load_state_dict(state_dict, strict=False)
 
-        head = construct_head(head_kwargs)
+    if model_cfg['handle_modal'] == 'multi_modal':
+        if target_modal=='optical':
+            del encoder.radar_spectral_blocks
+            del encoder.radar_patch_embed
+        elif target_modal=='radar':
+            del encoder.optical_spectral_blocks
+            del encoder.optical_patch_embed   
 
-        if cfg.DATASET['task_type'] == 'change_detection':
-            encoder = CDEncoder(encoder, diff=True, use_mlp=head_kwargs['use_mlp'])
-            encoder.requires_grad = False
-            model = ViTCDModel(encoder, head)
-        else:  
-            model = ViTModel(encoder, head)
-        models[modal] = model
-    return models
+    num_params = sum(p.numel() for p in encoder.parameters())
+    print(f'Number of parameters for Encoder: {num_params}')
+
+    num_features = encoder.num_features
+    head_kwargs = task_head_kwargs
+    head_kwargs['use_bias'] = modal_cfg['head_kwargs']['use_bias']
+    head_kwargs['in_features'] = num_features
+
+    head = construct_head(head_kwargs)
+    if target_modal == 'multi_modal':
+        model = ViTMMModel(encoder, head)
+    if cfg.DATASET['task_type'] == 'change_detection':
+        encoder = CDEncoder(encoder, diff=True, use_mlp=head_kwargs['use_mlp'])
+        encoder.requires_grad = False
+        model = ViTCDModel(encoder, head)
+    else:  
+        model = ViTModel(encoder, head)
+    return model
 
 def construct_head(head_cfg):
     print(f"Constructing {head_cfg['head_type']} head...")

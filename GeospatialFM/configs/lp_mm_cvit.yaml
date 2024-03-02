@@ -1,13 +1,9 @@
 MODEL:
-  architecture: cvit_base_patch16_224
-  OPTICAL:
-    use_head: true
-    head_kwargs:
-      use_bias: true
-  RADAR:
-    use_head: true
-    head_kwargs:
-      use_bias: true
+  architecture: mm_cvit_base_patch16_224
+  MULTI_MODAL:
+      use_head: true
+      head_kwargs:
+        use_bias: true
 DATASET:
   name: EuroSAT
 TRAINER:

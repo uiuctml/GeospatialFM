@@ -51,7 +51,6 @@ class MultiModalMAEViT(nn.Module):
         optical_target = self.decoder.forward_target(optical)
         radar_target = self.decoder.forward_target(radar)
         return_dict = dict(optical_target=optical_target, radar_target=radar_target, logit_scale=self.logit_scale.exp())
-        # only optical is available
         if modal is None or modal == 'optical':
             optical_dict = self._forward(optical, None, mask_ratio, channel_mask_ratio, prefix='optical_')
             return_dict.update(optical_dict)

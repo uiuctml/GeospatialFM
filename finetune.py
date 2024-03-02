@@ -36,7 +36,7 @@ if __name__ == '__main__':
     device = init_distributed_device(args)
 
     cfg, _ = setup(args)
-    args.finetune_modal = args.finetune_modal.upper()
+    # args.finetune_modal = args.finetune_modal.upper()
 
     training_args = dict(
         # device_ids = args.device_ids,
@@ -61,9 +61,8 @@ if __name__ == '__main__':
     # training_args.device = f'cuda:{training_args.device_ids[0]}'
 
     random_seed(0, args.rank)
-    models = construct_downstream_models(cfg)
+    model = construct_downstream_models(cfg, target_modal=args.finetune_modal)
 
-    model = models[args.finetune_modal]
     if training_args.lpft:
         head_path = os.path.join(cfg['TRAINER']['output_dir'], 'lp_model.pth')
         assert os.path.exists(head_path), f'LP model not found at {head_path}'

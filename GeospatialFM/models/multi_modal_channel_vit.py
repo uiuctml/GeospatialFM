@@ -42,6 +42,7 @@ class MultiModalChannelViTEncoder(ViTEncoder):
         self.spatial_blocks = self.n_blocks - spectral_blocks - sptial_spectral_blocks
         print(f"Spectral Blocks: {self.spectral_blocks}\tSptial-Spectral Blocks: {self.sptial_spectral_blocks}\tSpatial Blocks: {self.spatial_blocks}")
         self.radar_spectral_blocks = deepcopy(self.blocks[:spectral_blocks]) if self.spectral_blocks > 0 else None
+        self.optical_spectral_blocks = self.blocks[:spectral_blocks] if self.spectral_blocks > 0 else None
 
     def _spectral2spatial(self, x, B):
         """Convert from spectral order to spatial order"""

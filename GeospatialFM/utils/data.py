@@ -1,4 +1,5 @@
 from GeospatialFM.data import *
+from GeospatialFM.models.utils import ViTMMModel
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.distributed import DistributedSampler
 from dataclasses import dataclass
@@ -84,9 +85,19 @@ def extract_features(model, data, args, split='train', cache_path=None, chunk_si
     n_chunks = dataloader.num_samples // chunk_size
     pbar.set_description_str(f'Chunk {chunk_idx+1}/{n_chunks}: ')
     for i, batch in pbar:
-        images = batch['image'] if args.finetune_modal == 'OPTICAL' else batch['radar']
+        if isinstance(model, ViTMMModel):
+            optical, radar = batch['image'], batch['radar']
+            if args.finetune_modal == 'optical':
+                optical = optical.to(device=device, non_blocking=True)
+                radar = None
+            elif args.finetune_modal == 'radar':
+                radar = radar.to(device=device, non_blocking=True)
+                optical = None
+            images = (optical, radar)
+        else:
+            images = batch['image'] if args.finetune_modal == 'optical' else batch['radar']
+            images = images.to(device=device, non_blocking=True)
         label = batch['label']
-        images = images.to(device=device, non_blocking=True)
         with autocast() and torch.no_grad():
             model_out = model(images, return_dict=True)['cls_token'].detach().cpu()
         features['label'].append(label.detach().cpu())
