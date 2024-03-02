@@ -1,5 +1,5 @@
 MODEL:
-  architecture: cvit_p1_base_patch16_224
+  architecture: cvit_base_patch16_224
   OPTICAL:
     use_head: true
     head_kwargs:
@@ -9,7 +9,7 @@ MODEL:
     head_kwargs:
       use_bias: true
 DATASET:
-  name: So2Sat
+  name: EuroSAT
 TRAINER:
   # Training related
   num_train_epochs: 10

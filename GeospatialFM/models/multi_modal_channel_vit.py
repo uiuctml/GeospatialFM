@@ -63,12 +63,14 @@ class MultiModalChannelViTEncoder(ViTEncoder):
         return x
     
     def _pool_channel_with_extra_tokens(self, x, cin):
-        post_tokens = x[:, :self.num_register_tokens+1]
-        patch_tokens = x[:, self.num_register_tokens+1:] # [B, CinL, Cout]
+        # post_tokens = x[:, :self.num_register_tokens+1]
+        # patch_tokens = x[:, self.num_register_tokens+1:] # [B, CinL, Cout]
+        patch_tokens = x
         B, _, Cout = patch_tokens.shape
         patch_tokens = patch_tokens.view(B, cin, -1, Cout) # [B, Cin, L, Cout]
         patch_tokens = self._pool_channel(patch_tokens) # [B, L, Cout]
-        x = torch.cat((post_tokens, patch_tokens), dim=1) # [B, L+T, Cout]
+        # x = torch.cat((post_tokens, patch_tokens), dim=1) # [B, L+T, Cout]
+        x = patch_tokens
         return x
 
     # ViT Forward path
@@ -131,6 +133,30 @@ class MultiModalChannelViTEncoder(ViTEncoder):
         if x.dim() == 4:
             x = x.reshape(B, -1, Cout) # B Cin L Cout -> B CinL Cout
 
+        # # append cls token
+        # cls_token = self.cls_token + self.pos_embed[:, :1, :]
+        # cls_tokens = cls_token.expand(x.shape[0], -1, -1)
+        # x = torch.cat((cls_tokens, x), dim=1) 
+        
+        # if self.register_tokens is not None:
+        #     x = torch.cat(
+        #         (
+        #             x[:, :1],
+        #             self.register_tokens.expand(x.shape[0], -1, -1),
+        #             x[:, 1:],
+        #         ),
+        #         dim=1,
+        #     ) # B CinHW+T Cout
+
+        if self.sptial_spectral_blocks > 0:
+            assert x.dim() == 3, "Input tensor should be B L Cout"
+            # assert x.shape[1] == L * Cin + 1 + self.num_register_tokens
+            for blk in self.blocks[self.spectral_blocks:self.spectral_blocks+self.sptial_spectral_blocks]:
+                x = blk(x)
+
+        if self.spatial_blocks != self.n_blocks:
+            x = self._pool_channel_with_extra_tokens(x, Cin) # B HW+T Cout
+
         # append cls token
         cls_token = self.cls_token + self.pos_embed[:, :1, :]
         cls_tokens = cls_token.expand(x.shape[0], -1, -1)
@@ -145,15 +171,6 @@ class MultiModalChannelViTEncoder(ViTEncoder):
                 ),
                 dim=1,
             ) # B CinHW+T Cout
-
-        if self.sptial_spectral_blocks > 0:
-            assert x.dim() == 3, "Input tensor should be B L Cout"
-            assert x.shape[1] == L * Cin + 1 + self.num_register_tokens
-            for blk in self.blocks[self.spectral_blocks:self.spectral_blocks+self.sptial_spectral_blocks]:
-                x = blk(x)
-
-        if self.spatial_blocks != self.n_blocks:
-            x = self._pool_channel_with_extra_tokens(x, Cin) # B HW+T Cout
 
         if self.spatial_blocks > 0:
             assert x.dim() == 3, "Input tensor should be B L Cout"
