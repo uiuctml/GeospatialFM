@@ -98,14 +98,13 @@ def tailor_model(state_dict, handle_modal='cross_modal', target_modal='optical')
             # else:      
             #     model[key_name] = value
             model[key_name] = value
-
+            
     return model
 
 def get_pretrained_weight(cfg, arch, skip_modules=['patch_embed.proj.weight', 'patch_embed.proj.bias'], handle_modal='cross_modal', target_modal='optical'):
     model_cfg = cfg.MODEL
     load_pretrained_from = model_cfg['load_pretrained_from']
     pretrained_ckpt = model_cfg['pretrained_ckpt'] if model_cfg['pretrained_ckpt'] is not None else 'final_model.pth'
-    state_dicts = {}
     assert load_pretrained_from in ['timm', 'torchgeo', 'dir', None]
     if load_pretrained_from is None:
         return None
@@ -132,7 +131,7 @@ def get_pretrained_weight(cfg, arch, skip_modules=['patch_embed.proj.weight', 'p
         #     state_dicts = {'OPTICAL': optical_state_dict, 'RADAR': radar_state_dict}
     else:
         raise NotImplementedError
-    return state_dicts
+    return state_dict
 
 def construct_encoder(model_cfg, arch):
     # assert model_cfg['load_pretrained_from'] in ['timm', 'torchgeo', 'dir', None]
@@ -201,7 +200,7 @@ def construct_downstream_models(cfg, target_modal='optical'):
         config_key = 'MULTI_MODAL'
     else:
         config_key = target_modal.upper()
-    assert hasattr(model_cfg, target_modal.upper())
+    assert hasattr(model_cfg, config_key)
     modal_cfg = model_cfg[config_key]
     assert modal_cfg['use_head']
     encoder = construct_encoder(modal_cfg, arch=arch)
