@@ -47,7 +47,7 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args, inp
         scheduler(step)
 
         # images, radar, label = batch['image'], batch['radar'], batch['label']
-        if isinstance(model, ViTMMModel):
+        if isinstance(model, ViTMMModel) or isinstance(model, MultiModalChannelViTEncoder):
             image, radar = batch['image'], batch['radar']
             if input_keyword == 'image':
                 image = image.to(device=device, non_blocking=True)
