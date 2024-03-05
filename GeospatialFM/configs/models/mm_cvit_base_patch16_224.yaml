@@ -26,7 +26,8 @@ MODEL:
       sptial_spectral_blocks: 12
   DECODER:
     kwargs:
-      out_chans: 15
+      optical_out_chans: 13
+      radar_out_chans: 2
       num_heads: 16
       mlp_ratio: 4.0
       qkv_bias: True

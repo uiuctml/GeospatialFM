@@ -10,6 +10,7 @@ class MultiModalMAEViT(nn.Module):
                  unimodal_decoder,
                  init_logit_scale=np.log(1 / 0.07),
                  init_logit_bias=None,
+                 share_patch_embedding=True,
                  ):
         
         super().__init__()

@@ -6,6 +6,7 @@ import torch
 from .vision_transformer import *
 from typing import Optional
 from .patch_embed import PatchEmbedPerChannel
+from .pos_embed import ContinuousChannelEmbedding
 from copy import deepcopy
 
 SENTINEL_WV = [442.7, 492.4, 559.8, 664.6, 704.1, 740.5, 782.8, 832.8, 864.7, 945.1, 1373.5, 1613.7, 2202.4]
@@ -121,8 +122,6 @@ class MultiModalChannelViTEncoder(ViTEncoder):
             if radar is not None:
                 for blk in self.radar_spectral_blocks:
                     radar = blk(radar) # BHW Cin Cout
-            # for blk in self.blocks[:self.spectral_blocks]:
-            #     x = blk(x)
 
             # redo concatenation
             # from now on radar and obtical should be mixed
@@ -156,21 +155,6 @@ class MultiModalChannelViTEncoder(ViTEncoder):
 
         if self.spatial_blocks != self.n_blocks:
             x = self._pool_channel_with_extra_tokens(x, Cin) # B HW+T Cout
-
-        # # append cls token
-        # cls_token = self.cls_token + self.pos_embed[:, :1, :]
-        # cls_tokens = cls_token.expand(x.shape[0], -1, -1)
-        # x = torch.cat((cls_tokens, x), dim=1) 
-        
-        # if self.register_tokens is not None:
-        #     x = torch.cat(
-        #         (
-        #             x[:, :1],
-        #             self.register_tokens.expand(x.shape[0], -1, -1),
-        #             x[:, 1:],
-        #         ),
-        #         dim=1,
-        #     ) # B CinHW+T Cout
 
         if self.spatial_blocks > 0:
             assert x.dim() == 3, "Input tensor should be B L Cout"
@@ -344,3 +328,76 @@ class MultiModalChannelViTEncoder(ViTEncoder):
         x_masked = x_masked.view(N, len_keep, D, C).permute(0, 3, 1, 2)  # [N, C, L, D]
 
         return x_masked, mask, ids_restore
+
+class MultiModalChannelViTDecoder(ViTDecoder):
+    def __init__(self,
+                 optical_out_chans=3,
+                 radar_out_chans=2,
+                 decoder_embed_dim=512,
+                 **kwargs):
+        out_chans = optical_out_chans + radar_out_chans
+        kwargs['out_chans'] = out_chans
+        super().__init__(decoder_embed_dim=decoder_embed_dim, **kwargs)
+        del self.decoder_pred
+        self.decoder_channel_pred = nn.Linear(decoder_embed_dim, out_chans*decoder_embed_dim, bias=False)
+        self.decoder_pred = nn.Linear(decoder_embed_dim, self.patch_size**2, bias=True)
+
+        assert optical_out_chans > 0, "Optical out channels should be greater than 0"
+        assert radar_out_chans > 0, "Radar out channels should be greater than 0"
+        self.optical_out_chans = optical_out_chans
+        self.radar_out_chans = radar_out_chans
+        self.optical_channel_embed = ContinuousChannelEmbedding(optical_out_chans, decoder_embed_dim)
+        self.radar_channel_embed = nn.Embedding(radar_out_chans, decoder_embed_dim)
+        trunc_normal_(self.radar_channel_embed.weight, std=0.02)
+
+    def forward_decoder(self, x, ids_restore, restore_input_dim=False, slice_patch_tokens=None, optical_channel_ids=SENTINEL_WV, radar_channel_ids=None):
+        # handle channel embedding
+        optical_channel_embed = self.optical_channel_embed(optical_channel_ids)
+        if radar_channel_ids is None:
+            radar_channel_ids = np.arange(self.radar_out_chans)
+
+        radar_channel_ids = torch.tensor(radar_channel_ids, device=x.device)
+        radar_channel_embed = self.radar_channel_embed(radar_channel_ids).unsqueeze(0)  # 1, Cout, embed_dim
+        channel_embed = torch.cat((optical_channel_embed, radar_channel_embed), dim=1)  # 1, Cout, embed_dim
+
+        # embed tokens
+        x = self.decoder_embed(x)
+
+        # append mask tokens to sequence
+        mask_tokens = self.mask_token.repeat(x.shape[0], ids_restore.shape[1] + 1 - x.shape[1], 1)
+        x_ = torch.cat([x[:, 1+self.num_register_tokens:, :], mask_tokens], dim=1)  # no cls token and register tokens
+        x_ = torch.gather(x_, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x.shape[2]))  # unshuffle
+        # print(x_.shape)
+        x = torch.cat([x[:, :1, :], x_], dim=1)  # append cls token
+
+        # add pos embed
+        x = x + self.decoder_pos_embed
+
+        # apply Transformer blocks
+        for i in range(len(self.decoder_blocks) - 1):
+            blk = self.decoder_blocks[i]
+            x = blk(x)
+
+        # remove cls token
+        x = x[:, 1+self.num_register_tokens:, :] # B, L, D
+        B, L, D = x.shape
+
+        x = self.decoder_channel_pred(x)  # B, L, Cout*D
+        x = x.reshape(B*L, -1, D) # BL, Cout, D
+
+        # channel-wise embedding
+        x += channel_embed # BL, Cout, D
+
+        # last block
+        x = self.decoder_blocks[-1](x)
+        x = x.reshape(B, L, -1, D)
+
+        x = self.decoder_norm(x)
+
+        # predictor projection
+        x = self.decoder_pred(x) # B, L, Cout, patch_size**2
+        x = x.permute(0, 1, 3, 2).flatten(2) # B, L, patch_size**2 * Cout
+
+        if restore_input_dim:
+            x = self.unpatchify(x, slice_patch_tokens)
+        return x

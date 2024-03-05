@@ -5,7 +5,7 @@ import torch.nn as nn
 import timm
 from .vision_transformer import ViTEncoder, ViTDecoder
 from .flexible_channel_vit import ChannelViTEncoder
-from .multi_modal_channel_vit import MultiModalChannelViTEncoder
+from .multi_modal_channel_vit import MultiModalChannelViTEncoder, MultiModalChannelViTDecoder
 from .pspnet import *
 from .mae import CrossModalMAEViT
 from .multi_modal_mae import MultiModalMAEViT
@@ -151,8 +151,11 @@ def construct_encoder(model_cfg, arch):
 
     return encoder
 
-def construct_decoder(decoder_cfg):
-    return ViTDecoder(**decoder_cfg['kwargs'])
+def construct_decoder(decoder_cfg, channel_decoder=False):
+    if channel_decoder:
+        return MultiModalChannelViTDecoder(**decoder_cfg['kwargs'])
+    else:
+        return ViTDecoder(**decoder_cfg['kwargs'])
 
 def construct_mae(model_cfg):
     arch = model_cfg['architecture']
@@ -179,7 +182,7 @@ def construct_mae(model_cfg):
 
     elif model_cfg['handle_modal'] == 'multi_modal':
         encoder = construct_encoder(model_cfg['MULTI_MODAL'], arch=arch)
-        decoder = construct_decoder(model_cfg['DECODER'])
+        decoder = construct_decoder(model_cfg['DECODER'], channel_decoder=True)
         mae = MultiModalMAEViT(encoder, decoder)
         if model_cfg['MULTI_MODAL']['use_head']:
             head = construct_head(model_cfg['MULTI_MODAL']['head_kwargs'])

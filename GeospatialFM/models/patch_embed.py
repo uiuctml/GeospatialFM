@@ -66,7 +66,7 @@ class PatchEmbedPerChannel(nn.Module):
         if channel_ids is None:
             channel_ids = np.arange(x.shape[1])
         if isinstance(self.channel_embed, nn.Embedding):
-            channel_ids = torch.tensor(channel_ids, device=x.device).repeat(x.shape[0], 1)
+            channel_ids = torch.tensor(channel_ids, device=x.device).unsqueeze(0)#.repeat(x.shape[0], 1)
         cur_channel_embed = self.channel_embed(channel_ids)  # 1, Cin, embed_dim=Cout
         cur_channel_embed = cur_channel_embed.permute(0, 2, 1)  # 1 Cout Cin
 

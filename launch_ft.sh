@@ -1,6 +1,6 @@
 for i in 5e-4 5e-3 5e-5
 do
-    for j in 5e-6 5e-4
+    for j in 5e-4
     do  
         # echo "ViT learning_rate: $i, weight_decay: $j"
         # CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc_per_node 2 --master_port=10088 -m finetune --exp_name mae_vit_v2 \
