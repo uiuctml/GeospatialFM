@@ -43,7 +43,7 @@ do
         # TRAINER.learning_rate=$i TRAINER.weight_decay=$j \
         # MODEL.OPTICAL.kwargs.spectral_blocks=0 MODEL.OPTICAL.kwargs.sptial_spectral_blocks=12
 
-        CUDA_VISIBLE_DEVICES=2 python -m lp --exp_name mae_mm_cvit_1-2-9 \
+        CUDA_VISIBLE_DEVICES=1 python -m lp --exp_name mae_mm_cvit_1-2-9 \
         --config_file GeospatialFM/configs/lp_mm_cvit.yaml --debug \
         MODEL.load_pretrained_from=dir \
         TRAINER.learning_rate=$i TRAINER.weight_decay=$j \

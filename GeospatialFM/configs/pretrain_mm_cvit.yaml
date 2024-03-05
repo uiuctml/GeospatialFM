@@ -30,9 +30,9 @@ DATASET:
 TRAINER:
   # Training related
   num_train_epochs: 20
-  per_device_train_batch_size: 160
+  per_device_train_batch_size: 80
   per_device_eval_batch_size: 320
-  gradient_accumulation_steps: 1
+  gradient_accumulation_steps: 4
   learning_rate: 1.5e-4
   weight_decay: 0.05
   # dataloader
