@@ -14,7 +14,7 @@ DATASET:
   use_train_transform: true
   eval_metric: accuracy
   task_type: classification
-  train_frac: 1
+  train_frac: 0.1
   val_frac: 0.1
   train_split: train
   task_head_kwargs:

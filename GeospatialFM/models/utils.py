@@ -182,7 +182,7 @@ def construct_mae(model_cfg):
 
     elif model_cfg['handle_modal'] == 'multi_modal':
         encoder = construct_encoder(model_cfg['MULTI_MODAL'], arch=arch)
-        decoder = construct_decoder(model_cfg['DECODER'], channel_decoder=True)
+        decoder = construct_decoder(model_cfg['DECODER'], channel_decoder=False)
         mae = MultiModalMAEViT(encoder, decoder)
         if model_cfg['MULTI_MODAL']['use_head']:
             head = construct_head(model_cfg['MULTI_MODAL']['head_kwargs'])

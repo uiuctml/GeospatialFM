@@ -1,4 +1,4 @@
-from torchgeo.datasets import BigEarthNet, So2Sat, OSCD
+from torchgeo.datasets import BigEarthNet, So2Sat, OSCD, SSL4EOS12
 import torch
 from torch import Tensor
 import numpy as np
@@ -7,6 +7,8 @@ from itertools import product # CHANGE
 from PIL import Image # CHANGE
 import os # CHANGE
 import glob # CHANGE
+from typing import Optional, Callable # CHANGE
+import random # CHANGE
 
 class myBigEarthNet(BigEarthNet):
     RGB_INDEX = [3, 2, 1]
@@ -232,3 +234,65 @@ class myOSCD(OSCD):
             tensor = torch.clamp(tensor, min=0, max=1)
             tensor = tensor.to(torch.long)
             return tensor
+
+class mySSL4EO(SSL4EOS12):
+    def __init__(self, 
+                 root: str = "/data",
+                 optical_split: str = "s2c",
+                 radar_split: str = "s1",
+                 transform: Optional[Callable[[dict[str, Tensor]], dict[str, Tensor]]] = None,
+                 seasons: int = 1,
+                 checksum: bool = False,
+    ) -> None:
+        self.root = root
+        self.optical_split = optical_split
+        self.radar_split = radar_split
+        self.transform = transform
+        self.seasons = seasons
+        assert self.seasons == 1, "Currently only support 1 season"
+        self.checksum = checksum
+
+        self.optical_bands = self.metadata[self.optical_split]["bands"]
+        self.radar_bands = self.metadata[self.radar_split]["bands"]
+
+    def __getitem__(self, index: int) -> dict[str, Tensor]:
+        optical_root = os.path.join(self.root, self.optical_split, f"{index:07}")
+        radar_root = os.path.join(self.root, self.radar_split, f"{index:07}")
+        optical_subdirs = os.listdir(optical_root)
+        radar_subdirs = os.listdir(radar_root)
+        optical_time_stamp = [int(subdir.split("_")[0].split['T'][0]) for subdir in optical_subdirs]
+        radar_time_stamp = [int(subdir.split("_")[4].split['T']) for subdir in radar_subdirs]
+
+        # sort the subdirs by time stamp
+        optical_subdirs = [x for _, x in sorted(zip(optical_time_stamp, optical_subdirs))]
+        radar_subdirs = [x for _, x in sorted(zip(radar_time_stamp, radar_subdirs))]
+
+        # subsampe the same season from the optical and radar data
+        sub_index = random.randint(0, len(optical_subdirs)-1)
+        optical_subdirs = optical_subdirs[sub_index]
+        radar_subdirs = radar_subdirs[sub_index]
+        
+        # subdirs = random.sample(subdirs, self.seasons)
+
+        images = []
+        optical_directory = os.path.join(optical_root, optical_subdirs)
+        for band in self.optical_bands:
+            filename = os.path.join(optical_directory, f"{band}.tif")
+            with rasterio.open(filename) as f:
+                image = f.read(out_shape=(1, self.size, self.size))
+                images.append(torch.from_numpy(image.astype(np.float32)))
+
+        radars = []
+        radar_directory = os.path.join(radar_root, radar_subdirs)
+        for band in self.radar_bands:
+            filename = os.path.join(radar_directory, f"{band}.tif")
+            with rasterio.open(filename) as f:
+                radar = f.read(out_shape=(1, self.size, self.size))
+                radars.append(torch.from_numpy(radar.astype(np.float32)))
+
+        sample = {"image": torch.cat(images), "radar": torch.cat(radars)}
+
+        if self.transforms is not None:
+            sample = self.transforms(sample)
+
+        return sample
