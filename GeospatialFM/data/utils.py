@@ -10,7 +10,8 @@ from .datasets import *
 MY_DATASETS = {
     "BigEarthNet": myBigEarthNet,
     "So2Sat": mySo2Sat,
-    "OSCD": myOSCD 
+    "OSCD": myOSCD,
+    "SSL4EO": mySSL4EO
 }
 
 DATA_ROOT = './data'
