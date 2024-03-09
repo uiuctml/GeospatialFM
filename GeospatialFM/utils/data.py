@@ -46,17 +46,22 @@ def get_data(cfg, ddp=False):
     train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=train_shuffle, num_workers=num_workers, pin_memory=pin_memory, drop_last=drop_last, sampler=train_sampler)
     train_dl.num_samples = len(train_ds)
     train_dl.num_batches = len(train_dl)
-    val_dl = DataLoader(val_ds, batch_size=eval_batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory)
-    val_dl.num_samples = len(val_ds)
-    val_dl.num_batches = len(val_dl)
-    test_dl = DataLoader(test_ds, batch_size=eval_batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory)
-    test_dl.num_samples = len(test_ds)
-    test_dl.num_batches = len(test_dl)
-    data = dict(
+    if val_ds is None and test_ds is None:
+        data = dict(
         train=DataInfo(train_dl, train_sampler),
-        val=DataInfo(val_dl),
-        test=DataInfo(test_dl),
-    )
+        )
+    else: 
+        val_dl = DataLoader(val_ds, batch_size=eval_batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory)
+        val_dl.num_samples = len(val_ds)
+        val_dl.num_batches = len(val_dl)
+        test_dl = DataLoader(test_ds, batch_size=eval_batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory)
+        test_dl.num_samples = len(test_ds)
+        test_dl.num_batches = len(test_dl)
+        data = dict(
+            train=DataInfo(train_dl, train_sampler),
+            val=DataInfo(val_dl),
+            test=DataInfo(test_dl),
+        )
     return data
 
 class DictDataset(Dataset):
