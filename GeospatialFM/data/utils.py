@@ -51,8 +51,14 @@ def get_dataset(data_cfg, split='train', transforms=None):
         return getattr(tgds, data_cfg['name'])(split=split, **data_cfg['kwargs'], transforms=transforms)
     except:
         raise NotImplementedError
-
+    
 def get_datasets(data_cfg):
+    if data_cfg['task_type'] in ['pretrain']:
+        return get_pretrain_datasets(data_cfg)
+    else:
+        return get_transfer_datasets(data_cfg)
+
+def get_transfer_datasets(data_cfg):
     print(f"Training Dataset: {data_cfg['name']}")
     data_cfg['kwargs']['root'] = osp.join(data_cfg['root'], data_cfg['name'])
     data_mean_std = get_mean_std(data_cfg)
@@ -81,3 +87,15 @@ def get_datasets(data_cfg):
     print(f"Train Set: {len(train_dataset)}\t Val Set: {len(val_dataset)}\t Test Set: {len(test_dataset)}")
 
     return train_dataset, val_dataset, test_dataset
+
+def get_pretrain_datasets(data_cfg):
+    print(f"Training Dataset: {data_cfg['name']}")
+    data_cfg['kwargs']['root'] = osp.join(data_cfg['root'], data_cfg['name'])
+    data_mean_std = get_mean_std(data_cfg)
+    assert data_cfg['task_type'] == 'pretrain'
+    train_transform = make_pretrain_transform(**data_cfg['train_transforms'], mean_std=data_mean_std)
+    train_dataset = get_dataset(data_cfg, transforms=train_transform)
+
+    print(f"Train Set: {len(train_dataset)}")
+
+    return train_dataset, None, None

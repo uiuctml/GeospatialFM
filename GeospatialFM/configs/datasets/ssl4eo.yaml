@@ -4,9 +4,6 @@ DATASET:
   train_transforms:
     normalize: true
     standardize: false
-  eval_transforms:
-    normalize: true
-    standardize: false
   kwargs:
     optical_split: s2c
     radar_split: s1
@@ -14,5 +11,4 @@ DATASET:
   task_type: pretrain
   use_train_transform: true
   train_frac: 1
-  val_frac: 0.1
-  train_split: trainval
+  train_split: train
