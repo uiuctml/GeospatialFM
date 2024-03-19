@@ -155,6 +155,7 @@ cython_debug/
 # Output and Data folders
 results/
 save_figs/
+data/
 
 # pylance
 # pyrightconfigs.json
