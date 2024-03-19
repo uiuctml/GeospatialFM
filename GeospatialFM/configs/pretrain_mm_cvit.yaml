@@ -9,7 +9,7 @@ LOSS:
     scale: 1.0
     use_mask: false
 DATASET:
-  name: SSL4EO
+  name: BigEarthNet
   # root: ./data/geospatial
   # name: BigEarthNet
   # train_transforms:
@@ -31,8 +31,8 @@ DATASET:
 TRAINER:
   # Training related
   num_train_epochs: 100
-  per_device_train_batch_size: 128
-  per_device_eval_batch_size: 320
+  per_device_train_batch_size: 64
+  per_device_eval_batch_size: 64
   gradient_accumulation_steps: 8
   learning_rate: 1.5e-4
   weight_decay: 0.05

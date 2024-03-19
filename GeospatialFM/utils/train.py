@@ -205,6 +205,7 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
                 "samples_per_second_per_gpu": samples_per_second_per_gpu,
                 "lr": optimizer.param_groups[0]["lr"],
                 "scale": logit_scale_scalar,
+                "epoch": epoch
             }            
 
             log_data.update({name:val.val for name,val in losses_m.items()})
