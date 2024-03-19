@@ -29,10 +29,10 @@ S2C_MEAN = [1605.57504906, 1390.78157673, 1314.8729939, 1363.52445545, 1549.4437
 S2C_STD = [786.78685367, 850.34818441, 875.06484736, 1138.84957046, 1122.17775652, 1161.59187054, 1274.39184232, 1248.42891965, 1345.52684884, 577.31607053, 51.15431158, 1336.09932639, 1136.53823676]
 
 def get_mean_std(data_cfg): # CHANGE
-    if data_cfg['kwargs']['bands'] == 's1':
-        return S1_MEAN, S1_STD
-    elif data_cfg['name'] == 'SSL4EO':
+    if data_cfg['name'] == 'SSL4EO':
         return S1_MEAN + S2C_MEAN, S1_STD + S2C_STD
+    elif data_cfg['kwargs']['bands'] == 's1':
+        return S1_MEAN, S1_STD
     elif data_cfg['name'] != 'OSCD' and data_cfg['kwargs']['bands'] == 'all':
         return S1_MEAN + S2A_MEAN, S1_STD + S2A_STD  # For now, only support BigEarthNet
     try:

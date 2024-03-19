@@ -160,9 +160,18 @@ class NormalizeALL(object):
     """Normalize the input PIL Image."""
     
     def __init__(self, mean, std, ignored_keys=['label', 'mask']):
-        self.mean = mean
-        self.std = std
+        self.mean = torch.tensor(mean)
+        self.std = torch.tensor(std)
         self.ignored_keys = ignored_keys
+        
+    def _normalize(self, img, mean, std):
+        mean = mean.view(-1, 1, 1)
+        std = std.view(-1, 1, 1)
+        min_value = mean - 2 * std
+        max_value = mean + 2 * std
+        img = (img - min_value) / (max_value - min_value) * 255.0
+        img = torch.clip(img, 0, 255).to(torch.uint8)
+        return img
     
     def __call__(self, samples):
         img = []
@@ -185,15 +194,18 @@ class NormalizeALL(object):
                 mean = self.mean
                 std = self.std
             assert img.shape[0] == len(mean) == len(std)
-            img = F.normalize(img, mean, std)
+            # img = F.normalize(img, mean, std)
+            img = self._normalize(img, mean, std)
             if 'radar' in samples.keys() and 'radar' not in self.ignored_keys:
                 samples['radar'] = img[:split_point].float()
             if 'image' in samples.keys() and 'image' not in self.ignored_keys:
                 samples['image'] = img[split_point:].float()
         else:
             assert 'image1' in samples.keys() and 'image2' in samples.keys()
-            samples['image1'] = F.normalize(samples['image1'], self.mean, self.std).float()
-            samples['image2'] = F.normalize(samples['image2'], self.mean, self.std).float()
+            # samples['image1'] = F.normalize(samples['image1'], self.mean, self.std)#.float()
+            # samples['image2'] = F.normalize(samples['image2'], self.mean, self.std)#.float()
+            samples['image1'] = self._normalize(samples['image1'], self.mean, self.std)
+            samples['image2'] = self._normalize(samples['image2'], self.mean, self.std)
 
         return samples
 
