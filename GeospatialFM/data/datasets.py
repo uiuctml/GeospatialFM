@@ -240,14 +240,15 @@ class mySSL4EO(SSL4EOS12):
                  root: str = "/data",
                  optical_split: str = "s2c",
                  radar_split: str = "s1",
-                 transform: Optional[Callable[[dict[str, Tensor]], dict[str, Tensor]]] = None,
+                 transforms: Optional[Callable[[dict[str, Tensor]], dict[str, Tensor]]] = None,
                  seasons: int = 1,
                  checksum: bool = False,
+                 **kwargs
     ) -> None:
         self.root = root
         self.optical_split = optical_split
         self.radar_split = radar_split
-        self.transform = transform
+        self.transforms = transforms
         self.seasons = seasons
         assert self.seasons == 1, "Currently only support 1 season"
         self.checksum = checksum
@@ -256,12 +257,13 @@ class mySSL4EO(SSL4EOS12):
         self.radar_bands = self.metadata[self.radar_split]["bands"]
 
     def __getitem__(self, index: int) -> dict[str, Tensor]:
-        optical_root = os.path.join(self.root, self.optical_split, f"{index:07}")
-        radar_root = os.path.join(self.root, self.radar_split, f"{index:07}")
+        file_idx = int(sorted(os.listdir(os.path.join(self.root, self.optical_split)))[index])        
+        optical_root = os.path.join(self.root, self.optical_split, f"{file_idx:07}")
+        radar_root = os.path.join(self.root, self.radar_split, f"{file_idx:07}")
         optical_subdirs = os.listdir(optical_root)
         radar_subdirs = os.listdir(radar_root)
-        optical_time_stamp = [int(subdir.split("_")[0].split['T'][0]) for subdir in optical_subdirs]
-        radar_time_stamp = [int(subdir.split("_")[4].split['T']) for subdir in radar_subdirs]
+        optical_time_stamp = [int(subdir.split("_")[0].split('T')[0]) for subdir in optical_subdirs]
+        radar_time_stamp = [int(subdir.split("_")[4].split('T')[0]) for subdir in radar_subdirs]
 
         # sort the subdirs by time stamp
         optical_subdirs = [x for _, x in sorted(zip(optical_time_stamp, optical_subdirs))]
@@ -291,7 +293,7 @@ class mySSL4EO(SSL4EOS12):
                 radars.append(torch.from_numpy(radar.astype(np.float32)))
 
         sample = {"image": torch.cat(images), "radar": torch.cat(radars)}
-
+        
         if self.transforms is not None:
             sample = self.transforms(sample)
 
