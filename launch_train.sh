@@ -16,7 +16,7 @@
 #     --config_file GeospatialFM/configs/pretrain_cvit.yaml \
 #     MODEL.OPTICAL.kwargs.spectral_blocks=1 MODEL.OPTICAL.kwargs.sptial_spectral_blocks=2
 
-CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node 4 --master_port=10086 -m train --exp_name mm_mae_fcvit_1-2-9_e20 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node 4 --master_port=10086 -m train --exp_name mm_mae_fcvit_1-2-9 \
     --config_file GeospatialFM/configs/pretrain_mm_cvit.yaml \
     MODEL.MULTI_MODAL.kwargs.spectral_blocks=1 MODEL.MULTI_MODAL.kwargs.sptial_spectral_blocks=2
 
