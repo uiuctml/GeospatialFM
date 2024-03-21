@@ -40,3 +40,5 @@ MODEL:
       patch_size: 16
       num_register_tokens: 0
       embed_dim: 768
+      norm_pix_loss: true
+      

@@ -170,6 +170,7 @@ class NormalizeALL(object):
         min_value = mean - 2 * std
         max_value = mean + 2 * std
         img = (img - min_value) / (max_value - min_value) * 255.0
+        # img = torch.clip(img, 0, 1)
         img = torch.clip(img, 0, 255).to(torch.uint8)
         return img
     
@@ -220,7 +221,7 @@ def make_pretrain_transform(
     standardize: bool = True,
     **kwargs
 ):
-    transforms_list = [RandomResizedCropALL(crop_size, interpolation=interpolation)]
+    transforms_list = [RandomResizedCropALL(crop_size, interpolation=interpolation, scale=(0.1, 0.5))]
     if hflip_prob > 0.0:
         transforms_list.append(RandomHorizontalFlipALL(p=hflip_prob))
     transforms_list.append(MaybeToTensorALL())
