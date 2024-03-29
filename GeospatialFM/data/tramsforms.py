@@ -113,6 +113,24 @@ class RandomResizedCropALL(object):
                 samples[key] = F.resized_crop(val, i, j, h, w, [self.size, self.size], interpolation=self.interpolation, antialias=self.antialias)
         return samples
     
+class RandomCropALL(object):
+    """Randomly resize and crop the given PIL Image and its mask to a given size."""
+    
+    def __init__(self, size, ignored_keys=['label']):
+        self.size = size
+        self.ignored_keys = ignored_keys
+    
+    def __call__(self, samples):
+        if 'image' in samples: image = samples['image']
+        elif 'image1' in samples: image = samples['image1']
+        elif 'radar' in samples: image = samples['radar']
+        else: raise ValueError('No image found in samples')
+        i, j, h, w = transforms.RandomCrop.get_params(image, [self.size, self.size])
+        for key, val in samples.items():
+            if key not in self.ignored_keys:
+                samples[key] = F.crop(val, i, j, h, w)
+        return samples
+    
 class ResizeALL(object):
     """Resize the input PIL Image to the given size."""
     
@@ -167,8 +185,8 @@ class NormalizeALL(object):
     def _normalize(self, img, mean, std):
         mean = mean.view(-1, 1, 1)
         std = std.view(-1, 1, 1)
-        min_value = mean - 2 * std
-        max_value = mean + 2 * std
+        min_value = mean - 4 * std
+        max_value = mean + 4 * std
         img = (img - min_value) / (max_value - min_value) * 255.0
         # img = torch.clip(img, 0, 1)
         img = torch.clip(img, 0, 255).to(torch.uint8)
@@ -195,8 +213,8 @@ class NormalizeALL(object):
                 mean = self.mean
                 std = self.std
             assert img.shape[0] == len(mean) == len(std)
-            # img = F.normalize(img, mean, std)
-            img = self._normalize(img, mean, std)
+            img = F.normalize(img, mean, std)
+            # img = self._normalize(img, mean, std)
             if 'radar' in samples.keys() and 'radar' not in self.ignored_keys:
                 samples['radar'] = img[:split_point].float()
             if 'image' in samples.keys() and 'image' not in self.ignored_keys:
@@ -221,7 +239,9 @@ def make_pretrain_transform(
     standardize: bool = True,
     **kwargs
 ):
-    transforms_list = [RandomResizedCropALL(crop_size, interpolation=interpolation, scale=(0.1, 0.5))]
+    # transforms_list = [RandomResizedCropALL(crop_size, interpolation=interpolation, scale=(0.05, 0.4))]
+    transforms_list = [RandomCropALL(120), RandomResizedCropALL(crop_size, interpolation=interpolation, scale=(0.08, 1))]
+    # transforms_list = [CenterCropALL(crop_size)]
     if hflip_prob > 0.0:
         transforms_list.append(RandomHorizontalFlipALL(p=hflip_prob))
     transforms_list.append(MaybeToTensorALL())
