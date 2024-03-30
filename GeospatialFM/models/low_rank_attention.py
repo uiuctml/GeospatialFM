@@ -20,14 +20,18 @@ class LowRankAttention(nn.Module):
             attn_drop: float = 0.,
             proj_drop: float = 0.,
             norm_layer: nn.Module = nn.LayerNorm,
+            seperate_v: bool = True,
     ) -> None:
         super().__init__()
         assert dim % num_heads == 0, 'dim should be divisible by num_heads'
         self.num_heads = num_heads
         self.head_dim = dim // num_heads
         self.scale = self.head_dim ** -0.5
+        self.fused_attn = use_fused_attn() and seperate_v
+        self.seperate_v = not use_fused_attn() or seperate_v
+        self.nqkv = 6 if self.seperate_v else 5
 
-        self.qkv = nn.Linear(dim, dim * 5, bias=qkv_bias)
+        self.qkv = nn.Linear(dim, dim * self.nqkv, bias=qkv_bias)
         self.q_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
         self.k_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
         self.attn_drop = nn.Dropout(attn_drop)
@@ -37,28 +41,41 @@ class LowRankAttention(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         assert x.dim() == 4, 'LowRankAttention only supports 4D input'
         B, N, C, D = x.shape
-        qkv = self.qkv(x).reshape(B, N, C, 5, self.num_heads, self.head_dim).permute(3, 0, 4, 1, 2, 5)
-        qc, kc, qs, ks, v = qkv.unbind(0)
+        qkv = self.qkv(x).reshape(B, N, C, self.nqkv, self.num_heads, self.head_dim).permute(3, 0, 4, 1, 2, 5)
+        if self.seperate_v:
+            qc, kc, qs, ks, vc, vs = qkv.unbind(0)
+            vs = vs.transpose(-2, -3)
+        else:
+            qc, kc, qs, ks, v = qkv.unbind(0)
+            v = v.flatten(-3, -2)
         qc, kc, qs, ks = self.q_norm(qc), self.k_norm(kc), self.q_norm(qs), self.k_norm(ks)
         qs, ks = qs.transpose(-2, -3), ks.transpose(-2, -3)
-
-        qc = qc * self.scale
-        attn_c = qc @ kc.transpose(-2, -1)
-        attn_c = attn_c.softmax(dim=-1)
-        attn_c = self.attn_drop(attn_c)
-        attn_c = attn_c.reshape(B, self.num_heads, N*C, C)
         
-        qs = qs * self.scale
-        attn_s = qs @ ks.transpose(-2, -1)
-        attn_s = attn_s.softmax(dim=-1)
-        attn_s = self.attn_drop(attn_s)
-        attn_s = attn_s.transpose(-2, -3).reshape(B, self.num_heads, N*C, N)
-        
-        
-        attn = (attn_c.unsqueeze(-1) @ attn_s.unsqueeze(-2)).flatten(-2) # B, num_heads, N*C, N*C
-        v = v.reshape(B, self.num_heads, N*C, -1)
-        
-        x = attn @ v # B, num_heads, N*C, head_dim
+        if self.fused_attn:
+            xs = F.scaled_dot_product_attention(
+                qs, ks, vs,
+                dropout_p=self.attn_drop.p if self.training else 0.,
+            ).transpose(-2, -3)
+            xc = F.scaled_dot_product_attention(
+                qc, kc, vc,
+                dropout_p=self.attn_drop.p if self.training else 0.,
+            )
+            x = xs * xc
+        else:
+            qs = qs * self.scale
+            attn_s = qs @ ks.transpose(-2, -1)
+            attn_s = attn_s.softmax(dim=-1)
+            attn_s = self.attn_drop(attn_s)
+            attn_s = attn_s.transpose(-2, -3)
+            
+            qc = qc * self.scale
+            attn_c = qc @ kc.transpose(-2, -1)
+            attn_c = attn_c.softmax(dim=-1)
+            attn_c = self.attn_drop(attn_c)
+            
+            attn = attn_c.unsqueeze(-1) @ attn_s.unsqueeze(-2)
+            attn = attn.flatten(-4, -3).flatten(-2)
+            x = attn @ v
 
         x = x.transpose(1, 2).reshape(B, N, C, D)
         x = self.proj(x)
@@ -96,6 +113,7 @@ class LowRankBlock(nn.Module):
             act_layer: nn.Module = nn.GELU,
             norm_layer: nn.Module = nn.LayerNorm,
             mlp_layer: nn.Module = Mlp,
+            seperate_v: bool = True,
     ) -> None:
         super().__init__()
         self.norm1 = norm_layer(dim)
@@ -107,6 +125,7 @@ class LowRankBlock(nn.Module):
             attn_drop=attn_drop,
             proj_drop=proj_drop,
             norm_layer=norm_layer,
+            seperate_v=seperate_v,
         )
         self.ls1 = LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
         self.drop_path1 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
