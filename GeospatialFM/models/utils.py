@@ -6,6 +6,7 @@ import timm
 from .vision_transformer import ViTEncoder, ViTDecoder
 from .flexible_channel_vit import ChannelViTEncoder
 from .multi_modal_channel_vit import MultiModalChannelViTEncoder, MultiModalChannelViTDecoder
+from .multi_modal_low_rank_vit import MultiModalLowRankViTEncoder
 from .pspnet import *
 from .mae import CrossModalMAEViT
 from .multi_modal_mae import MultiModalMAEViT
@@ -142,6 +143,8 @@ def construct_encoder(model_cfg, arch):
         encoder = ChannelViTEncoder(**model_cfg['kwargs'])
     elif model_cfg['custom_vit'] == 'multi_modal_channel_vit':
         encoder = MultiModalChannelViTEncoder(**model_cfg['kwargs'])
+    elif model_cfg['custom_vit'] == 'multi_modal_low_rank_channel_vit':
+        encoder = MultiModalLowRankViTEncoder(**model_cfg['kwargs'])
     else:
         encoder = ViTEncoder(**model_cfg['kwargs'])
 
