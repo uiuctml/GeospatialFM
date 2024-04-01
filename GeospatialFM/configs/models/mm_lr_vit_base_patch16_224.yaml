@@ -16,15 +16,15 @@ MODEL:
       depth: 12
       num_heads: 12
       mlp_ratio: 4.0
-      qkv_bias: True
+      qkv_bias: true
       drop_path_rate: 0.0
-      drop_path_uniform: False
+      drop_path_uniform: false
       init_values: null
       num_register_tokens: 0
       channel_pool: max
       spectral_blocks: 0
       sptial_spectral_blocks: 12
-      seperate_v: True
+      dim_ratio: 0.25
   DECODER:
     kwargs:
       # optical_out_chans: 13
@@ -41,5 +41,5 @@ MODEL:
       patch_size: 16
       num_register_tokens: 0
       embed_dim: 768
-      norm_pix_loss: true
+      norm_pix_loss: false
       

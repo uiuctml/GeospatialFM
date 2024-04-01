@@ -51,7 +51,7 @@ def get_data(cfg, ddp=False):
         train=DataInfo(train_dl, train_sampler),
         )
     else: 
-        val_dl = DataLoader(val_ds, batch_size=eval_batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory)
+        val_dl = DataLoader(val_ds, batch_size=eval_batch_size, shuffle=True, num_workers=num_workers, pin_memory=pin_memory)
         val_dl.num_samples = len(val_ds)
         val_dl.num_batches = len(val_dl)
         test_dl = DataLoader(test_ds, batch_size=eval_batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory)
