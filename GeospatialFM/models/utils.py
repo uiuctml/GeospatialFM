@@ -142,8 +142,10 @@ def construct_encoder(model_cfg, arch):
     if model_cfg['custom_vit'] == 'channel_vit':
         encoder = ChannelViTEncoder(**model_cfg['kwargs'])
     elif model_cfg['custom_vit'] == 'multi_modal_channel_vit':
+        print('Using Multi-Modal Channel ViT...')
         encoder = MultiModalChannelViTEncoder(**model_cfg['kwargs'])
     elif model_cfg['custom_vit'] == 'multi_modal_low_rank_channel_vit':
+        print('Using Multi-Modal LowRank ViT...')
         encoder = MultiModalLowRankViTEncoder(**model_cfg['kwargs'])
     else:
         encoder = ViTEncoder(**model_cfg['kwargs'])
