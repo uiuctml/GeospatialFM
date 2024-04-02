@@ -240,7 +240,7 @@ def make_pretrain_transform(
     **kwargs
 ):
     # transforms_list = [RandomResizedCropALL(crop_size, interpolation=interpolation, scale=(0.05, 0.4))]
-    transforms_list = [RandomCropALL(120), RandomResizedCropALL(crop_size, interpolation=interpolation, scale=(0.08, 1))]
+    transforms_list = [RandomCropALL(120), RandomResizedCropALL(crop_size, interpolation=interpolation, scale=(0.2, 1))]
     # transforms_list = [CenterCropALL(crop_size)]
     if hflip_prob > 0.0:
         transforms_list.append(RandomHorizontalFlipALL(p=hflip_prob))
