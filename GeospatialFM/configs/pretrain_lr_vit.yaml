@@ -9,25 +9,7 @@ LOSS:
     scale: 1.0
     use_mask: false
 DATASET:
-  # name: BigEarthNet
-  root: ./data/geospatial
-  name: BigEarthNet
-  train_transforms:
-    normalize: true
-    standardize: false
-  eval_transforms:
-    normalize: true
-    standardize: false
-  kwargs:
-    bands: all
-    num_classes: 19
-    pad_s2: true
-  eval_metric: classification
-  task_type: pretrain
-  use_train_transform: true
-  train_frac: 1
-  val_frac: 0.1
-  train_split: trainval
+  name: SSL4EO
 TRAINER:
   # Training related
   num_train_epochs: 20

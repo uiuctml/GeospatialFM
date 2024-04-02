@@ -18,7 +18,7 @@ class myBigEarthNet(BigEarthNet):
             kwargs['bands'] = 's2'
         else:
             self.rgb=False
-        super().__init__(**kwargs)
+        super().__init__(**kwargs, download=True)
         self.pad_s2 = pad_s2   # pad sentinel-2 images to 13 bands
 
     def __getitem__(self, index: int) -> dict[str, Tensor]:
