@@ -96,8 +96,13 @@ def get_pretrain_datasets(data_cfg):
     data_mean_std = get_mean_std(data_cfg)
     assert data_cfg['task_type'] == 'pretrain'
     train_transform = make_pretrain_transform(**data_cfg['train_transforms'], mean_std=data_mean_std)
-    train_dataset = get_dataset(data_cfg, transforms=train_transform)
-
+    train_dataset = get_dataset(data_cfg, split='train', transforms=train_transform)
+    if data_cfg['train_split'] == 'trainval':
+        try:
+            val_dataset = get_dataset(data_cfg, split='val', transforms=train_transform)
+            train_dataset = ConcatDataset([train_dataset, val_dataset])
+        except:
+            pass
     print(f"Train Set: {len(train_dataset)}")
 
     return train_dataset, None, None
