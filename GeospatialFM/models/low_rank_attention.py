@@ -71,7 +71,6 @@ class LowRankAttention(nn.Module):
                 qc, kc, vc,
                 dropout_p=self.attn_drop.p if self.training else 0.,
             )
-            
             x = torch.einsum('...a,...b->...ab', xc, xs).flatten(-2)
         else:
             qs = qs * self.scale
