@@ -21,6 +21,7 @@ class LowRankAttention(nn.Module):
             proj_drop: float = 0.,
             norm_layer: nn.Module = nn.LayerNorm,
             dim_ratio: float = 0.25,
+            pool: bool = False,
     ) -> None:
         super().__init__()
         assert dim % num_heads == 0, 'dim should be divisible by num_heads'
@@ -31,13 +32,16 @@ class LowRankAttention(nn.Module):
         self.s_head_dim = int(self.head_dim * dim_ratio)
         assert self.c_head_dim * self.s_head_dim == self.head_dim, '1/dim_ratio should be a factor of head_dim'
         self.fused_attn = use_fused_attn()
+        self.pool = pool
         # self.seperate_v = not use_fused_attn() or seperate_v
         # self.nqkv = 6 if self.seperate_v else 5
 
         self.qkv_c = nn.Linear(dim, int(num_heads * 3 / dim_ratio), bias=qkv_bias)
         self.qkv_s = nn.Linear(dim, int(dim * 3 * dim_ratio), bias=qkv_bias)
-        self.q_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
-        self.k_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
+        self.qc_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
+        self.kc_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
+        self.qs_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
+        self.ks_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
@@ -50,7 +54,7 @@ class LowRankAttention(nn.Module):
         qc, kc, vc = qkv_c.unbind(0)
         qs, ks, vs = qkv_s.unbind(0)
         
-        qc, kc, qs, ks = self.q_norm(qc), self.k_norm(kc), self.q_norm(qs), self.k_norm(ks)
+        qc, kc, qs, ks = self.qc_norm(qc), self.kc_norm(kc), self.qs_norm(qs), self.ks_norm(ks)
         qs, ks, vs = qs.transpose(-2, -3), ks.transpose(-2, -3), vs.transpose(-2, -3)
                 
         # qkv = self.qkv(x).reshape(B, N, C, 3, self.num_heads, self.head_dim).permute(3, 0, 4, 1, 2, 5)
@@ -89,6 +93,10 @@ class LowRankAttention(nn.Module):
             x = torch.einsum('...a,...b->...ab', xc, xs).flatten(-2)
 
         x = x.transpose(1, 2).reshape(B, N, C, D)
+        if self.pool:
+            x = x.sum(-2)
+            assert x.shape == (B, N, D)
+            print(x.shape)
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
@@ -125,6 +133,7 @@ class LowRankBlock(nn.Module):
             norm_layer: nn.Module = nn.LayerNorm,
             mlp_layer: nn.Module = Mlp,
             dim_ratio: float = 0.25,
+            pool: bool = False,
     ) -> None:
         super().__init__()
         self.norm1 = norm_layer(dim)
@@ -137,6 +146,7 @@ class LowRankBlock(nn.Module):
             proj_drop=proj_drop,
             norm_layer=norm_layer,
             dim_ratio=dim_ratio,
+            pool=pool,
         )
         self.ls1 = LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
         self.drop_path1 = DropPath(drop_path) if drop_path > 0. else nn.Identity()

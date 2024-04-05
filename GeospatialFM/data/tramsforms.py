@@ -178,8 +178,8 @@ class NormalizeALL(object):
     """Normalize the input PIL Image."""
     
     def __init__(self, mean, std, ignored_keys=['label', 'mask']):
-        self.mean = torch.tensor(mean)
-        self.std = torch.tensor(std)
+        self.mean = torch.tensor(mean) if not isinstance(mean, torch.Tensor) else mean
+        self.std = torch.tensor(std) if not isinstance(std, torch.Tensor) else std
         self.ignored_keys = ignored_keys
         
     def _normalize(self, img, mean, std):
@@ -221,10 +221,10 @@ class NormalizeALL(object):
                 samples['image'] = img[split_point:].float()
         else:
             assert 'image1' in samples.keys() and 'image2' in samples.keys()
-            # samples['image1'] = F.normalize(samples['image1'], self.mean, self.std)#.float()
-            # samples['image2'] = F.normalize(samples['image2'], self.mean, self.std)#.float()
-            samples['image1'] = self._normalize(samples['image1'], self.mean, self.std)
-            samples['image2'] = self._normalize(samples['image2'], self.mean, self.std)
+            samples['image1'] = F.normalize(samples['image1'], self.mean, self.std)#.float()
+            samples['image2'] = F.normalize(samples['image2'], self.mean, self.std)#.float()
+            # samples['image1'] = self._normalize(samples['image1'], self.mean, self.std)
+            # samples['image2'] = self._normalize(samples['image2'], self.mean, self.std)
 
         return samples
 
@@ -240,7 +240,7 @@ def make_pretrain_transform(
     **kwargs
 ):
     # transforms_list = [RandomResizedCropALL(crop_size, interpolation=interpolation, scale=(0.05, 0.4))]
-    transforms_list = [RandomCropALL(120), RandomResizedCropALL(crop_size, interpolation=interpolation, scale=(0.2, 1))]
+    transforms_list = [RandomCropALL(120), RandomResizedCropALL(crop_size, interpolation=interpolation, scale=(0.08, 1))]
     # transforms_list = [CenterCropALL(crop_size)]
     if hflip_prob > 0.0:
         transforms_list.append(RandomHorizontalFlipALL(p=hflip_prob))
