@@ -33,8 +33,6 @@ class LowRankAttention(nn.Module):
         assert self.c_head_dim * self.s_head_dim == self.head_dim, '1/dim_ratio should be a factor of head_dim'
         self.fused_attn = use_fused_attn()
         self.pool = pool
-        # self.seperate_v = not use_fused_attn() or seperate_v
-        # self.nqkv = 6 if self.seperate_v else 5
 
         self.qkv_c = nn.Linear(dim, int(num_heads * 3 / dim_ratio), bias=qkv_bias)
         self.qkv_s = nn.Linear(dim, int(dim * 3 * dim_ratio), bias=qkv_bias)
@@ -45,26 +43,51 @@ class LowRankAttention(nn.Module):
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        assert x.dim() == 4, 'LowRankAttention only supports 4D input'
+    
+    def pool_forward(self, x: torch.Tensor) -> torch.Tensor:
         B, N, C, D = x.shape
-        qkv_c = self.qkv_c(x).reshape(B, N, C, 3, self.num_heads, self.c_head_dim).permute(3, 0, 4, 1, 2, 5)
-        qkv_s = self.qkv_s(x).reshape(B, N, C, 3, self.num_heads, self.s_head_dim).permute(3, 0, 4, 1, 2, 5)
+        x_c = x.mean(-3)
+        x_s = x.mean(-2)
+        qkv_c = self.qkv_c(x_c).reshape(B, C, 3, self.num_heads, self.c_head_dim).permute(2, 0, 3, 1, 4) # 3, B, num_heads, C, c_head_dim
+        qkv_s = self.qkv_s(x_s).reshape(B, N, 3, self.num_heads, self.s_head_dim).permute(2, 0, 3, 1, 4) # 3, B, num_heads, N, s_head_dim
         qc, kc, vc = qkv_c.unbind(0)
         qs, ks, vs = qkv_s.unbind(0)
+        qc, kc, qs, ks = self.qc_norm(qc), self.kc_norm(kc), self.qs_norm(qs), self.ks_norm(ks)
         
+        if self.fused_attn:
+            xs = F.scaled_dot_product_attention(
+                qs, ks, vs,
+                dropout_p=self.attn_drop.p if self.training else 0.,
+            ) # B, num_heads, N, s_head_dim
+            xc = F.scaled_dot_product_attention(
+                qc, kc, vc,
+                dropout_p=self.attn_drop.p if self.training else 0.,
+            ) # B, num_heads, C, c_head_dim
+            x = torch.einsum('...ca,...nb->...cnab', xc, xs).flatten(-2)
+        else:
+            qs = qs * self.scale
+            attn_s = qs @ ks.transpose(-2, -1)
+            attn_s = attn_s.softmax(dim=-1)
+            attn_s = self.attn_drop(attn_s)
+            xs = attn_s @ vs
+            
+            qc = qc * self.scale
+            attn_c = qc @ kc.transpose(-2, -1)
+            attn_c = attn_c.softmax(dim=-1)
+            attn_c = self.attn_drop(attn_c)
+            xc = attn_c @ vc
+            
+            x = torch.einsum('...ca,...nb->...cnab', xc, xs).flatten(-2)
+        return x
+           
+    def _forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, N, C, D = x.shape
+        qkv_c = self.qkv_c(x).reshape(B, N, C, 3, self.num_heads, self.c_head_dim).permute(3, 0, 4, 1, 2, 5) # 3, B, num_heads, N, C, c_head_dim
+        qkv_s = self.qkv_s(x).reshape(B, N, C, 3, self.num_heads, self.s_head_dim).permute(3, 0, 4, 1, 2, 5) # 3, B, num_heads, N, C, s_head_dim
+        qc, kc, vc = qkv_c.unbind(0)
+        qs, ks, vs = qkv_s.unbind(0)      
         qc, kc, qs, ks = self.qc_norm(qc), self.kc_norm(kc), self.qs_norm(qs), self.ks_norm(ks)
         qs, ks, vs = qs.transpose(-2, -3), ks.transpose(-2, -3), vs.transpose(-2, -3)
-                
-        # qkv = self.qkv(x).reshape(B, N, C, 3, self.num_heads, self.head_dim).permute(3, 0, 4, 1, 2, 5)
-        # q, k, v = qkv.unbind(0)
-        # q = q.reshape(B, self.num_heads, N, C, 2, self.head_dim // 2).permute(4, 0, 1, 2, 3, 5)
-        # qs, qc = q.unbind(0)
-        # k = k.reshape(B, self.num_heads, N, C, 2, self.head_dim // 2).permute(4, 0, 1, 2, 3, 5)
-        # ks, kc = k.unbind(0)
-        # qc, kc, qs, ks = self.q_norm(qc), self.k_norm(kc), self.q_norm(qs), self.k_norm(ks)
-        # qs, ks = qs.transpose(-2, -3), ks.transpose(-2, -3)
         
         if self.fused_attn:
             xs = F.scaled_dot_product_attention(
@@ -91,7 +114,17 @@ class LowRankAttention(nn.Module):
             xc = attn_c @ vc
             
             x = torch.einsum('...a,...b->...ab', xc, xs).flatten(-2)
+        return x
 
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        assert x.dim() == 4, 'LowRankAttention only supports 4D input'
+        B, N, C, D = x.shape
+
+        if self.pool:
+            x = self.pool_forward(x)
+        else:
+            x = self._forward(x)
+                
         x = x.transpose(1, 2).reshape(B, N, C, D)
         if self.pool:
             x = x.sum(-2)
