@@ -1,14 +1,14 @@
 MODEL:
-  architecture: mm_cvit_base_patch16_224
+  architecture: mm_lr_vit_base_patch16_224
   MULTI_MODAL:
     use_head: true
     head_kwargs:
       use_bias: true
 DATASET:
-  name: BigEarthNet
+  name: EuroSAT
 TRAINER:
   # Training related
-  num_train_epochs: 10
+  num_train_epochs: 40
   # per_device_train_batch_size: 128
   per_device_train_batch_size: 128
   per_device_eval_batch_size: 128

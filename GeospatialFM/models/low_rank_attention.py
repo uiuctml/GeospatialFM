@@ -33,6 +33,8 @@ class LowRankAttention(nn.Module):
         assert self.c_head_dim * self.s_head_dim == self.head_dim, '1/dim_ratio should be a factor of head_dim'
         self.fused_attn = use_fused_attn()
         self.pool = pool
+        if self.pool:
+            print('Using NCD Pooling')
 
         self.qkv_c = nn.Linear(dim, int(num_heads * 3 / dim_ratio), bias=qkv_bias)
         self.qkv_s = nn.Linear(dim, int(dim * 3 * dim_ratio), bias=qkv_bias)
@@ -126,10 +128,10 @@ class LowRankAttention(nn.Module):
             x = self._forward(x)
                 
         x = x.transpose(1, 2).reshape(B, N, C, D)
-        if self.pool:
-            x = x.sum(-2)
-            assert x.shape == (B, N, D)
-            print(x.shape)
+        # if self.pool:
+        #     x = x.sum(-2)
+        #     assert x.shape == (B, N, D)
+        #     print(x.shape)
         x = self.proj(x)
         x = self.proj_drop(x)
         return x

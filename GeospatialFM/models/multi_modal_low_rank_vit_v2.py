@@ -42,9 +42,17 @@ class MultiModalLowRankViTEncoder(ViTEncoder):
         # Additional args for Channel_ViT
         self.channel_pool = channel_pool
         # override the patch embedding
+        self.n_pos_patches = self.patch_embed.num_patches
+        chan_embed_dim = int(1 // dim_ratio)
+        pos_embed_dim = int(embed_dim // chan_embed_dim)
+        assert pos_embed_dim * chan_embed_dim == embed_dim, "Embed dim should be divisible by channel embed dim"
         del self.patch_embed
-        self.optical_patch_embed = PatchEmbedPerChannel(img_size, patch_size, optical_in_chans, embed_dim, continuous_channels=True)
-        self.radar_patch_embed = PatchEmbedPerChannel(img_size, patch_size, radar_in_chans, embed_dim, continuous_channels=False, enable_sample=False)
+        self.optical_patch_embed = PatchEmbedPerChannel(img_size, patch_size, optical_in_chans, embed_dim, continuous_channels=True, channel_embed_dim=chan_embed_dim)
+        self.radar_patch_embed = PatchEmbedPerChannel(img_size, patch_size, radar_in_chans, embed_dim, continuous_channels=False, enable_sample=False, channel_embed_dim=chan_embed_dim)
+        del self.pos_embed
+        self.pos_embed = nn.Parameter(torch.zeros(1, self.n_pos_patches + 1 + num_register_tokens, pos_embed_dim), requires_grad=False)
+        pos_embed = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(self.n_pos_patches**.5), cls_token=True)
+        self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
         if channel_pool == "mean":
             self.channel_pool = nn.AdaptiveAvgPool1d(1)
         elif channel_pool == "max":
@@ -55,6 +63,7 @@ class MultiModalLowRankViTEncoder(ViTEncoder):
         self.spectral_blocks = spectral_blocks
         self.sptial_spectral_blocks = sptial_spectral_blocks
         self.spatial_blocks = self.n_blocks - spectral_blocks - sptial_spectral_blocks
+        assert self.spatial_blocks != self.n_blocks, "At least one of the blocks should be spatial-spectral"
         print(f"Spectral Blocks: {self.spectral_blocks}\tSptial-Spectral Blocks: {self.sptial_spectral_blocks}\tSpatial Blocks: {self.spatial_blocks}")
 
         if drop_path_uniform is True:
@@ -73,7 +82,6 @@ class MultiModalLowRankViTEncoder(ViTEncoder):
                     norm_layer=norm_layer,
                     init_values=init_values,
                     dim_ratio=dim_ratio,
-                    # pool=True
                 )
         
         self.radar_spectral_blocks = deepcopy(self.blocks[:spectral_blocks]) if self.spectral_blocks > 0 else None
@@ -112,28 +120,24 @@ class MultiModalLowRankViTEncoder(ViTEncoder):
     def forward(self, optical=None, radar=None, channel_ids=SENTINEL_WV, return_dict=False):
         assert optical is not None or radar is not None, "At least one of optical and radar should be provided"
         # embed patches
+        radar_chan_emb = optical_chan_emb = None
         if radar is not None:
-            radar, _, _ = self.radar_patch_embed(radar, 0, None) # B Cin HW Cout
+            radar, _, _, radar_chan_emb = self.radar_patch_embed(radar, 0, None) # B Cin HW Cout
             channel_mask = None
             radar_Cin = radar.shape[1]
         if optical is not None:
-            optical, _channel_mask, channel_ids_restore = self.optical_patch_embed(optical, 0, channel_ids) # B Cin HW Cout
+            optical, _channel_mask, channel_ids_restore, optical_chan_emb = self.optical_patch_embed(optical, 0, channel_ids) # B Cin HW Cout
             channel_mask = _channel_mask.unsqueeze(1).expand(-1, self.patch_size**2, -1).flatten(1) 
             optical_Cin = optical.shape[1]
 
         # temperary concat
         x = self.maybe_concat(optical, radar)
+        chan_emb = self.maybe_concat(optical_chan_emb, radar_chan_emb)
 
         B, Cin, HW, Cout = x.shape
-        if self.spatial_blocks == self.n_blocks:
-            assert self.sptial_spectral_blocks == 0, "No spectral blocks are allowed"
-            assert self.spectral_blocks == 0, "No spectral blocks are allowed"
-            # Normal ViT
-            x = self._pool_channel(x)
-            pos_embed = self.pos_embed[:, 1:, :]
-        else:
-            pos_embed = self.interpolate_positional_encoder(Cin)
-        x = x + pos_embed # B Cin HW Cout
+
+        pos_embed = self.interpolate_positional_encoder(chan_emb) # 1 Cin L Cout
+        x = x + pos_embed[:, :, 1:, :] # B Cin HW Cout
         L = x.shape[-2]
 
         # spectral only blocks
@@ -162,13 +166,8 @@ class MultiModalLowRankViTEncoder(ViTEncoder):
             x = self.maybe_concat(optical, radar) # BHW Cin Cout
             x = self._spectral2spatial(x, B) # BHW Cin Cout -> B Cin HW Cout
 
-        # append cls token
-        cls_token = self.cls_token + self.pos_embed[:, :1, :] # 1, 1, D
-        
-        if x.dim() == 3:
-            x = x.unsqueeze(1) # B 1 HW Cout
-
-        cls_tokens = cls_token.expand(x.shape[0], x.shape[1], -1, -1)
+        cls_tokens = self.cls_token.expand(x.shape[0], x.shape[1], -1, -1) # B C L Cout
+        cls_tokens = cls_tokens + pos_embed[:, :, :1, :]
         x = torch.cat((cls_tokens, x), dim=2) 
         
         if self.register_tokens is not None:
@@ -181,10 +180,7 @@ class MultiModalLowRankViTEncoder(ViTEncoder):
                 dim=1,
             ) # B Cin HW+T Cout
         
-        if x.dim() == 3:
-            x = x.squeeze(1) # B HW+T Cout
-        elif x.dim() == 4:
-            x = x.transpose(1, 2) # B HW+T Cin Cout
+        x = x.transpose(1, 2) # B HW+T Cin Cout
 
         if self.sptial_spectral_blocks > 0:
             assert x.dim() == 4, "Input tensor should be B L Cin Cout"
@@ -216,11 +212,16 @@ class MultiModalLowRankViTEncoder(ViTEncoder):
             return dict(cls_token=cls_token, register_tokens=register_tokens, patch_tokens=patch_tokens, latent=x)
         return x, cls_token, register_tokens, patch_tokens
 
-    def interpolate_positional_encoder(self, cin):
-        pos_embed = self.pos_embed[:, 1:, :] # 1 HW Cout
-        pos_embed = pos_embed.unsqueeze(1).repeat(1, cin, 1, 1).permute(0, 3, 1, 2) # 1 Cout Cin HW
-        # pos_embed = pos_embed.flatten(2).transpose(1, 2) # 1 CinHW Cout
-        pos_embed = pos_embed.permute(0, 2, 3, 1) # 1 Cin HW Cout
+    def interpolate_positional_encoder(self, chan_emb):
+        '''
+        self.pos_embed: 1, L, d1
+        chan_emb: 1, Cin, d2
+        '''
+        pos_embed = torch.einsum('blp, bcq -> bclpq', self.pos_embed, chan_emb).flatten(-2) # 1 Cin L Cout 
+        # pos_embed = self.pos_embed[:, 1:, :] # 1 HW Cout
+        # pos_embed = pos_embed.unsqueeze(1).repeat(1, cin, 1, 1).permute(0, 3, 1, 2) # 1 Cout Cin HW
+        # # pos_embed = pos_embed.flatten(2).transpose(1, 2) # 1 CinHW Cout
+        # pos_embed = pos_embed.permute(0, 2, 3, 1) # 1 Cin HW Cout
         return pos_embed
 
     def maybe_concat(self, x, y):
@@ -235,28 +236,24 @@ class MultiModalLowRankViTEncoder(ViTEncoder):
     def forward_encoder(self, optical=None, radar=None, mask_ratio=0.75, channel_mask_ratio=0.5, channel_ids=SENTINEL_WV, return_dict=False):
         assert optical is not None or radar is not None, "At least one of optical and radar should be provided"
         # embed patches
+        radar_chan_emb = optical_chan_emb = None
         if radar is not None:
-            radar, _, _ = self.radar_patch_embed(radar, 0, None) # B Cin HW Cout
+            radar, _, _, radar_chan_emb = self.radar_patch_embed(radar, 0, None) # B Cin HW Cout
             channel_mask = None
             radar_Cin = radar.shape[1]
         if optical is not None:
-            optical, _channel_mask, channel_ids_restore = self.optical_patch_embed(optical, channel_mask_ratio, channel_ids) # B Cin HW Cout
+            optical, _channel_mask, channel_ids_restore, optical_chan_emb = self.optical_patch_embed(optical, 0, channel_ids) # B Cin HW Cout
             channel_mask = _channel_mask.unsqueeze(1).expand(-1, self.patch_size**2, -1).flatten(1) 
             optical_Cin = optical.shape[1]
 
         # temperary concat
         x = self.maybe_concat(optical, radar)
+        chan_emb = self.maybe_concat(optical_chan_emb, radar_chan_emb)
 
         B, Cin, HW, Cout = x.shape
-        if self.spatial_blocks == self.n_blocks:
-            assert self.sptial_spectral_blocks == 0, "No spectral blocks are allowed"
-            assert self.spectral_blocks == 0, "No spectral blocks are allowed"
-            # Normal ViT
-            x = self._pool_channel(x)
-            pos_embed = self.pos_embed[:, 1:, :]
-        else:
-            pos_embed = self.interpolate_positional_encoder(Cin)
-        x = x + pos_embed # B Cin HW Cout
+
+        pos_embed = self.interpolate_positional_encoder(chan_emb) # 1 Cin L Cout
+        x = x + pos_embed[:, :, 1:, :] # B Cin HW Cout
     
         # masking: length -> length * mask_ratio
         x, mask, ids_restore = self._random_masking(x, mask_ratio) # B Cin L Cout / B L Cout
@@ -291,12 +288,13 @@ class MultiModalLowRankViTEncoder(ViTEncoder):
             x = self._spectral2spatial(x, B) # BHW Cin Cout -> B Cin L Cout
 
         # append cls token
-        cls_token = self.cls_token + self.pos_embed[:, :1, :] # 1, 1, D
+        # cls_token = self.cls_token + self.pos_embed[:, :1, :] # 1, 1, D
         
-        if x.dim() == 3:
-            x = x.unsqueeze(1) # B 1 L Cout
+        # if x.dim() == 3:
+        #     x = x.unsqueeze(1) # B 1 L Cout
 
-        cls_tokens = cls_token.expand(x.shape[0], x.shape[1], -1, -1)
+        cls_tokens = self.cls_token.expand(x.shape[0], x.shape[1], -1, -1) # B C L Cout
+        cls_tokens = cls_tokens + pos_embed[:, :, :1, :]        
         x = torch.cat((cls_tokens, x), dim=2) 
         
         if self.register_tokens is not None:
@@ -309,10 +307,7 @@ class MultiModalLowRankViTEncoder(ViTEncoder):
                 dim=1,
             ) # B Cin L+T Cout
         
-        if x.dim() == 3:
-            x = x.squeeze(1) # B L+T Cout
-        elif x.dim() == 4:
-            x = x.transpose(1, 2) # B L+T Cin Cout
+        x = x.transpose(1, 2) # B L+T Cin Cout
 
         if self.sptial_spectral_blocks > 0:
             assert x.dim() == 4, "Input tensor should be B L Cin Cout"
