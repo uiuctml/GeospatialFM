@@ -17,6 +17,7 @@ class PatchEmbedPerChannel(nn.Module):
         embed_dim: int = 768,
         enable_sample: bool = True,
         continuous_channels: bool = True,
+        channel_embed_dim: int = 768
     ):
         super().__init__()
         num_patches = (img_size // patch_size) * (img_size // patch_size) * in_chans
@@ -41,10 +42,11 @@ class PatchEmbedPerChannel(nn.Module):
         )
 
         if continuous_channels:
-            self.channel_embed = ContinuousChannelEmbedding(in_chans, embed_dim)  # dynamic but fixed sin-cos embedding
+            self.channel_embed = ContinuousChannelEmbedding(in_chans, channel_embed_dim)  # dynamic but fixed sin-cos embedding
         else:
-            self.channel_embed = nn.Embedding(in_chans, embed_dim)
+            self.channel_embed = nn.Embedding(in_chans, channel_embed_dim)
             trunc_normal_(self.channel_embed.weight, std=0.02)
+        self.low_rank_embedding = embed_dim != channel_embed_dim
 
         self.enable_sample = enable_sample
 
@@ -73,6 +75,8 @@ class PatchEmbedPerChannel(nn.Module):
         B, Cin, H, W = x.shape
         if self.training and self.enable_sample:
             len_keep = int(Cin * (1 - channel_mask_ratio))
+            if len_keep == 0:
+                len_keep = 1
             noise = torch.rand(1, Cin, device=x.device)  # noise in [0, 1]
             # sort noise for each sample
             ids_shuffle = torch.argsort(noise, dim=1)  # ascend: small is keep, large is remove
@@ -99,11 +103,16 @@ class PatchEmbedPerChannel(nn.Module):
         # shared projection layer across channels
         x = self.proj(x.unsqueeze(1))  # B Cout Cin H W
 
-        # channel specific offsets
-        x += cur_channel_embed.unsqueeze(-1).unsqueeze(-1)
-        x = x.flatten(3).permute(0, 2, 3, 1)  # B Cout Cin HW -> B Cin HW Cout
-
         # expand mask and ids_restore to B
         mask = mask.expand(B, -1)
         ids_restore = ids_restore.expand(B, -1)
-        return x, mask, ids_restore
+
+        # channel specific offsets
+        if self.low_rank_embedding:
+            cur_channel_embed = cur_channel_embed.permute(0, 2, 1)  # 1 Cin Cout
+            x = x.flatten(3).permute(0, 2, 3, 1)  # B Cout Cin HW -> B Cin HW Cout
+            return x, mask, ids_restore, cur_channel_embed
+        else:
+            x += cur_channel_embed.unsqueeze(-1).unsqueeze(-1)
+            x = x.flatten(3).permute(0, 2, 3, 1)  # B Cout Cin HW -> B Cin HW Cout
+            return x, mask, ids_restore

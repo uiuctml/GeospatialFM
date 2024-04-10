@@ -213,7 +213,7 @@ def construct_downstream_models(cfg, target_modal='optical'):
     assert modal_cfg['use_head']
     encoder = construct_encoder(modal_cfg, arch=arch)
     print(f"Loading pretrained weights for {target_modal} encoder...")
-    encoder.load_state_dict(state_dict, strict=False)
+    encoder.load_state_dict(state_dict, strict=True)
 
     if model_cfg['handle_modal'] == 'multi_modal':
         if target_modal=='optical':

@@ -61,6 +61,7 @@ def get_datasets(data_cfg):
         return get_transfer_datasets(data_cfg)
 
 def get_transfer_datasets(data_cfg):
+    torch.manual_seed(42)
     print(f"Training Dataset: {data_cfg['name']}")
     data_cfg['kwargs']['root'] = osp.join(data_cfg['root'], data_cfg['name'])
     data_mean_std = get_mean_std(data_cfg)
