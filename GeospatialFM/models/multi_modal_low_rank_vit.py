@@ -32,7 +32,8 @@ class MultiModalLowRankViTEncoder(ViTEncoder):
                  drop_path_uniform=False,
                  init_values=None,  # for layerscale: None or 0 => no layerscale
                  num_register_tokens=0,
-                 dim_ratio=0.25 # for low rank attention
+                 dim_ratio=0.25, # for low rank attention
+                 low_rank_feature = False,
                  ):
         
         super().__init__(img_size, patch_size, optical_in_chans, embed_dim, 
@@ -73,7 +74,7 @@ class MultiModalLowRankViTEncoder(ViTEncoder):
                     norm_layer=norm_layer,
                     init_values=init_values,
                     dim_ratio=dim_ratio,
-                    # pool=True
+                    pool=low_rank_feature
                 )
         
         self.radar_spectral_blocks = deepcopy(self.blocks[:spectral_blocks]) if self.spectral_blocks > 0 else None

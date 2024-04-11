@@ -1,4 +1,4 @@
-for i in 2e-1 3e-1 4e-1 5e-1
+for i in 9e-2 1e-1
 do
     for j in 0
     do  
@@ -31,11 +31,17 @@ do
         # TRAINER.learning_rate=$i TRAINER.weight_decay=$j \
         # MODEL.OPTICAL.kwargs.spectral_blocks=1 MODEL.OPTICAL.kwargs.sptial_spectral_blocks=2
 
-        CUDA_VISIBLE_DEVICES=4 python -m lp --exp_name mm_lr_vit_1-2-9_ne \
+        CUDA_VISIBLE_DEVICES=1 python -m lp --exp_name mm_lr_vit_1-2-9_slr \
         --config_file GeospatialFM/configs/lp_mm_cvit.yaml --debug \
         MODEL.load_pretrained_from=dir \
         TRAINER.learning_rate=$i TRAINER.weight_decay=$j \
-        MODEL.OPTICAL.kwargs.spectral_blocks=1 MODEL.OPTICAL.kwargs.sptial_spectral_blocks=2
+        MODEL.MULTI_MODAL.kwargs.spectral_blocks=1 MODEL.MULTI_MODAL.kwargs.sptial_spectral_blocks=2 MODEL.MULTI_MODAL.kwargs.low_rank_feature=false
+
+        # CUDA_VISIBLE_DEVICES=5 python -m lp --exp_name mm_lr_vit_1-10-1_fast \
+        # --config_file GeospatialFM/configs/lp_mm_cvit.yaml --debug \
+        # MODEL.load_pretrained_from=dir \
+        # TRAINER.learning_rate=$i TRAINER.weight_decay=$j \
+        # MODEL.MULTI_MODAL.kwargs.spectral_blocks=1 MODEL.MULTI_MODAL.kwargs.sptial_spectral_blocks=10
 
         # CUDA_VISIBLE_DEVICES=3 python -m lp --exp_name mae_cvit_0-12-0 \
         # --config_file GeospatialFM/configs/lp_cvit.yaml --debug \
