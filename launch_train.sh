@@ -20,9 +20,13 @@
 #     --config_file GeospatialFM/configs/pretrain_lr_vit_bn.yaml \
 #     MODEL.MULTI_MODAL.kwargs.spectral_blocks=0 MODEL.MULTI_MODAL.kwargs.sptial_spectral_blocks=12
 
-CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node 4 --master_port=10086 -m train --exp_name mm_lr_vit_0-3-9 \
+CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node 4 --master_port=10086 -m train --exp_name mm_lr_vit_1-2-9 \
     --config_file GeospatialFM/configs/pretrain_lr_vit_bn.yaml \
-    MODEL.MULTI_MODAL.kwargs.spectral_blocks=0 MODEL.MULTI_MODAL.kwargs.sptial_spectral_blocks=3
+    MODEL.MULTI_MODAL.kwargs.spectral_blocks=1 MODEL.MULTI_MODAL.kwargs.sptial_spectral_blocks=2
+
+# CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node 4 --master_port=10087 -m train --exp_name mm_lr_vit_1-10-1_fast \
+#     --config_file GeospatialFM/configs/pretrain_lr_vit_bn.yaml \
+#     MODEL.MULTI_MODAL.kwargs.spectral_blocks=1 MODEL.MULTI_MODAL.kwargs.sptial_spectral_blocks=10
 
 # CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node 4 --master_port=10086 -m train --exp_name mae_cvit_1-2-9 \
 #     --config_file GeospatialFM/configs/pretrain_mm_cvit_bn.yaml \
