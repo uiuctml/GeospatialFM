@@ -24,7 +24,7 @@ MODEL:
       channel_pool: max
       spectral_blocks: 0
       sptial_spectral_blocks: 12
-      dim_ratio: 0.25
+      dim_ratio: 0.5
   DECODER:
     kwargs:
       # optical_out_chans: 13
