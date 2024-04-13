@@ -12,6 +12,7 @@ DATASET:
     num_classes: 19
     pad_s2: true
   eval_metric: mAP
+  metric_of_interest: mirco_mAP
   task_type: multilabel
   use_train_transform: true
   train_frac: 0.1

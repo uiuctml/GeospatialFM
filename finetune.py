@@ -107,18 +107,32 @@ if __name__ == '__main__':
         input_keyword = 'image' # TODO: multi-modal later
         target_keyword = 'label'
 
+    best_metric = 0
     for epoch in trange(training_args.epochs):
         finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, training_args, input_keyword, target_keyword)
-        evaluate_finetune(model, data, loss, epoch, training_args, val_split='val', eval_metric=cfg.DATASET['eval_metric'], input_keyword=input_keyword, target_keyword=target_keyword)
-        # if cfg.TRAINER.save_frequency > 0 and (epoch + 1) % cfg.TRAINER.save_frequency == 0:
-            # torch.save(model.state_dict(), os.path.join(cfg['TRAINER']['output_dir'], f'ft_ckpt_epoch{epoch+1}.pth'))
+        eval_metric = evaluate_finetune(model, data, loss, epoch, training_args, val_split='val', eval_metric=cfg.DATASET['eval_metric'], input_keyword=input_keyword, target_keyword=target_keyword)
+        if is_master(args):
+            metric_of_interest = eval_metric[cfg.DATASET['metric_of_interest']]
+            if metric_of_interest > best_metric:
+                best_metric = metric_of_interest
+                best_state_dict = model.state_dict()
+    if is_master(args):
+        print("Evaluating on the final model...")
     final_metrics = evaluate_finetune(model, data, loss, epoch+1, training_args, val_split='test', eval_metric=cfg.DATASET['eval_metric'], input_keyword=input_keyword, target_keyword=target_keyword)
+    # append final to the keys of the final metrics
+    final_metrics = {f'final_{k}': v for k, v in final_metrics.items()}
+    # load best model
+    if is_master(args):
+        model.load_state_dict(best_state_dict)
+        print("Evaluating on the best model...")
+    best_metrics = evaluate_finetune(model, data, loss, epoch+1, training_args, val_split='test', eval_metric=cfg.DATASET['eval_metric'], input_keyword=input_keyword, target_keyword=target_keyword)
     if training_args.save_csv and is_master(args):
         save_dict = dict(
             epochs = training_args.epochs,
             lr = cfg['TRAINER']['learning_rate'],
             weight_decay = cfg['TRAINER']['weight_decay'],
-            **final_metrics
+            **final_metrics,
+            **best_metrics
         )
         save_path = os.path.join(training_args.checkpoint_path, 'ft_metrics.csv')
         df_new = pd.DataFrame(save_dict, index=[0])
