@@ -79,14 +79,18 @@ def get_transfer_datasets(data_cfg):
     try:
         val_dataset = get_dataset(data_cfg, split='val', transforms=eval_transform)
     except:
-        val_dataset = test_dataset
+        torch.manual_seed(42)
+        shuffled_test_ids = torch.randperm(len(test_dataset))
+        val_ids, test_ids = shuffled_test_ids[:int(len(test_dataset)*data_cfg['val_frac'])], shuffled_test_ids[int(len(test_dataset)*data_cfg['val_frac']):]
+        val_dataset = Subset(test_dataset, val_ids)
+        test_dataset = Subset(test_dataset, test_ids)
     if data_cfg['train_split'] == 'trainval' and val_dataset is not None:
         train_dataset = ConcatDataset([train_dataset, val_dataset])
         val_dataset = test_dataset
     if data_cfg['train_frac'] < 1.0:
         train_dataset = Subset(train_dataset, torch.randperm(len(train_dataset))[:int(len(train_dataset)*data_cfg['train_frac'])])
-    if data_cfg['val_frac'] < 1.0:
-        val_dataset = Subset(val_dataset, torch.randperm(len(val_dataset))[:int(len(val_dataset)*data_cfg['val_frac'])])
+    # if data_cfg['val_frac'] < 1.0:
+        # val_dataset = Subset(val_dataset, torch.randperm(len(val_dataset))[:int(len(val_dataset)*data_cfg['val_frac'])])
     print(f"Train Set: {len(train_dataset)}\t Val Set: {len(val_dataset)}\t Test Set: {len(test_dataset)}")
 
     return train_dataset, val_dataset, test_dataset
