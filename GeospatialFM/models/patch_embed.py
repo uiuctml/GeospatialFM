@@ -20,7 +20,7 @@ class PatchEmbedPerChannel(nn.Module):
         channel_embed_dim: int = 768
     ):
         super().__init__()
-        num_patches = (img_size // patch_size) * (img_size // patch_size) * in_chans
+        num_patches = (img_size // patch_size) * (img_size // patch_size) # only keep spatial patches
         self.img_size = img_size
         self.patch_size = patch_size
         self.num_patches = num_patches
