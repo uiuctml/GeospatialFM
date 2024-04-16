@@ -12,6 +12,8 @@ import random # CHANGE
 
 class myBigEarthNet(BigEarthNet):
     RGB_INDEX = [3, 2, 1]
+    CHANNEL_IDS = [442.7, 492.4, 559.8, 664.6, 704.1, 740.5, 782.8, 832.8, 864.7, 945.1, 1613.7, 2202.4]
+    
     def __init__(self, pad_s2=False, **kwargs):
         if kwargs['bands'] == 'rgb':
             self.rgb=True
@@ -55,6 +57,7 @@ class myBigEarthNet(BigEarthNet):
 
 
 class mySo2Sat(So2Sat):
+    CHANNEL_IDS = [492.4, 559.8, 664.6, 704.1, 740.5, 782.8, 832.8, 864.7, 1613.7, 2202.4]
     def __init__(self, pad_s2=False, **kwargs):
         super().__init__(**kwargs)
         self.pad_s2 = pad_s2

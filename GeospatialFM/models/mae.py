@@ -5,6 +5,8 @@ import torch
 from .vision_transformer import ViTEncoder
 from .flexible_channel_vit import ChannelViTEncoder
 
+SENTINEL_WV = [442.7, 492.4, 559.8, 664.6, 704.1, 740.5, 782.8, 832.8, 864.7, 945.1, 1373.5, 1613.7, 2202.4]
+
 class CrossModalMAEViT(nn.Module):
     def __init__(self, 
                  optical_encoder, 
@@ -36,12 +38,12 @@ class CrossModalMAEViT(nn.Module):
         self.optical_head = optical_head
         self.radar_head = radar_head
 
-    def forward_recon(self, optical, radar, mask_ratio=0.75, slice_patch_tokens=None, channel_mask_ratio=0.5):
+    def forward_recon(self, optical, radar, mask_ratio=0.75, slice_patch_tokens=None, channel_mask_ratio=0.5, channel_ids=SENTINEL_WV):
         # forward optical
         if isinstance(self.optical_encoder, ChannelViTEncoder):
-            optical_latent, optical_mask, optical_ids_restore, optical_channel_mask = self.optical_encoder.forward_encoder(optical, mask_ratio, channel_mask_ratio)
+            optical_latent, optical_mask, optical_ids_restore, optical_channel_mask = self.optical_encoder.forward_encoder(optical, mask_ratio, channel_mask_ratio, channel_ids=channel_ids)
         else:
-            optical_latent, optical_mask, optical_ids_restore = self.optical_encoder.forward_encoder(optical, mask_ratio)
+            optical_latent, optical_mask, optical_ids_restore = self.optical_encoder.forward_encoder(optical, mask_ratio, channel_ids=channel_ids)
             optical_channel_mask = None
         optical_recon = self.optical_decoder.forward_decoder(optical_latent, optical_ids_restore, restore_input_dim=True, slice_patch_tokens=slice_patch_tokens)
         optical_cls_token = optical_latent[:, 0]
@@ -56,12 +58,12 @@ class CrossModalMAEViT(nn.Module):
             return_dict['optical_channel_mask'] = optical_channel_mask
         return return_dict
 
-    def forward(self, optical, radar, mask_ratio=0.75, channel_mask_ratio=0.5):
+    def forward(self, optical, radar, mask_ratio=0.75, channel_mask_ratio=0.5, channel_ids=SENTINEL_WV):
         # forward optical
         if isinstance(self.optical_encoder, ChannelViTEncoder):
-            optical_latent, optical_mask, optical_ids_restore, optical_channel_mask = self.optical_encoder.forward_encoder(optical, mask_ratio, channel_mask_ratio)
+            optical_latent, optical_mask, optical_ids_restore, optical_channel_mask = self.optical_encoder.forward_encoder(optical, mask_ratio, channel_mask_ratio, channel_ids=channel_ids)
         else:
-            optical_latent, optical_mask, optical_ids_restore = self.optical_encoder.forward_encoder(optical, mask_ratio)
+            optical_latent, optical_mask, optical_ids_restore = self.optical_encoder.forward_encoder(optical, mask_ratio, channel_ids=channel_ids)
             optical_channel_mask = None
         optical_recon = self.optical_decoder.forward_decoder(optical_latent, optical_ids_restore)
         optical_target = self.optical_decoder.forward_target(optical)

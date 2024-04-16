@@ -48,8 +48,10 @@ class LowRankAttention(nn.Module):
     
     def pool_forward(self, x: torch.Tensor) -> torch.Tensor:
         B, N, C, D = x.shape
-        x_c = x.max(-3).values
-        x_s = x.max(-2).values
+        # x_c = x.max(-3).values
+        # x_s = x.max(-2).values
+        x_c = x.mean(-3)
+        x_s = x.mean(-2)
         qkv_c = self.qkv_c(x_c).reshape(B, C, 3, self.num_heads, self.c_head_dim).permute(2, 0, 3, 1, 4) # 3, B, num_heads, C, c_head_dim
         qkv_s = self.qkv_s(x_s).reshape(B, N, 3, self.num_heads, self.s_head_dim).permute(2, 0, 3, 1, 4) # 3, B, num_heads, N, s_head_dim
         qc, kc, vc = qkv_c.unbind(0)

@@ -20,8 +20,8 @@ class ViTModel(nn.Module):
         self.encoder = encoder
         self.head = head
 
-    def forward(self, x):
-        x = self.encoder(x, return_dict=True)['cls_token']
+    def forward(self, x, channel_ids=None):
+        x = self.encoder(x, channel_ids=channel_ids, return_dict=True)['cls_token']
         x = self.head(x)
         return x
     

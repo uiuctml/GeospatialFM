@@ -82,6 +82,11 @@ class ContinuousChannelEmbedding(nn.Module):
         self.channel_idx = channel_idx
         # fixed sin-cos embedding
         channel_embed = self.get_1d_sincos_channel_embed_from_idx(self.channel_embed.shape[-1], self.channel_idx)
+        if len(self.channel_idx) != self.in_chans:
+            self.in_chans = len(self.channel_idx)
+            device = self.channel_embed.device
+            del self.channel_embed
+            self.channel_embed = nn.Parameter(torch.zeros(1, self.in_chans, self.embed_dim), requires_grad=False).to(device)
         self.channel_embed.data.copy_(torch.from_numpy(channel_embed).to(self.channel_embed.device).unsqueeze(0).float())
         return self.channel_embed
 
