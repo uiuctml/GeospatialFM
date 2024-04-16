@@ -31,6 +31,7 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args, inp
 
     data['train'].set_epoch(epoch)
     dataloader = data['train'].dataloader
+    channel_ids = data['train'].channel_ids
     num_batches_per_epoch = dataloader.num_batches // args.accum_freq
     sample_digits = math.ceil(math.log(dataloader.num_samples + 1, 10))
 
@@ -75,7 +76,7 @@ def finetune_one_epoch(model, data, loss, epoch, optimizer, scheduler, args, inp
         
         # if args.accum_freq == 1:
         with autocast():
-            model_out = model(model_input)
+            model_out = model(model_input) if channel_ids is None else model(model_input, channel_ids=channel_ids)
             losses = loss(model_out, label, output_dict=True)
 
             total_loss = sum(losses.values())
@@ -158,6 +159,7 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
     if val_split in data and (args.val_frequency and ((epoch % args.val_frequency) == 0 or epoch == args.epochs)):
         # all_preds, all_labels = [], []
         dataloader = data[val_split].dataloader
+        channel_ids = data[val_split].channel_ids
         num_samples = 0
         samples_per_val = dataloader.num_samples
 
@@ -191,7 +193,7 @@ def evaluate_finetune(model, data, loss, epoch, args, val_split='val', eval_metr
                 batch_size = len(label)
 
                 with autocast():
-                    model_out = model(model_input)
+                    model_out = model(model_input) if channel_ids is None else model(model_input, channel_ids=channel_ids)
                     losses = loss(model_out, label, output_dict=True)
 
                     total_loss = sum(losses.values())

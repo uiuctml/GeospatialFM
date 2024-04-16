@@ -16,6 +16,8 @@ MY_DATASETS = {
 
 DATA_ROOT = './data'
 
+SENTINEL_WV = [442.7, 492.4, 559.8, 664.6, 704.1, 740.5, 782.8, 832.8, 864.7, 945.1, 1373.5, 1613.7, 2202.4]
+
 # SSL4EO data statistics
 S1_MEAN = [-12.54847273, -20.19237134]
 S1_STD = [5.25697717, 5.91150917]
@@ -54,6 +56,15 @@ def get_dataset(data_cfg, split='train', transforms=None):
     except:
         raise NotImplementedError
     
+def get_channel_ids(data_cfg):
+    if 'pad_s2' not in data_cfg['kwargs'] or data_cfg['kwargs']['pad_s2']:
+        return SENTINEL_WV
+    elif data_cfg['name'] in MY_DATASETS:
+        return MY_DATASETS[data_cfg['name']].CHANNEL_IDS
+    else:
+        return None
+        
+    
 def get_datasets(data_cfg):
     if data_cfg['task_type'] in ['pretrain']:
         return get_pretrain_datasets(data_cfg)
@@ -78,6 +89,8 @@ def get_transfer_datasets(data_cfg):
     test_dataset = get_dataset(data_cfg, split='test', transforms=eval_transform)
     try:
         val_dataset = get_dataset(data_cfg, split='val', transforms=eval_transform)
+        if data_cfg['val_frac'] < 1.0:
+            val_dataset = Subset(val_dataset, torch.randperm(len(val_dataset))[:int(len(val_dataset)*data_cfg['val_frac'])])
     except:
         torch.manual_seed(42)
         shuffled_test_ids = torch.randperm(len(test_dataset))
@@ -89,8 +102,6 @@ def get_transfer_datasets(data_cfg):
         val_dataset = test_dataset
     if data_cfg['train_frac'] < 1.0:
         train_dataset = Subset(train_dataset, torch.randperm(len(train_dataset))[:int(len(train_dataset)*data_cfg['train_frac'])])
-    # if data_cfg['val_frac'] < 1.0:
-        # val_dataset = Subset(val_dataset, torch.randperm(len(val_dataset))[:int(len(val_dataset)*data_cfg['val_frac'])])
     print(f"Train Set: {len(train_dataset)}\t Val Set: {len(val_dataset)}\t Test Set: {len(test_dataset)}")
 
     return train_dataset, val_dataset, test_dataset

@@ -24,6 +24,7 @@ class DataInfo:
     dataloader: DataLoader
     sampler: DistributedSampler = None
     shared_epoch: SharedEpoch = None
+    channel_ids: list = None
 
     def set_epoch(self, epoch):
         if self.shared_epoch is not None:
@@ -35,6 +36,8 @@ class DataInfo:
 #     return None
 
 def get_data(cfg, ddp=False):
+    channel_ids = get_channel_ids(cfg['DATASET'])
+    print(f'Num Channels: {len(channel_ids)}')
     train_ds, val_ds, test_ds = get_datasets(cfg['DATASET'])
     train_sampler = DistributedSampler(train_ds) if ddp else None
     train_shuffle = ddp is False
@@ -48,7 +51,7 @@ def get_data(cfg, ddp=False):
     train_dl.num_batches = len(train_dl)
     if val_ds is None and test_ds is None:
         data = dict(
-        train=DataInfo(train_dl, train_sampler),
+        train=DataInfo(train_dl, train_sampler, channel_ids=channel_ids),
         )
     else: 
         val_dl = DataLoader(val_ds, batch_size=eval_batch_size, shuffle=True, num_workers=num_workers, pin_memory=pin_memory)
@@ -58,9 +61,9 @@ def get_data(cfg, ddp=False):
         test_dl.num_samples = len(test_ds)
         test_dl.num_batches = len(test_dl)
         data = dict(
-            train=DataInfo(train_dl, train_sampler),
-            val=DataInfo(val_dl),
-            test=DataInfo(test_dl),
+            train=DataInfo(train_dl, train_sampler, channel_ids=channel_ids),
+            val=DataInfo(val_dl, channel_ids=channel_ids),
+            test=DataInfo(test_dl, channel_ids=channel_ids),
         )
     return data
 
@@ -84,6 +87,7 @@ def extract_features(model, data, args, split='train', cache_path=None, chunk_si
     model.eval()
     features = dict(label=[], img_feature=[])
     dataloader = data.dataloader
+    channel_ids = data.channel_ids
     chunk_cnt = 0
     chunk_idx = 0
     pbar = tqdm(enumerate(dataloader), total=dataloader.num_batches)
@@ -104,7 +108,7 @@ def extract_features(model, data, args, split='train', cache_path=None, chunk_si
             images = images.to(device=device, non_blocking=True)
         label = batch['label']
         with autocast() and torch.no_grad():
-            model_out = model(images, return_dict=True)['cls_token'].detach().cpu()
+            model_out = model(images, channel_ids=channel_ids, return_dict=True)['cls_token'].detach().cpu()
         features['label'].append(label.detach().cpu())
         features['img_feature'].append(model_out)
         chunk_cnt += len(label)

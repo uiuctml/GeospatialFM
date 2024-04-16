@@ -44,6 +44,7 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
 
     data['train'].set_epoch(epoch)  # set epoch in process safe manner via sampler or shared_epoch
     dataloader = data['train'].dataloader
+    channel_ids = data['train'].channel_ids
     num_batches_per_epoch = dataloader.num_batches // args.accum_freq
     sample_digits = math.ceil(math.log(dataloader.num_samples + 1, 10))
 
@@ -72,7 +73,7 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scheduler, args):
 
         # if args.accum_freq == 1:
         with autocast():
-            model_out = model(images, radar, args.mask_ratio, args.channel_mask_ratio)
+            model_out = model(images, radar, args.mask_ratio, args.channel_mask_ratio, channel_ids=channel_ids)
             # logit_scale = model_out.get("logit_scale").mean()
             logit_scale = model_out['logit_scale']
             # model_out['logit_scale'] = logit_scale
@@ -237,6 +238,7 @@ def evaluate(model, data, loss, epoch, args, val_split='val'):
 
     if val_split in data and (args.val_frequency and ((epoch % args.val_frequency) == 0 or epoch == args.epochs)):
         dataloader = data[val_split].dataloader
+        channel_ids = data[val_split].channel_ids
         num_samples = 0
         samples_per_val = dataloader.num_samples
 
@@ -251,7 +253,7 @@ def evaluate(model, data, loss, epoch, args, val_split='val'):
                 batch_size = len(images)
 
                 with autocast():
-                    model_out = model(images, radar, args.mask_ratio)
+                    model_out = model(images, radar, args.mask_ratio, channel_ids=channel_ids)
                     logit_scale = model_out.get("logit_scale").mean()
                     model_out['logit_scale'] = logit_scale
                     model_out['labels'] = gt_label

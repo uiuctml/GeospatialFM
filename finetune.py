@@ -11,6 +11,7 @@ from GeospatialFM.loss import *
 from tqdm import trange
 import random
 import pandas as pd
+from copy import deepcopy
 
 def random_seed(seed=42, rank=0):
     torch.manual_seed(seed + rank)
@@ -115,7 +116,8 @@ if __name__ == '__main__':
             metric_of_interest = eval_metric[cfg.DATASET['metric_of_interest']]
             if metric_of_interest > best_metric:
                 best_metric = metric_of_interest
-                best_state_dict = model.state_dict()
+                best_state_dict = deepcopy(model.state_dict())
+            print(f"Best metric: {best_metric}")
     if is_master(args):
         print("Evaluating on the final model...")
     final_metrics = evaluate_finetune(model, data, loss, epoch+1, training_args, val_split='test', eval_metric=cfg.DATASET['eval_metric'], input_keyword=input_keyword, target_keyword=target_keyword)
@@ -125,7 +127,7 @@ if __name__ == '__main__':
     if is_master(args):
         model.load_state_dict(best_state_dict)
         print("Evaluating on the best model...")
-    best_metrics = evaluate_finetune(model, data, loss, epoch+1, training_args, val_split='test', eval_metric=cfg.DATASET['eval_metric'], input_keyword=input_keyword, target_keyword=target_keyword)
+        best_metrics = evaluate_finetune(model, data, loss, epoch+1, training_args, val_split='test', eval_metric=cfg.DATASET['eval_metric'], input_keyword=input_keyword, target_keyword=target_keyword)
     if training_args.save_csv and is_master(args):
         save_dict = dict(
             epochs = training_args.epochs,
