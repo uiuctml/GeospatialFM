@@ -21,6 +21,8 @@ def get_loss_list(loss_cfg):
             loss_list.append(MultilabelBCELoss(**loss_kwargs))
         elif loss_name == 'CrossModalLoss':
             loss_list.append(CrossModalMSELoss(**loss_kwargs))
+        elif loss_name == 'MSE':
+            loss_list.append(MSELoss(**loss_kwargs))
         else:
             raise NotImplementedError
     return loss_list
@@ -32,5 +34,7 @@ def get_loss(task_type):
         return MultilabelBCELoss()
     elif task_type == 'multilabel':
         return MultiLabelSoftMarginLoss()
+    elif task_type == 'regression':
+        return MSELoss()
     else:
         raise NotImplementedError

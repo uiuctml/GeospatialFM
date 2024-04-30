@@ -49,3 +49,15 @@ class MultiLabelSoftMarginLoss(nn.Module):
         if output_dict:
             return dict(MultiLabelLoss=loss)
         return loss
+    
+class MSELoss(nn.Module):
+    def __init__(self, scale=1.0):
+        super().__init__()
+        self.lambda_ = scale
+
+    def forward(self, logits, labels, output_dict=False, **kwargs):
+        labels = labels.to(torch.float32)
+        mse = F.mse_loss(logits.flatten(), labels.flatten()) * self.lambda_
+        if output_dict:
+            return dict(mse=mse)
+        return mse
