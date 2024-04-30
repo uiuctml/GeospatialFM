@@ -1,4 +1,4 @@
-from sklearn.metrics import accuracy_score, average_precision_score, f1_score, precision_score, recall_score
+from sklearn.metrics import accuracy_score, average_precision_score, f1_score, precision_score, recall_score, root_mean_squared_error
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -96,6 +96,25 @@ class F1Meter(MetricTracker):
     def get_metrics(self):
         precision, recall, f1 = self.compute()
         return {"precision": precision, "recall": recall, "f1": f1}
+    
+class RMSE(MetricTracker):
+    def __init__(self):
+        super().__init__()
+        self.outputs = []
+        self.targets = []
+
+    def update(self, output, target):
+        self.outputs.append(output)
+        self.targets.append(target)
+
+    def compute(self):
+        outputs = torch.cat(self.outputs, dim=0).float()
+        targets = torch.cat(self.targets, dim=0).float()
+        rmse = root_mean_squared_error(targets.cpu().numpy(), outputs.cpu().numpy())
+        return rmse
+
+    def get_metrics(self):
+        return {"RMSE": self.compute()}
 
 def get_eval_meter(eval_metric):
     if eval_metric == "accuracy":

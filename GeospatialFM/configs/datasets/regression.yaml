@@ -1,0 +1,23 @@
+DATASET:
+  root: ./data/geospatial
+  name: <RegressionDataset>
+  train_transforms:
+    normalize: true
+    standardize: false
+  eval_transforms:
+    normalize: true
+    standardize: false
+  kwargs:
+    bands: all
+    num_classes: 19
+    pad_s2: false
+  eval_metric: RMSE
+  metric_of_interest: RMSE
+  task_type: regression
+  use_train_transform: true
+  train_frac: 0.1
+  val_frac: 0.1
+  train_split: train
+  task_head_kwargs:
+    head_type: linear
+    num_classes: 19
