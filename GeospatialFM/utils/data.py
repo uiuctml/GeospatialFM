@@ -102,6 +102,9 @@ def extract_features(model, data, args, split='train', cache_path=None, chunk_si
             elif args.finetune_modal == 'radar':
                 radar = radar.to(device=device, non_blocking=True)
                 optical = None
+            elif args.finetune_modal == 'multi_modal':
+                optical = optical.to(device=device, non_blocking=True)
+                radar = radar.to(device=device, non_blocking=True)
             images = (optical, radar)
         else:
             images = batch['image'] if args.finetune_modal == 'optical' else batch['radar']
