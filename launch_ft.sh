@@ -29,8 +29,8 @@ do
         # MODEL.MULTI_MODAL.kwargs.spectral_blocks=1 MODEL.MULTI_MODAL.kwargs.sptial_spectral_blocks=2 MODEL.MULTI_MODAL.kwargs.low_rank_feature=true
 
         echo "CViT learning_rate: $i, weight_decay: $j"
-        CUDA_VISIBLE_DEVICES=4,5 torchrun --nproc_per_node 2 --master_port=10086 -m finetune --exp_name mm_lr_vit_1-2-9 \
-        --config_file GeospatialFM/configs/finetune_mm_cvit.yaml --debug \
+        CUDA_VISIBLE_DEVICES=4,5 torchrun --nproc_per_node 2 --master_port=10086 -m finetune --exp_name mm_vit_1-2-9_d4_new \
+        --config_file GeospatialFM/configs/finetune_mm_cvit.yaml --debug --finetune_modal radar \
         MODEL.load_pretrained_from=dir \
         TRAINER.learning_rate=$i TRAINER.weight_decay=$j \
         MODEL.MULTI_MODAL.kwargs.spectral_blocks=1 MODEL.MULTI_MODAL.kwargs.sptial_spectral_blocks=2 MODEL.MULTI_MODAL.kwargs.low_rank_feature=true MODEL.MULTI_MODAL.kwargs.dim_ratio=0.25
