@@ -11,7 +11,8 @@ MY_DATASETS = {
     "BigEarthNet": myBigEarthNet,
     "So2Sat": mySo2Sat,
     "OSCD": myOSCD,
-    "SSL4EO": mySSL4EO
+    "SSL4EO": mySSL4EO,
+    "SSL4EO_L": mySSL4EO_L8,
 }
 
 DATA_ROOT = './data'
@@ -33,10 +34,13 @@ S2C_STD = [786.78685367, 850.34818441, 875.06484736, 1138.84957046, 1122.1777565
 def get_mean_std(data_cfg): # CHANGE
     if data_cfg['name'] == 'SSL4EO':
         return S1_MEAN + S2C_MEAN, S1_STD + S2C_STD
+    elif data_cfg['name'] == 'SSL4EO_L':
+        return None, None
     elif data_cfg['kwargs']['bands'] == 's1':
         return S1_MEAN, S1_STD
     elif data_cfg['name'] != 'OSCD' and data_cfg['kwargs']['bands'] == 'all':
         return S1_MEAN + S2A_MEAN, S1_STD + S2A_STD  # For now, only support BigEarthNet
+
     try:
         dm = getattr(tgdm, data_cfg['name']+'DataModule')
         if data_cfg['name'] == 'So2Sat':
