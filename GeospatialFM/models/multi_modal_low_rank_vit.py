@@ -1,228 +1,240 @@
-import torch.nn as nn
-from torch.nn.init import trunc_normal_
-import random
-from torch.nn import functional as F
 import torch
-from .vision_transformer import *
-from typing import Optional
-from .patch_embed import PatchEmbedPerChannel
-from .pos_embed import ContinuousChannelEmbedding
-from .low_rank_attention import LowRankBlock
-from copy import deepcopy
+import torch.nn as nn
+from transformers import PretrainedConfig, PreTrainedModel
+from transformers.modeling_outputs import BaseModelOutput
+from typing import Optional, Tuple, Dict, Any, List
+from functools import partial
+import numpy as np
+from .patch_embed import  HyperspectralPatchEmbed
+from .pos_embed import PositionalChannelEmbedding
+from .low_rank_attention import LowRankBlock, get_perception_field_mask
 
 SENTINEL_WV = [442.7, 492.4, 559.8, 664.6, 704.1, 740.5, 782.8, 832.8, 864.7, 945.1, 1373.5, 1613.7, 2202.4]
+SENTINEL_WV_RADAR = [10, 20] # TODO: fix this
 
-class MultiModalLowRankViTEncoder(ViTEncoder):
-    """ Multi-Modal_Channel_VisionTransformer backbone that supports Masked Autoencoder
-    """
-    def __init__(self,
-                 img_size=224,
-                 patch_size=16,
-                 optical_in_chans=3,
-                 radar_in_chans=2,
-                 embed_dim=768,
-                 channel_pool='max',
-                 sptial_spectral_blocks=0,
-                 spectral_blocks=0,
-                 depth=12,
-                 num_heads=12,
-                 mlp_ratio=4.0,
-                 qkv_bias=True,
-                 drop_path_rate=0.0,
-                 drop_path_uniform=False,
-                 init_values=None,  # for layerscale: None or 0 => no layerscale
-                 num_register_tokens=0,
-                 dim_ratio=0.25, # for low rank attention
-                 low_rank_feature = False,
-                 ):
+class MultiModalLowRankViTConfig(PretrainedConfig):
+    model_type = "multi_modal_low_rank_vit"
+
+    def __init__(
+        self,
+        patch_size: int = 16,
+        embed_dim: int = 768,
+        channel_embed_dims_per_head: int = 4,
+        depth: int = 12,
+        num_heads: int = 12,
+        mlp_ratio: float = 4.0,
+        qkv_bias: bool = False,
+        qk_norm: bool = False,
+        drop_path_rate: float = 0.0,
+        drop_path_uniform: bool = False,
+        init_values: Optional[float] = None,
+        attn_drop: float = 0.0,
+        proj_drop: float = 0.0,
+        # Decoder-specific parameters
+        decoder_embed_dim: int = 512,
+        decoder_depth: int = 8,
+        decoder_channel_embed_dims_per_head: int = 4,
+        decoder_num_heads: int = 16,
+        decoder_out_chans: int = 1,
+        # return dict
+        return_dict: bool = False,
+        norm_pix_loss: bool = True,
+        use_perception_field_mask: bool = False,
+        attention_radius: int = 640,
+        **kwargs
+    ):
+        super().__init__(**kwargs)
+        self.patch_size = patch_size
+        self.embed_dim = embed_dim
+        self.channel_dim = channel_embed_dims_per_head * num_heads
+        self.spatial_dim = embed_dim // self.channel_dim * num_heads  
+        self.depth = depth
+        self.num_heads = num_heads
+        self.mlp_ratio = mlp_ratio
+        self.qkv_bias = qkv_bias
+        self.qk_norm = qk_norm
+        self.drop_path_rate = drop_path_rate
+        self.drop_path_uniform = drop_path_uniform
+        self.init_values = init_values
+        self.attn_drop = attn_drop
+        self.proj_drop = proj_drop
+        self.num_tokens = 1
+        self.return_dict = return_dict
+
+        # Decoder-specific attributes
+        self.decoder_embed_dim = decoder_embed_dim
+        self.decoder_channel_dim = decoder_channel_embed_dims_per_head * decoder_num_heads
+        self.decoder_spatial_dim = decoder_embed_dim // self.decoder_channel_dim * decoder_num_heads
+        self.decoder_depth = decoder_depth
+        self.decoder_num_heads = decoder_num_heads
+        self.decoder_out_chans = decoder_out_chans
         
-        super().__init__(img_size, patch_size, optical_in_chans, embed_dim, 
-                         depth, num_heads, mlp_ratio, qkv_bias, drop_path_rate, 
-                         drop_path_uniform, init_values, num_register_tokens) # TODO: check this
+        # MAE-specific attributes
+        self.norm_pix_loss = norm_pix_loss
+        
+        self.use_perception_field_mask = use_perception_field_mask
+        self.attention_radius = attention_radius
+
+    @property
+    def encoder_config(self):
+        return {k: v for k, v in self.__dict__.items() if not k.startswith('decoder_')}
+
+    @property
+    def decoder_config(self):
+        return {
+            'embed_dim': self.decoder_embed_dim,
+            'depth': self.decoder_depth,
+            'num_heads': self.decoder_num_heads,
+            'out_chans': self.decoder_out_chans,
+            'mlp_ratio': self.mlp_ratio,
+            'qkv_bias': self.qkv_bias,
+            'qk_norm': self.qk_norm,
+            'drop_path_rate': self.drop_path_rate,
+            'drop_path_uniform': self.drop_path_uniform,
+            'init_values': self.init_values,
+            'attn_drop': self.attn_drop,
+            'proj_drop': self.proj_drop,
+            'channel_dim': self.channel_dim,
+            'spatial_dim': self.spatial_dim,
+            'patch_size': self.patch_size,
+            'return_dict': self.return_dict,
+        }
+
+class MultiModalLowRankViTEncoder(PreTrainedModel):
+    config_class = MultiModalLowRankViTConfig
+
+    def __init__(self, config: MultiModalLowRankViTConfig):
+        super().__init__(config)
+        self.config = config
         norm_layer = partial(nn.LayerNorm, eps=1e-6)
-        # Additional args for Channel_ViT
-        self.channel_pool = channel_pool
-        # override the patch embedding
-        del self.patch_embed
-        self.optical_patch_embed = PatchEmbedPerChannel(img_size, patch_size, optical_in_chans, embed_dim, continuous_channels=True)
-        self.radar_patch_embed = PatchEmbedPerChannel(img_size, patch_size, radar_in_chans, embed_dim, continuous_channels=False, enable_sample=False)
-        if channel_pool == "mean":
-            self.channel_pool = nn.AdaptiveAvgPool1d(1)
-        elif channel_pool == "max":
-            self.channel_pool = nn.AdaptiveMaxPool1d(1)
-        else:
-            raise NotImplementedError
-        assert spectral_blocks + sptial_spectral_blocks <= self.n_blocks, "number of total blocks should be less than the number of layers"
-        self.spectral_blocks = spectral_blocks
-        self.sptial_spectral_blocks = sptial_spectral_blocks
-        self.spatial_blocks = self.n_blocks - spectral_blocks - sptial_spectral_blocks
-        print(f"Spectral Blocks: {self.spectral_blocks}\tSptial-Spectral Blocks: {self.sptial_spectral_blocks}\tSpatial Blocks: {self.spatial_blocks}")
-
-        if drop_path_uniform is True:
-            dpr = [drop_path_rate] * depth
-        else:
-            dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
-            
-        if self.sptial_spectral_blocks > 0:
-            for i in range(spectral_blocks, spectral_blocks+sptial_spectral_blocks):
-                self.blocks[i] = LowRankBlock(
-                    dim=embed_dim,
-                    num_heads=num_heads,
-                    mlp_ratio=mlp_ratio,
-                    qkv_bias=qkv_bias,
-                    drop_path=dpr[i],
-                    norm_layer=norm_layer,
-                    init_values=init_values,
-                    dim_ratio=dim_ratio,
-                    pool=low_rank_feature
-                )
         
-        self.radar_spectral_blocks = deepcopy(self.blocks[:spectral_blocks]) if self.spectral_blocks > 0 else None
-        self.optical_spectral_blocks = self.blocks[:spectral_blocks] if self.spectral_blocks > 0 else None
+        # Patch embedding layers for optical and radar inputs
+        self.optical_patch_embed = HyperspectralPatchEmbed(config.patch_size, config.embed_dim)
+        self.radar_patch_embed = HyperspectralPatchEmbed(config.patch_size, config.embed_dim)
+        
+        # Learnable tokens and embeddings
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, config.embed_dim))
+        self.pos_chan_embed = PositionalChannelEmbedding(config.embed_dim)
+        
+        if config.drop_path_uniform is True:
+            dpr = [config.drop_path_rate] * config.depth
+        else:
+            dpr = [x.item() for x in torch.linspace(0, config.drop_path_rate, config.depth)]
+        
+        # Create transformer blocks
+        self.blocks = nn.ModuleList([
+            LowRankBlock(
+                dim=config.embed_dim,
+                num_heads=config.num_heads,
+                channel_dim=config.channel_dim,
+                spatial_dim=config.spatial_dim,
+                mlp_ratio=config.mlp_ratio,
+                qkv_bias=config.qkv_bias,
+                qk_norm=config.qk_norm,
+                proj_drop=config.proj_drop,
+                attn_drop=config.attn_drop,
+                drop_path=dpr[i],
+                init_values=config.init_values,
+                norm_layer=norm_layer,
+            )
+            for i in range(config.depth)
+        ])
+        
+        # Final normalization layer
+        self.norm = norm_layer(config.embed_dim)
+        self.head = nn.Identity()
+        
+        # Initialize weights
+        self.initialize_weights()
 
-    def _spectral2spatial(self, x, B):
-        """Convert from spectral order to spatial order"""
-        BHW, Cin, Cout = x.shape
-        x = x.view(B, -1, Cin, Cout).permute(0, 2, 1, 3) # B Cin HW Cout
-        return x
+    def initialize_weights(self):
+        w = self.optical_patch_embed.proj.weight.data
+        torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
 
-    def _spatial2spectral(self, x):
-        """Convert from spatial order to spectral order"""
-        B, Cin, L, Cout = x.shape
-        x = x.permute(0, 2, 1, 3).reshape(-1, Cin, Cout) # BL Cin Cout
-        return x
-    
-    def _pool_channel(self, x):
-        B, Cin, HW, Cout = x.shape
-        x = x.permute(0, 2, 3, 1).reshape(B, -1, Cin) # B HWCout Cin
-        x = self.channel_pool(x).reshape(B, HW, Cout) # B HW Cout
-        return x
-    
-    def _pool_channel_with_extra_tokens(self, x, cin):
-        post_tokens = x[:, :self.num_register_tokens+1]
-        patch_tokens = x[:, self.num_register_tokens+1:] # [B, CinL, Cout]
-        # patch_tokens = x
-        B, _, Cout = patch_tokens.shape
-        patch_tokens = patch_tokens.view(B, cin, -1, Cout) # [B, Cin, L, Cout]
-        patch_tokens = self._pool_channel(patch_tokens) # [B, L, Cout]
-        x = torch.cat((post_tokens, patch_tokens), dim=1) # [B, L+T, Cout]
-        # x = patch_tokens
-        return x
+        torch.nn.init.normal_(self.cls_token, std=.02)
 
-    # ViT Forward path
-    def forward(self, optical=None, radar=None, channel_ids=SENTINEL_WV, return_dict=False):
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            torch.nn.init.xavier_uniform_(m.weight)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+
+    def forward(self, optical=None, radar=None, optical_channel_wv=None, radar_channel_wv=None, spatial_resolution=10, mask_ratio=0, channel_mask_ratio=0):
         assert optical is not None or radar is not None, "At least one of optical and radar should be provided"
-        # embed patches
-        if radar is not None:
-            radar, _, _ = self.radar_patch_embed(radar, 0, None) # B Cin HW Cout
-            channel_mask = None
-            radar_Cin = radar.shape[1]
+        assert optical_channel_wv is None or len(optical_channel_wv.shape) == 2, "If optical ids are provided, they should be a 2D tensor"
+        assert radar_channel_wv is None or len(radar_channel_wv.shape) == 2, "If radar ids are provided, they should be a 2D tensor"
+        
         if optical is not None:
-            optical, _channel_mask, channel_ids_restore = self.optical_patch_embed(optical, 0, channel_ids) # B Cin HW Cout
-            channel_mask = _channel_mask.unsqueeze(1).expand(-1, self.patch_size**2, -1).flatten(1) 
-            optical_Cin = optical.shape[1]
-
-        # temperary concat
-        x = self.maybe_concat(optical, radar)
-
-        B, Cin, HW, Cout = x.shape
-        if self.spatial_blocks == self.n_blocks:
-            assert self.sptial_spectral_blocks == 0, "No spectral blocks are allowed"
-            assert self.spectral_blocks == 0, "No spectral blocks are allowed"
-            # Normal ViT
-            x = self._pool_channel(x)
-            pos_embed = self.pos_embed[:, 1:, :]
+            optical = self.optical_patch_embed(optical)  # B, Co, HW, D
+            assert optical_channel_wv is not None, "Optical ids should be provided"
+            assert optical_channel_wv.shape[1] == optical.shape[1], "Optical ids should have the same number of channels as the optical data"
         else:
-            pos_embed = self.interpolate_positional_encoder(Cin)
-        x = x + pos_embed # B Cin HW Cout
-        L = x.shape[-2]
+            optical_channel_wv = None
+        if radar is not None:
+            radar = self.radar_patch_embed(radar)  # B, Cr, HW, D
+            assert radar_channel_wv is not None, "Radar ids should be provided"
+            assert radar_channel_wv.shape[1] == radar.shape[1], "Radar ids should have the same number of channels as the radar data"
+        else:
+            radar_channel_wv = None
 
-        # spectral only blocks
-        if self.spectral_blocks > 0:
-            assert x.dim() == 4, "Input tensor should be B Cin L Cout"
-            x = self._spatial2spectral(x) # B Cin HW Cout -> # BHW Cin Cout
-
-            # undo concatenation
-            if optical is not None and radar is not None:
-                optical = x[:, :optical_Cin]
-                radar = x[:, optical_Cin:]
-            elif optical is not None:
-                optical = x
-            elif radar is not None:
-                radar = x
-
-            if optical is not None:
-                for blk in self.blocks[:self.spectral_blocks]:
-                    optical = blk(optical) # BHW Cin Cout
-            if radar is not None:
-                for blk in self.radar_spectral_blocks:
-                    radar = blk(radar) # BHW Cin Cout
-
-            # redo concatenation
-            # from now on radar and obtical should be mixed
-            x = self.maybe_concat(optical, radar) # BHW Cin Cout
-            x = self._spectral2spatial(x, B) # BHW Cin Cout -> B Cin HW Cout
-
-        # append cls token
-        cls_token = self.cls_token + self.pos_embed[:, :1, :] # 1, 1, D
+        channel_ids = self.maybe_concat(optical_channel_wv, radar_channel_wv) # 1, C = Co + Cr    
+        x = self.maybe_concat(optical, radar) # B, C, HW, D
+        num_patches = x.shape[2]
         
-        if x.dim() == 3:
-            x = x.unsqueeze(1) # B 1 HW Cout
-
-        cls_tokens = cls_token.expand(x.shape[0], x.shape[1], -1, -1)
-        x = torch.cat((cls_tokens, x), dim=2) 
+        # Create the perception field mask to simulate convolutional attention
+        if self.config.use_perception_field_mask:
+            perception_field_mask = get_perception_field_mask(num_patches, self.config.patch_size, spatial_resolution, attention_radius=self.config.attention_radius, cls_token=False).to(x.device)
+        else:
+            perception_field_mask = None
         
-        if self.register_tokens is not None:
-            x = torch.cat(
-                (
-                    x[:, :, :1],
-                    self.register_tokens.expand(x.shape[0], x.shape[1], -1, -1),
-                    x[:, :, 1:],
-                ),
-                dim=1,
-            ) # B Cin HW+T Cout
+        # Add positional and channel embedding
+        pos_chan_embed = self.pos_chan_embed(x, channel_ids=channel_ids, spatial_resolution=spatial_resolution, cls_token=False).to(x.device, dtype=x.dtype)
+        x = x + pos_chan_embed
         
-        if x.dim() == 3:
-            x = x.squeeze(1) # B HW+T Cout
-        elif x.dim() == 4:
-            x = x.transpose(1, 2) # B HW+T Cin Cout
+        # Apply masks after positional embedding
+        if self.training:
+            x, channel_mask, channel_ids_restore = self.random_channel_masking(x, channel_mask_ratio) # B N HW D, B C, B C
+            x, pos_mask, pos_ids_restore, perception_field_mask = self.random_pos_masking(x, mask_ratio, perception_field_mask=perception_field_mask) # B N L D, B HW, B HW, L L
+        else:
+            channel_mask = pos_mask = channel_ids_restore = pos_ids_restore = None
+        
+        B, N, L, D = x.shape
+        
+        # Create cls tokens for both Cin and HW dimensions
+        cls_token_cin = self.cls_token.expand(B, 1, L, D)
+        cls_token_hw = self.cls_token.expand(B, N + 1, 1, D)
+        
+        # Append cls token to Cin dimension
+        x = torch.cat((cls_token_cin, x), dim=1)
+        
+        # Append cls token to HW dimension
+        x = torch.cat((cls_token_hw, x), dim=2)
+        
+        # Apply transformer blocks
+        for blk in self.blocks:
+            x = blk(x, spatial_mask=perception_field_mask)
+        
+        # Apply final layer norm
+        x = self.norm(x)  # B N+1 L+1 D
+        
+        cls_token = x[:, 0, 0]
+        patch_tokens = x[:, 1:, 1:] # B N+1 L+1 D -> B N L D
 
-        if self.sptial_spectral_blocks > 0:
-            assert x.dim() == 4, "Input tensor should be B L Cin Cout"
-            assert x.shape[1] == L + 1 + self.num_register_tokens
-            assert x.shape[2] == Cin
-            for blk in self.blocks[self.spectral_blocks:self.spectral_blocks+self.sptial_spectral_blocks]:
-                x = blk(x) # B HW+T Cin Cout
-
-        if self.spatial_blocks != self.n_blocks:
-            x = x.transpose(1, 2) # B Cin HW+T Cout
-            x = self._pool_channel(x) # B HW+T Cout
-
-        if self.spatial_blocks > 0:
-            assert x.dim() == 3, "Input tensor should be B L Cout"
-            assert x.shape[1] == L + 1 + self.num_register_tokens
-            for blk in self.blocks[self.spectral_blocks+self.sptial_spectral_blocks:]:
-                x = blk(x)
-
-        x = self.norm(x)
-
-        cls_token = x[:, 0]
-        register_tokens = x[:, 1:self.num_register_tokens+1] if self.num_register_tokens else None
-        patch_tokens = x[:, self.num_register_tokens+1:]
-
-        if not self.channel_pool:
-            raise NotImplementedError
-
-        if return_dict:
-            return dict(cls_token=cls_token, register_tokens=register_tokens, patch_tokens=patch_tokens, latent=x)
-        return x, cls_token, register_tokens, patch_tokens
-
-    def interpolate_positional_encoder(self, cin):
-        pos_embed = self.pos_embed[:, 1:, :] # 1 HW Cout
-        pos_embed = pos_embed.unsqueeze(1).repeat(1, cin, 1, 1).permute(0, 3, 1, 2) # 1 Cout Cin HW
-        # pos_embed = pos_embed.flatten(2).transpose(1, 2) # 1 CinHW Cout
-        pos_embed = pos_embed.permute(0, 2, 3, 1) # 1 Cin HW Cout
-        return pos_embed
+        if self.training:
+            return x, channel_mask, channel_ids_restore, pos_mask, pos_ids_restore
+        elif self.config.return_dict:
+            return BaseModelOutput(
+                last_hidden_state=cls_token,
+                hidden_states=patch_tokens,
+                attentions=None,
+            )
+        else:
+            return x, cls_token, patch_tokens
 
     def maybe_concat(self, x, y):
         if x is not None and y is not None:
@@ -231,221 +243,265 @@ class MultiModalLowRankViTEncoder(ViTEncoder):
             return x
         elif y is not None:
             return y
-
-    # Encoder for MAE
-    def forward_encoder(self, optical=None, radar=None, mask_ratio=0.75, channel_mask_ratio=0.5, channel_ids=SENTINEL_WV, return_dict=False):
-        assert optical is not None or radar is not None, "At least one of optical and radar should be provided"
-        # embed patches
-        if radar is not None:
-            radar, _, _ = self.radar_patch_embed(radar, 0, None) # B Cin HW Cout
-            channel_mask = None
-            radar_Cin = radar.shape[1]
-        if optical is not None:
-            optical, _channel_mask, channel_ids_restore = self.optical_patch_embed(optical, channel_mask_ratio, channel_ids) # B Cin HW Cout
-            channel_mask = _channel_mask.unsqueeze(1).expand(-1, self.patch_size**2, -1).flatten(1) 
-            optical_Cin = optical.shape[1]
-
-        # temperary concat
-        x = self.maybe_concat(optical, radar)
-
-        B, Cin, HW, Cout = x.shape
-        if self.spatial_blocks == self.n_blocks:
-            assert self.sptial_spectral_blocks == 0, "No spectral blocks are allowed"
-            assert self.spectral_blocks == 0, "No spectral blocks are allowed"
-            # Normal ViT
-            x = self._pool_channel(x)
-            pos_embed = self.pos_embed[:, 1:, :]
-        else:
-            pos_embed = self.interpolate_positional_encoder(Cin)
-        x = x + pos_embed # B Cin HW Cout
-    
-        # masking: length -> length * mask_ratio
-        x, mask, ids_restore = self._random_masking(x, mask_ratio) # B Cin L Cout / B L Cout
-        L = x.shape[-2]
-
-        # spectral only blocks
-        if self.spectral_blocks > 0:
-            assert x.dim() == 4, "Input tensor should be B Cin L Cout"
-            x = self._spatial2spectral(x) # B Cin L Cout -> # BL Cin Cout
-
-            # undo concatenation
-            if optical is not None and radar is not None:
-                optical = x[:, :optical_Cin]
-                radar = x[:, optical_Cin:]
-            elif optical is not None:
-                optical = x
-            elif radar is not None:
-                radar = x
-
-            if optical is not None:
-                for blk in self.blocks[:self.spectral_blocks]:
-                    optical = blk(optical) # BHW Cin Cout
-            if radar is not None:
-                for blk in self.radar_spectral_blocks:
-                    radar = blk(radar) # BHW Cin Cout
-            # for blk in self.blocks[:self.spectral_blocks]:
-            #     x = blk(x)
-
-            # redo concatenation
-            # from now on radar and obtical should be mixed
-            x = self.maybe_concat(optical, radar) # BHW Cin Cout
-            x = self._spectral2spatial(x, B) # BHW Cin Cout -> B Cin L Cout
-
-        # append cls token
-        cls_token = self.cls_token + self.pos_embed[:, :1, :] # 1, 1, D
         
-        if x.dim() == 3:
-            x = x.unsqueeze(1) # B 1 L Cout
-
-        cls_tokens = cls_token.expand(x.shape[0], x.shape[1], -1, -1)
-        x = torch.cat((cls_tokens, x), dim=2) 
-        
-        if self.register_tokens is not None:
-            x = torch.cat(
-                (
-                    x[:, :, :1],
-                    self.register_tokens.expand(x.shape[0], x.shape[1], -1, -1),
-                    x[:, :, 1:],
-                ),
-                dim=1,
-            ) # B Cin L+T Cout
-        
-        if x.dim() == 3:
-            x = x.squeeze(1) # B L+T Cout
-        elif x.dim() == 4:
-            x = x.transpose(1, 2) # B L+T Cin Cout
-
-        if self.sptial_spectral_blocks > 0:
-            assert x.dim() == 4, "Input tensor should be B L Cin Cout"
-            assert x.shape[1] == L + 1 + self.num_register_tokens
-            assert x.shape[2] == Cin
-            for blk in self.blocks[self.spectral_blocks:self.spectral_blocks+self.sptial_spectral_blocks]:
-                x = blk(x) # B L+T Cin Cout
-        
-        if self.spatial_blocks != self.n_blocks:
-            x = x.transpose(1, 2) # B Cin L+T Cout
-            x = self._pool_channel(x) # B L+T Cout
-
-        if self.spatial_blocks > 0:
-            assert x.dim() == 3, "Input tensor should be B L Cout"
-            assert x.shape[1] == L + 1 + self.num_register_tokens
-            for blk in self.blocks[self.spectral_blocks+self.sptial_spectral_blocks:]:
-                x = blk(x)
-
-        x = self.norm(x)
-            
-        if return_dict:
-            return dict(latent=x, mask=mask, ids_restore=ids_restore, 
-                        channel_mask=channel_mask,) 
-                        # channel_ids_restore=channel_ids_restore, kept_channels=cin)
-        return x, mask, ids_restore, channel_mask#, channel_ids_restore, cin
-
-    def _random_masking(self, x, mask_ratio):
-        if x.dim() == 3:
-            return self.random_masking(x, mask_ratio)
-        elif x.dim() == 4:
-            return self.random_masking_3D(x, mask_ratio)
-        else:
-            raise ValueError("Input tensor should be 3D or 4D")
-
-    def random_masking_3D(self, x, mask_ratio):
+    def random_pos_masking(self, x, mask_ratio, batch_wise_mask=False, perception_field_mask=None):
         """
         Perform per-sample random masking by per-sample shuffling.
         Per-sample shuffling is done by argsort random noise.
-        x: [N, C, L, D], sequence
+        x: [B, C, HW, D], sequence
+        perception_field_mask: [HW, HW] or None, if not None, use distance attention mask is used.
         """
-        N, C, L, D = x.shape  # batch, channels, length, dim
-        x = x.permute(0, 2, 3, 1).flatten(2)  # [N, L, D*C]
-        len_keep = int(L * (1 - mask_ratio))
+        if perception_field_mask is not None:
+            batch_wise_mask = True # if distance mask is provided, we need to use batch-wise masking
+            
+        B, C, HW, D = x.shape  # batch, channels, length, dim
+        if mask_ratio == 0:
+            mask = torch.zeros([B, HW], device=x.device)
+            ids_restore = torch.arange(HW, device=x.device).unsqueeze(0).repeat(B, 1)
+            return x, mask, ids_restore
         
-        noise = torch.rand(N, L, device=x.device)  # noise in [0, 1]
+        x = x.permute(0, 2, 1, 3) # B, HW, C, D
+        len_keep = int(HW * (1 - mask_ratio)) # L
+        
+        if batch_wise_mask:
+            noise = torch.rand(1, HW, device=x.device)  # noise in [0, 1]
+            noise = noise.repeat(B, 1)
+        else:
+            noise = torch.rand(B, HW, device=x.device)  # noise in [0, 1]
         
         # sort noise for each sample
         ids_shuffle = torch.argsort(noise, dim=1)  # ascend: small is keep, large is remove
-        ids_restore = torch.argsort(ids_shuffle, dim=1)
+        ids_restore = torch.argsort(ids_shuffle, dim=1) # B, HW
+
+        # keep the first subset
+        ids_keep = ids_shuffle[:, :len_keep] # B, L
+        x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, C, D)) # B, L, C, D
+        if perception_field_mask is not None:
+            # remove the corresponding ids in perception_field_mask
+            ids_keep_ = ids_keep[0].cpu() # L
+            perception_field_mask = perception_field_mask[ids_keep_, :] # L HW
+            perception_field_mask = perception_field_mask[:, ids_keep_] # L L
+            # append cls token
+            new_row = torch.ones(len_keep, 1, device=perception_field_mask.device)
+            new_col = torch.ones(1, len_keep + 1, device=perception_field_mask.device)
+            perception_field_mask = torch.cat([new_row, perception_field_mask], dim=1)
+            perception_field_mask = torch.cat([new_col, perception_field_mask], dim=0)
+            perception_field_mask = perception_field_mask > 0 # L L bool
+
+        # generate the binary mask: 0 is keep, 1 is remove
+        mask = torch.ones([B, HW], device=x.device)
+        mask[:, :len_keep] = 0
+        # unshuffle to get the binary mask
+        mask = torch.gather(mask, dim=1, index=ids_restore) # B, HW
+        
+        x_masked = x_masked.permute(0, 2, 1, 3)  # [B, C, L, D]
+        return x_masked, mask, ids_restore, perception_field_mask
+    
+    def random_channel_masking(self, x, channel_mask_ratio, batch_wise_mask=False):
+        """
+        Perform per-sample random masking by per-sample shuffling.
+        Per-sample shuffling is done by argsort random noise.
+        x: [B, C, HW, D], sequence
+        Return:
+            x_masked: [B, N, HW, D]
+            mask: [B, C]
+            ids_restore: [B, C]
+        """
+        B, C, HW, D = x.shape
+        if channel_mask_ratio == 0:
+            mask = torch.zeros([B, C], device=x.device)
+            ids_restore = torch.arange(C, device=x.device).unsqueeze(0).repeat(B, 1)
+            return x, mask, ids_restore
+        
+        len_keep = max(int(C * (1 - channel_mask_ratio)), 2) # at least 2 channel is kept, N
+        
+        if batch_wise_mask:
+            noise = torch.rand(1, C, device=x.device)  # noise in [0, 1]
+            noise = noise.repeat(B, 1)
+        else:
+            noise = torch.rand(B, C, device=x.device) # noise in [0, 1]
+        
+        # sort noise for each sample
+        ids_shuffle = torch.argsort(noise, dim=1) # B C
+        ids_restore = torch.argsort(ids_shuffle, dim=1) # B C
 
         # keep the first subset
         ids_keep = ids_shuffle[:, :len_keep]
-        x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D*C))
+        x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, HW, D)) # B, N, HW, D
 
         # generate the binary mask: 0 is keep, 1 is remove
-        mask = torch.ones([N, L], device=x.device)
+        mask = torch.ones([B, C], device=x.device) # B C
         mask[:, :len_keep] = 0
         # unshuffle to get the binary mask
-        mask = torch.gather(mask, dim=1, index=ids_restore)
-        x_masked = x_masked.view(N, len_keep, D, C).permute(0, 3, 1, 2)  # [N, C, L, D]
-
+        mask = torch.gather(mask, dim=1, index=ids_restore) # B C
+    
         return x_masked, mask, ids_restore
 
-class MultiModalChannelViTDecoder(ViTDecoder):
-    def __init__(self,
-                 optical_out_chans=3,
-                 radar_out_chans=2,
-                 decoder_embed_dim=512,
-                 **kwargs):
-        out_chans = optical_out_chans + radar_out_chans
-        kwargs['out_chans'] = out_chans
-        super().__init__(decoder_embed_dim=decoder_embed_dim, **kwargs)
-        del self.decoder_pred
-        self.decoder_channel_pred = nn.Linear(decoder_embed_dim, out_chans*decoder_embed_dim, bias=False)
-        self.decoder_pred = nn.Linear(decoder_embed_dim, self.patch_size**2, bias=True)
+class MultiModalLowRankViTDecoder(PreTrainedModel):
+    config_class = MultiModalLowRankViTConfig
 
-        assert optical_out_chans > 0, "Optical out channels should be greater than 0"
-        assert radar_out_chans > 0, "Radar out channels should be greater than 0"
-        self.optical_out_chans = optical_out_chans
-        self.radar_out_chans = radar_out_chans
-        self.optical_channel_embed = ContinuousChannelEmbedding(optical_out_chans, decoder_embed_dim)
-        self.radar_channel_embed = nn.Embedding(radar_out_chans, decoder_embed_dim)
-        trunc_normal_(self.radar_channel_embed.weight, std=0.02)
+    def __init__(self, config: MultiModalLowRankViTConfig):
+        super().__init__(config)
+        self.config = config
+        norm_layer = partial(nn.LayerNorm, eps=1e-6)
+        
+        self.decoder_embed = nn.Linear(config.embed_dim, config.decoder_embed_dim, bias=True)
+        self.mask_token = nn.Parameter(torch.zeros(1, 1, 1, config.decoder_embed_dim))
+        
+        if config.drop_path_uniform is True:
+            dpr = [config.drop_path_rate] * config.decoder_depth
+        else:
+            dpr = [x.item() for x in torch.linspace(0, config.drop_path_rate, config.decoder_depth)]
+        
+        self.decoder_blocks = nn.ModuleList([
+            LowRankBlock(
+                dim=config.decoder_embed_dim,
+                num_heads=config.decoder_num_heads,
+                channel_dim=config.decoder_channel_dim,
+                spatial_dim=config.decoder_spatial_dim,
+                mlp_ratio=config.mlp_ratio,
+                qkv_bias=config.qkv_bias,
+                qk_norm=config.qk_norm,
+                proj_drop=config.proj_drop,
+                attn_drop=config.attn_drop,
+                drop_path=dpr[i],
+                init_values=config.init_values,
+                norm_layer=norm_layer,
+            )
+            for i in range(config.decoder_depth)
+        ])
+        
+        self.decoder_norm = norm_layer(config.decoder_embed_dim)
+        self.decoder_pred = nn.Linear(config.decoder_embed_dim, config.patch_size**2, bias=True)
+        
+        self.pos_chan_embed = PositionalChannelEmbedding(config.decoder_embed_dim)
+        
+        self.initialize_weights()
 
-    def forward_decoder(self, x, ids_restore, restore_input_dim=False, slice_patch_tokens=None, optical_channel_ids=SENTINEL_WV, radar_channel_ids=None):
-        # handle channel embedding
-        optical_channel_embed = self.optical_channel_embed(optical_channel_ids)
-        if radar_channel_ids is None:
-            radar_channel_ids = np.arange(self.radar_out_chans)
+    def initialize_weights(self):
+        torch.nn.init.normal_(self.mask_token, std=.02)
+        self.apply(self._init_weights)
 
-        radar_channel_ids = torch.tensor(radar_channel_ids, device=x.device)
-        radar_channel_embed = self.radar_channel_embed(radar_channel_ids).unsqueeze(0)  # 1, Cout, embed_dim
-        channel_embed = torch.cat((optical_channel_embed, radar_channel_embed), dim=1)  # 1, Cout, embed_dim
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            torch.nn.init.xavier_uniform_(m.weight)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
 
+    def forward(self, x, pos_ids_restore, channel_ids_restore, optical_channel_wv, radar_channel_wv, spatial_resolution, restore_input_dim=False):
+        assert len(optical_channel_wv.shape) == 2, "Optical ids should be a 2D tensor"
+        assert len(radar_channel_wv.shape) == 2, "Radar ids should be a 2D tensor"
+        
         # embed tokens
-        x = self.decoder_embed(x)
-
+        x = self.decoder_embed(x)  # B N+1 L+1 D
+        
+        channel_wv = torch.cat((optical_channel_wv, radar_channel_wv), dim=1)  # 1 C = Co + Cr or B C
+        
+        # remove cls token
+        B, N, L, D = x[:, 1:, 1:, :].shape
+        C = channel_ids_restore.shape[1]
+        HW = pos_ids_restore.shape[1]
+        
         # append mask tokens to sequence
-        mask_tokens = self.mask_token.repeat(x.shape[0], ids_restore.shape[1] + 1 - x.shape[1], 1)
-        x_ = torch.cat([x[:, 1+self.num_register_tokens:, :], mask_tokens], dim=1)  # no cls token and register tokens
-        x_ = torch.gather(x_, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x.shape[2]))  # unshuffle
-        # print(x_.shape)
-        x = torch.cat([x[:, :1, :], x_], dim=1)  # append cls token
+        mask_tokens = self.mask_token.expand(B, N + 1, HW - L, -1)
+        x_ = torch.cat([x[:, :, 1:], mask_tokens], dim=2)  # B N+1 HW D, remove cls token
+        x_ = torch.gather(x_, dim=2, index=pos_ids_restore.unsqueeze(1).unsqueeze(-1).repeat(1, N+1, 1, D))  # unshuffle, B N+1 HW D
+        x = torch.cat([x[:, :, :1], x_], dim=2)  # B N+1 HW+1 D, add cls token
+        
+        # append mask tokens for channels
+        mask_tokens = self.mask_token.expand(B, C - N, HW + 1, -1)
+        x_ = torch.cat([x[:, 1:], mask_tokens], dim=1)  # B, C, HW+1, D, remove cls token
+        x_ = torch.gather(x_, dim=1, index=channel_ids_restore.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, HW + 1, D))  # unshuffle, B C HW+1 D
+        x = torch.cat([x[:, :1], x_], dim=1)  # B C+1 HW+1 D, add cls token
+        
+        if C == optical_channel_wv.shape[1]: 
+            # missing radar channels from encoder
+            n_radar_channels = radar_channel_wv.shape[1]
+            # extend x to C+n_radar_channels to the end
+            mask_tokens = self.mask_token.expand(B, n_radar_channels, HW + 1, -1)  # B C HW+1 D
+            x = torch.cat([x, mask_tokens], dim=1)
+        elif C == radar_channel_wv.shape[1]:
+            # missing optical channels from encoder
+            n_optical_channels = optical_channel_wv.shape[1]
+            # extend x to C+n_optical_channels to the front behind the cls token
+            mask_tokens = self.mask_token.expand(B, n_optical_channels, HW + 1, -1)
+            x = torch.cat([x[:, :1, :, :], mask_tokens, x[:, 1:, :, :]], dim=1)  # B C+1 HW+1 D
 
-        # add pos embed
-        x = x + self.decoder_pos_embed
+        # add positional and channel embedding
+        pos_chan_embed = self.pos_chan_embed(x[:, 1:, 1:, :], channel_ids=channel_wv, spatial_resolution=spatial_resolution, cls_token=True).to(x.device, dtype=x.dtype)
+        x = x + pos_chan_embed
+
+        num_patches = x.shape[2] - 1
+        if self.config.use_perception_field_mask:
+            perception_field_mask = get_perception_field_mask(num_patches, self.config.patch_size, spatial_resolution, attention_radius=self.config.attention_radius, cls_token=True).to(x.device)
+        else:
+            perception_field_mask = None
 
         # apply Transformer blocks
-        for i in range(len(self.decoder_blocks) - 1):
-            blk = self.decoder_blocks[i]
-            x = blk(x)
-
-        # remove cls token
-        x = x[:, 1+self.num_register_tokens:, :] # B, L, D
-        B, L, D = x.shape
-
-        x = self.decoder_channel_pred(x)  # B, L, Cout*D
-        x = x.reshape(B*L, -1, D) # BL, Cout, D
-
-        # channel-wise embedding
-        x += channel_embed # BL, Cout, D
-
-        # last block
-        x = self.decoder_blocks[-1](x)
-        x = x.reshape(B, L, -1, D)
+        for blk in self.decoder_blocks:
+            x = blk(x, spatial_mask=perception_field_mask)
 
         x = self.decoder_norm(x)
-
+        
         # predictor projection
-        x = self.decoder_pred(x) # B, L, Cout, patch_size**2
-        x = x.permute(0, 1, 3, 2).flatten(2) # B, L, patch_size**2 * Cout
-
+        x = self.decoder_pred(x)  # B C+1 HW+1 D -> B C+1 HW+1 patch_size**2
+        
+        # remove cls token
+        x = x[:, 1:, 1:, :]  # B C HW patch_size**2
+        
         if restore_input_dim:
-            x = self.unpatchify(x, slice_patch_tokens)
+            x = self.unpatchify(x)
+        
+        if self.config.return_dict:
+            # Return as BaseModelOutput for Hugging Face compatibility
+            return BaseModelOutput(
+                last_hidden_state=x,
+                hidden_states=None,
+                attentions=None,  # You can modify this if you have attention weights to return
+            )
+        else:
+            return x
+
+    def unpatchify(self, x):
+        """
+        x: (B, C, HW, patch_size**2)
+        imgs: (B, C, H, W)
+        """
+        p = self.config.patch_size
+        h = w = int(x.shape[2]**.5)
+        assert h * w == x.shape[2]
+        
+        x = x.reshape(shape=(x.shape[0], x.shape[1], h, w, p, p))
+        x = torch.einsum('bchwpq->bchpwq', x)
+        imgs = x.reshape(shape=(x.shape[0], -1, h * p, w * p))
+        return imgs
+
+    def forward_target(self, imgs):
+        """
+        imgs: [B, C, H, W]
+        """
+        target = self.patchify(imgs)
+        if self.config.norm_pix_loss:
+            mean = target.mean(dim=-1, keepdim=True)
+            var = target.var(dim=-1, keepdim=True)
+            target = (target - mean) / (var + 1.e-6)**.5
+        return target # B C HW patch_size**2
+
+    def patchify(self, imgs):
+        """
+        imgs: (B, C, H, W)
+        x: (B, C, HW, patch_size**2)
+        """
+        p = self.config.patch_size
+        assert imgs.shape[2] == imgs.shape[3] and imgs.shape[2] % p == 0
+
+        h = w = imgs.shape[2] // p
+        x = imgs.reshape(shape=(imgs.shape[0], imgs.shape[1], h, p, w, p))
+        x = torch.einsum('nchpwq->nchpwq', x)
+        x = x.reshape(shape=(imgs.shape[0], imgs.shape[1], h * w, p**2))
         return x
+
+

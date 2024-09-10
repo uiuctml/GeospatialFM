@@ -1,93 +1,53 @@
-# from .vision_transformer import ViTEncoder, ViTDecoder
 import torch.nn as nn
 import numpy as np
 import torch
-from .vision_transformer import ViTEncoder
-from .flexible_channel_vit import ChannelViTEncoder
+from transformers import PreTrainedModel
+from .multi_modal_low_rank_vit import MultiModalLowRankViTEncoder, MultiModalLowRankViTDecoder, MultiModalLowRankViTConfig
 
-SENTINEL_WV = [442.7, 492.4, 559.8, 664.6, 704.1, 740.5, 782.8, 832.8, 864.7, 945.1, 1373.5, 1613.7, 2202.4]
 
-class CrossModalMAEViT(nn.Module):
-    def __init__(self, 
-                 optical_encoder, 
-                 radar_encoder,
-                 optical_decoder,
-                 radar_decoder,
-                 init_logit_scale=np.log(1 / 0.07),
-                 init_logit_bias=None,
-                 use_clip=False,
-                 ):
-        
-        super().__init__()
-        self.optical_encoder = optical_encoder
-        self.radar_encoder = radar_encoder
-        self.optical_decoder = optical_decoder
-        self.radar_decoder = radar_decoder 
+SENTINEL2_WV = [442.7, 492.4, 559.8, 664.6, 704.1, 740.5, 782.8, 832.8, 864.7, 945.1, 1373.5, 1613.7, 2202.4]
+SENTINEL1_WV = [1575.4, 1660.0] # TODO: fix this
 
-        if use_clip:
-            self.logit_scale = nn.Parameter(torch.ones([]) * init_logit_scale)
-            if init_logit_bias is not None:
-                self.logit_bias = nn.Parameter(torch.ones([]) * init_logit_bias)
-            else:
-                self.logit_bias = None
-        else:
-            self.logit_scale = torch.ones([]) * init_logit_scale
-            self.logit_bias = init_logit_bias
+class MultiModalMAEViT(PreTrainedModel):
+    config_class = MultiModalLowRankViTConfig
+    def __init__(self, config):
+        super().__init__(config)
+        self.encoder = MultiModalLowRankViTEncoder(config)
+        self.decoder = MultiModalLowRankViTDecoder(config)
 
-    def set_head(self, optical_head, radar_head):
-        self.optical_head = optical_head
-        self.radar_head = radar_head
+    def _forward(self, optical, radar, optical_channel_wv=SENTINEL2_WV, radar_channel_wv=SENTINEL1_WV, mask_ratio=0.5, channel_mask_ratio=0.5, spatial_resolution=10, prefix=''):
+        latent, channel_mask, channel_ids_restore, pos_mask, pos_ids_restore = self.encoder(optical=optical, radar=radar, optical_channel_wv=optical_channel_wv, radar_channel_wv=radar_channel_wv, 
+                                                                       spatial_resolution=spatial_resolution, mask_ratio=mask_ratio, channel_mask_ratio=channel_mask_ratio)
+        recon = self.decoder(latent, pos_ids_restore, channel_ids_restore, optical_channel_wv, radar_channel_wv, spatial_resolution, restore_input_dim=False)
 
-    def forward_recon(self, optical, radar, mask_ratio=0.75, slice_patch_tokens=None, channel_mask_ratio=0.5, channel_ids=SENTINEL_WV):
-        # forward optical
-        if isinstance(self.optical_encoder, ChannelViTEncoder):
-            optical_latent, optical_mask, optical_ids_restore, optical_channel_mask = self.optical_encoder.forward_encoder(optical, mask_ratio, channel_mask_ratio, channel_ids=channel_ids)
-        else:
-            optical_latent, optical_mask, optical_ids_restore = self.optical_encoder.forward_encoder(optical, mask_ratio, channel_ids=channel_ids)
-            optical_channel_mask = None
-        optical_recon = self.optical_decoder.forward_decoder(optical_latent, optical_ids_restore, restore_input_dim=True, slice_patch_tokens=slice_patch_tokens)
-        optical_cls_token = optical_latent[:, 0]
-        # forward radar
-        radar_latent, radar_mask, radar_ids_restore = self.radar_encoder.forward_encoder(radar, mask_ratio)
-        radar_recon = self.radar_decoder.forward_decoder(radar_latent, radar_ids_restore, restore_input_dim=True, slice_patch_tokens=slice_patch_tokens)
-        radar_cls_token = radar_latent[:, 0]
-        return_dict= dict(optical_cls_token=optical_cls_token, radar_cls_token=radar_cls_token,
-                    optical_recon=optical_recon, radar_recon=radar_recon,
-                    optical_mask=optical_mask, radar_mask=radar_mask,)
-        if optical_channel_mask is not None:
-            return_dict['optical_channel_mask'] = optical_channel_mask
-        return return_dict
-
-    def forward(self, optical, radar, mask_ratio=0.75, channel_mask_ratio=0.5, channel_ids=SENTINEL_WV):
-        # forward optical
-        if isinstance(self.optical_encoder, ChannelViTEncoder):
-            optical_latent, optical_mask, optical_ids_restore, optical_channel_mask = self.optical_encoder.forward_encoder(optical, mask_ratio, channel_mask_ratio, channel_ids=channel_ids)
-        else:
-            optical_latent, optical_mask, optical_ids_restore = self.optical_encoder.forward_encoder(optical, mask_ratio, channel_ids=channel_ids)
-            optical_channel_mask = None
-        optical_recon = self.optical_decoder.forward_decoder(optical_latent, optical_ids_restore)
-        optical_target = self.optical_decoder.forward_target(optical)
-        optical_cls_token = optical_latent[:, 0]
-        # forward radar
-        radar_latent, radar_mask, radar_ids_restore = self.radar_encoder.forward_encoder(radar, mask_ratio)
-        radar_recon = self.radar_decoder.forward_decoder(radar_latent, radar_ids_restore)
-        radar_target = self.radar_decoder.forward_target(radar)
-        radar_cls_token = radar_latent[:, 0]
         # return dict
-        return_dict= dict(optical_mask=optical_mask, radar_mask=radar_mask,
-                    optical_recon=optical_recon, radar_recon=radar_recon,
-                    optical_target=optical_target, radar_target=radar_target,
-                    optical_cls_token=optical_cls_token, radar_cls_token=radar_cls_token,
-                    logit_scale=self.logit_scale.exp())
-        if optical_channel_mask is not None:
-            return_dict['optical_channel_mask'] = optical_channel_mask
-        if self.logit_bias is not None:
-            return_dict['logit_bias'] = self.logit_bias
-        # downstream head
-        if hasattr(self, 'optical_head'):
-            optical_logits = self.optical_head(optical_cls_token)
-            return_dict['optical_logits'] = optical_logits
-        if hasattr(self, 'radar_head'):
-            radar_logits = self.radar_head(radar_cls_token)
-            return_dict['radar_logits'] = radar_logits
+        return_dict= {f'{prefix}_channel_mask': channel_mask, 
+                      f'{prefix}_recon': recon, 
+                      f'{prefix}_pos_mask': pos_mask
+                      }
+        return return_dict
+    
+    def forward(self, optical, radar, optical_channel_wv=SENTINEL2_WV, radar_channel_wv=SENTINEL1_WV, mask_ratio=0.5, channel_mask_ratio=0.5, spatial_resolution=10, modal=None):
+        assert modal in ['multi', 'optical', 'radar', None]
+        optical_target = self.decoder.forward_target(optical)
+        radar_target = self.decoder.forward_target(radar)
+        target = torch.cat([optical_target, radar_target], dim=1) # B C HW patch_size**2
+        return_dict = dict(target=target)
+        n_optical_channels = optical_channel_wv.shape[1]
+        n_radar_channels = radar_channel_wv.shape[1]
+        if modal is None or modal == 'optical':
+            optical_dict = self._forward(optical, None, optical_channel_wv, radar_channel_wv, mask_ratio, channel_mask_ratio, spatial_resolution, prefix='optical')
+            optical_channel_mask = optical_dict['optical_channel_mask']
+            radar_channel_mask = torch.ones(optical_channel_mask.shape[0], n_radar_channels).to(optical_channel_mask.device)
+            optical_dict['optical_channel_mask'] = torch.cat([optical_channel_mask, radar_channel_mask], dim=1)
+            return_dict.update(optical_dict)
+        if modal is None or modal == 'radar':
+            radar_dict = self._forward(None, radar, optical_channel_wv, radar_channel_wv, mask_ratio, channel_mask_ratio, spatial_resolution, prefix='radar')
+            radar_channel_mask = radar_dict['radar_channel_mask']
+            optical_channel_mask = torch.ones(radar_channel_mask.shape[0], n_optical_channels).to(radar_channel_mask.device)
+            radar_dict['radar_channel_mask'] = torch.cat([optical_channel_mask, radar_channel_mask], dim=1)
+            return_dict.update(radar_dict)
+        if modal is None or modal == 'multi':
+            multi_dict = self._forward(optical, radar, optical_channel_wv, radar_channel_wv, mask_ratio, channel_mask_ratio, spatial_resolution, prefix='multi')
+            return_dict.update(multi_dict)
         return return_dict
