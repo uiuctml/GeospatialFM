@@ -171,7 +171,7 @@ class StandardizeALL(object):
                 if key == 'radar':
                     samples[key] = (val / -1000.0).to(torch.float)
                 else:
-                    samples[key] = (val / 10000.0).to(torch.float)
+                    samples[key] = (val / 1.0).to(torch.float)
         return samples
     
 class NormalizeALL(object):

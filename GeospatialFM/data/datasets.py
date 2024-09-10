@@ -1,4 +1,4 @@
-from torchgeo.datasets import BigEarthNet, So2Sat, OSCD, SSL4EOS12
+from torchgeo.datasets import BigEarthNet, So2Sat, OSCD, SSL4EOS12, SSL4EOLBenchmark
 import torch
 from torch import Tensor
 import numpy as np
@@ -9,6 +9,25 @@ import os # CHANGE
 import glob # CHANGE
 from typing import Optional, Callable # CHANGE
 import random # CHANGE
+
+class mySSL4EO_L8(SSL4EOLBenchmark):
+    CHANNEL_IDS = [442.81, 481.89, 560.95, 654.32, 864.64, 1608.15, 2200.12]
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        
+    def __getitem__(self, index: int) -> dict[str, Tensor]:
+        img_path, mask_path = self.sample_collection[index]
+
+        sample = {
+            "image": self._load_image(img_path),
+            "label": self._load_mask(mask_path),
+        }
+
+        if self.transforms is not None:
+            sample = self.transforms(sample)
+
+        return sample
+    
 
 class myBigEarthNet(BigEarthNet):
     RGB_INDEX = [3, 2, 1]
