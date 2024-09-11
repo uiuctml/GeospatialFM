@@ -31,13 +31,11 @@ class MAETrainer(Trainer):
         
         self.train_dataloader = None
 
-    def compute_loss(self, model, inputs, return_outputs=False):
+    def compute_loss(self, model, inputs, return_outputs=False, mask_ratio=0.5, channel_mask_ratio=0.5):
         optical = inputs.get("optical")
         radar = inputs.get("radar")
         optical_channel_wv = inputs.get("optical_channel_wv", SENTINEL2_WV)
         radar_channel_wv = inputs.get("radar_channel_wv", SENTINEL1_WV)
-        mask_ratio = inputs.get("mask_ratio", 0.5)
-        channel_mask_ratio = inputs.get("channel_mask_ratio", 0.5)
         spatial_resolution = inputs.get("spatial_resolution", 10)
 
         outputs = model(
