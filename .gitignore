@@ -157,6 +157,12 @@ results/
 save_figs/
 data/
 
+# cache files
+*.lock
+
+# data meta
+*.csv
+
 # pylance
 # pyrightconfigs.json
 
