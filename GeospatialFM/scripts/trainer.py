@@ -9,19 +9,18 @@ from accelerate.utils import DistributedType
 import logging
 from collections import defaultdict
 import shutil
-
-SENTINEL2_WV = [442.7, 492.4, 559.8, 664.6, 704.1, 740.5, 782.8, 832.8, 864.7, 945.1, 1373.5, 1613.7, 2202.4]
-SENTINEL1_WV = [1575.4, 1660.0] # TODO: fix this
+from torch.utils.data import DataLoader
 
 logger = logging.getLogger(__name__)
 
 class MAETrainer(Trainer):
-    def __init__(self, model, args, train_dataset, optimizers, accelerator):
+    def __init__(self, model, args, train_dataset, optimizers, data_collator, accelerator, train_dataloader=None):
         super().__init__(
             model=model,
             args=args,
             train_dataset=train_dataset,
-            optimizers=optimizers
+            optimizers=optimizers,
+            data_collator=data_collator
         )
         self.accelerator = accelerator
         self.args = args
@@ -29,14 +28,14 @@ class MAETrainer(Trainer):
         self.initial_global_step = 0
         self.first_epoch = 0
         
-        self.train_dataloader = None
+        self.train_dataloader = train_dataloader
 
     def compute_loss(self, model, inputs, return_outputs=False, mask_ratio=0.5, channel_mask_ratio=0.5):
-        optical = inputs.get("optical")
-        radar = inputs.get("radar")
-        optical_channel_wv = inputs.get("optical_channel_wv", SENTINEL2_WV)
-        radar_channel_wv = inputs.get("radar_channel_wv", SENTINEL1_WV)
-        spatial_resolution = inputs.get("spatial_resolution", 10)
+        optical = inputs.get("optical").to(self.accelerator.device)
+        radar = inputs.get("radar").to(self.accelerator.device)
+        optical_channel_wv = inputs.get("optical_channel_wv").to(self.accelerator.device)
+        radar_channel_wv = inputs.get("radar_channel_wv").to(self.accelerator.device)
+        spatial_resolution = inputs.get("spatial_resolution").to(self.accelerator.device)
 
         outputs = model(
             optical=optical,
@@ -71,11 +70,30 @@ class MAETrainer(Trainer):
                 total_loss += loss[f"{modal}_loss"]
         loss['total_loss'] = total_loss
         return loss
+    
+    def get_train_dataloader(self):
+        if self.train_dataloader is not None:
+            return self.train_dataloader
+        
+        if self.train_dataset is None:
+            raise ValueError("Trainer: training requires a train_dataset.")
+        
+        data_collator = self.data_collator
+        train_dataset = self.train_dataset
+        
+        return DataLoader(
+            train_dataset,
+            batch_size=self.args.train_batch_size,
+            collate_fn=data_collator,
+            num_workers=self.args.dataloader_num_workers,
+            pin_memory=self.args.dataloader_pin_memory,
+            shuffle=True
+        )
 
     def train(self):
         # Prepare everything
-        model, optimizer, self.train_dataloader, self.eval_dataloader, lr_scheduler = self.accelerator.prepare(
-            self.model, self.optimizer, self.get_train_dataloader(), self.get_eval_dataloader(), self.lr_scheduler
+        model, optimizer, self.train_dataloader, lr_scheduler = self.accelerator.prepare(
+            self.model, self.optimizer, self.get_train_dataloader(), self.lr_scheduler
         )
 
         # Recalculate training steps

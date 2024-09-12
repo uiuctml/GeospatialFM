@@ -1,46 +1,32 @@
-from GeospatialFM.scripts.trainer import MAETrainer
-from GeospatialFM.models import MultiModalLowRankViTConfig
-from GeospatialFM.models.mae import MultiModalMAEViT
-import torch
-from accelerate import Accelerator
-from accelerate.utils import set_seed
 import argparse
 import os
 import logging
 from logging import get_logger
 from pathlib import Path
 from datetime import timedelta
-from transformers import is_wandb_available
+import math
+from functools import partial
+
+import torch
+from torch.utils.data import DataLoader
+
+from accelerate import Accelerator
+from accelerate.utils import set_seed
 from accelerate import InitProcessGroupKwargs
 from accelerate.utils import ProjectConfiguration
+
 import transformers
-import math
+from transformers import is_wandb_available
 from transformers import get_scheduler
+from datasets import load_dataset
+
+from GeospatialFM.datasets.utils import get_ssl4eo_metadata
+from GeospatialFM.data import apply_transforms, pretrain_transform, multimodal_collate_fn
+from GeospatialFM.models import SpatialSpectralLowRankViTConfig, SpatialSpectralMAEViT
+from GeospatialFM.scripts.trainer import MAETrainer
+from GeospatialFM.scripts.args import parse_args
 
 logger = get_logger(__name__)
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Train MAE model")
-    parser.add_argument("--output_dir", type=str, default="output", help="The output directory where the model predictions and checkpoints will be written.")
-    parser.add_argument("--logging_dir", type=str, default="logs", help="Location for log files.")
-    parser.add_argument("--num_train_epochs", type=int, default=3, help="Total number of training epochs to perform.")
-    parser.add_argument("--learning_rate", type=float, default=5e-5, help="Initial learning rate (after the potential warmup period) to use.")
-    parser.add_argument("--train_batch_size", type=int, default=16, help="Batch size per GPU/CPU for training.")
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help="Number of updates steps to accumulate before performing a backward/update pass.")
-    parser.add_argument("--mixed_precision", type=str, default="float32", choices=["float32", "fp16", "bf16"], help="Whether to use mixed precision. Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >= 1.10 and an Nvidia Ampere GPU.")
-    parser.add_argument("--report_to", type=str, default="wandb", help="The integration to report the results and logs to. Supported platforms are `tensorboard`, `wandb`, `comet_ml` and `clearml`. Use `all` to report to all integrations.")
-    parser.add_argument("--gradient_checkpointing", action="store_true", help="Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.")
-    parser.add_argument("--resume_from_checkpoint", type=str, default=None, help="If the training should continue from a checkpoint folder.")
-    parser.add_argument("--checkpoints_total_limit", type=int, default=None, help="If set, deletes the older checkpoints in `output_dir`.")
-    parser.add_argument("--save_steps", type=int, default=500, help="Save checkpoint every X updates steps.")
-    parser.add_argument("--adam_beta1", type=float, default=0.9, help="Adam beta1")
-    parser.add_argument("--adam_beta2", type=float, default=0.999, help="Adam beta2")
-    parser.add_argument("--adam_weight_decay", type=float, default=0.01, help="Adam weight decay")
-    parser.add_argument("--adam_epsilon", type=float, default=1e-8, help="Adam epsilon")
-    parser.add_argument("--lr_warmup_steps", type=int, default=500, help="Number of warmup steps for learning rate scheduler")
-    parser.add_argument("--lr_scheduler", type=str, default="linear", choices=["linear", "cosine", "cosine_with_restarts", "polynomial", "constant", "constant_with_warmup"], help="The scheduler type to use.")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed for initialization")
-    return parser.parse_args()
 
 def main(args):    
     # Set up accelerator
@@ -85,8 +71,8 @@ def main(args):
             os.makedirs(args.output_dir, exist_ok=True)
                 
     # Initialize model
-    model_config = MultiModalLowRankViTConfig()
-    model = MultiModalMAEViT(model_config)
+    model_config = SpatialSpectralLowRankViTConfig(**args)
+    model = SpatialSpectralMAEViT(model_config)
     
     # set model to train mode
     model.train()
@@ -109,11 +95,27 @@ def main(args):
                     weight_decay=args.adam_weight_decay,
                     eps=args.adam_epsilon,
                 )
+
+    # Load dataset
+    metadata = get_ssl4eo_metadata()
+    optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"]
+    radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"]
     
-    # TODO: add data loader and process data here
-    train_dataset = None
-    train_dataloader = None
+    dataset = load_dataset("GeospatialFM/datasets/ssl4eo", data_dir="/home/haozhesi/Dropbox/GeospatialFM/data/geospatial/SSL4EO")
+    apply_transform = partial(apply_transforms, optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std)
+    dataset = dataset.map(apply_transform)
     
+    collate_fn = partial(multimodal_collate_fn, transform=pretrain_transform)
+    
+    train_dataloader = DataLoader(
+            dataset['train'],
+            batch_size = args.train_batch_size,
+            collate_fn=collate_fn,
+            num_workers = args.dataloader_num_workers,
+            pin_memory = args.dataloader_pin_memory,
+            shuffle=True
+        )
+
     # Scheduler and math around the number of training steps.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
@@ -127,13 +129,15 @@ def main(args):
     trainer = MAETrainer(
         model=model,
         args=args,
-        train_dataset=train_dataset,
+        train_dataset=dataset['train'],
         optimizers=(optimizer, lr_scheduler),
-        accelerator=accelerator
+        accelerator=accelerator, 
+        data_collator=collate_fn, 
+        train_dataloader=train_dataloader,
     )
     
     if accelerator.is_main_process:
-        accelerator.init_trackers("mm-mae-pretraining", config=vars(args))
+        accelerator.init_trackers("gfm-pretraining", config=vars(args))
     
     trainer.train()
     
