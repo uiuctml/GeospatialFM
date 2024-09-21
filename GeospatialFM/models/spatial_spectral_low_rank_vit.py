@@ -167,18 +167,23 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         assert optical_channel_wv is None or len(optical_channel_wv.shape) == 2, "If optical ids are provided, they should be a 2D tensor"
         assert radar_channel_wv is None or len(radar_channel_wv.shape) == 2, "If radar ids are provided, they should be a 2D tensor"
         
+        dummy_loss = 0 # dummy loss to avoid empty loss error
         if optical is not None:
             optical = self.optical_patch_embed(optical)  # B, Co, HW, D
             assert optical_channel_wv is not None, "Optical ids should be provided"
             assert optical_channel_wv.shape[1] == optical.shape[1], "Optical ids should have the same number of channels as the optical data"
         else:
             optical_channel_wv = None
+            for param in self.optical_patch_embed.parameters():
+                dummy_loss += 0.0 * torch.sum(param)
         if radar is not None:
             radar = self.radar_patch_embed(radar)  # B, Cr, HW, D
             assert radar_channel_wv is not None, "Radar ids should be provided"
             assert radar_channel_wv.shape[1] == radar.shape[1], "Radar ids should have the same number of channels as the radar data"
         else:
             radar_channel_wv = None
+            for param in self.radar_patch_embed.parameters():
+                dummy_loss += 0.0 * torch.sum(param)
 
         channel_ids = self.maybe_concat(optical_channel_wv, radar_channel_wv) # 1, C = Co + Cr    
         x = self.maybe_concat(optical, radar) # B, C, HW, D
@@ -224,7 +229,7 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         patch_tokens = x[:, 1:, 1:] # B N+1 L+1 D -> B N L D
 
         if self.training:
-            return x, channel_mask, channel_ids_restore, pos_mask, pos_ids_restore
+            return x + dummy_loss, channel_mask, channel_ids_restore, pos_mask, pos_ids_restore
         elif self.config.return_dict:
             return BaseModelOutput(
                 last_hidden_state=cls_token,

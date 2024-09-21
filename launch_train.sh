@@ -1,8 +1,8 @@
 export PYTHONPATH=$PYTHONPATH:/home/haozhesi/Dropbox/GeospatialFM
 NCCL_BLOCKING_WAIT=1 CUDA_VISIBLE_DEVICES=0,1 accelerate launch GeospatialFM/scripts/train.py \
     --data_dir /home/haozhesi/Dropbox/GeospatialFM/data/geospatial/SSL4EO \
-    --train_batch_size 8 \
-    --gradient_accumulation_steps 16 \
+    --train_batch_size 16 \
+    --gradient_accumulation_steps 8 \
     --num_train_epochs 10 \
     --learning_rate 1e-4 \
     --adam_weight_decay 0.05 \
@@ -23,6 +23,7 @@ NCCL_BLOCKING_WAIT=1 CUDA_VISIBLE_DEVICES=0,1 accelerate launch GeospatialFM/scr
     --use_perception_field_mask \
     --use_8bit \
     --norm_pix_loss \
+    --modal_mode random \
     # --resume_from_checkpoint /home/haozhesi/Dropbox/GeospatialFM/pretrained_models/mae_pretrained_model.pth \
 
 

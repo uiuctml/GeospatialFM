@@ -10,7 +10,7 @@ import logging
 from collections import defaultdict
 import shutil
 from torch.utils.data import DataLoader
-
+import numpy as np
 logger = logging.getLogger(__name__)
 
 class MAETrainer(Trainer):
@@ -38,6 +38,11 @@ class MAETrainer(Trainer):
         radar_channel_wv = inputs.get("radar_channel_wv")
         spatial_resolution = inputs.get("spatial_resolution")
         
+        if self.args.modal_mode == "random":
+            modal = np.random.choice(['multi', 'optical', 'radar'])
+        else:
+            modal = self.args.modal_mode
+        
         outputs = model(
             optical=optical,
             radar=radar,
@@ -46,6 +51,7 @@ class MAETrainer(Trainer):
             mask_ratio=mask_ratio,
             channel_mask_ratio=channel_mask_ratio,
             spatial_resolution=spatial_resolution,
+            modal=modal
         )
 
         loss = self.calculate_mse_loss(outputs)
@@ -143,7 +149,7 @@ class MAETrainer(Trainer):
                 if self.accelerator.sync_gradients:
                     progress_bar.update(1)
                     self.global_step += 1
-                    self.accelerator.log(train_losses.update(dict(epoch=epoch, lr=lr_scheduler.get_last_lr()[0])), step=self.global_step)
+                    self.accelerator.log(train_losses | dict(epoch=epoch, lr=lr_scheduler.get_last_lr()[0]), step=self.global_step)
                     train_losses = defaultdict(float)
 
                     if self.global_step % self.args.save_steps == 0:

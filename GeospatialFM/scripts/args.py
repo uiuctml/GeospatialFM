@@ -67,6 +67,7 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training")
     parser.add_argument("--mixed_precision", type=str, default=None, choices=[None, "fp16", "bf16"], help="Whether to use mixed precision. Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >= 1.10 and an Nvidia Ampere GPU")
     parser.add_argument("--resume_from_checkpoint", type=str, default=None, help="If the training should continue from a checkpoint folder")
+    parser.add_argument("--modal_mode", type=str, default=None, choices=["multi", "optical", "radar", None, "random"], help="Mode of the model, if None, the model is trained in three modes simultaneously")
     
     # Append run name to directories
     args = parser.parse_args()
