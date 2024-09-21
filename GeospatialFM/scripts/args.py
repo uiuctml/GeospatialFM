@@ -1,12 +1,14 @@
 import argparse
+import os
 
 def parse_args():
     parser = argparse.ArgumentParser(description="GeospatialFM Training Arguments")
 
     # Dataset arguments
     parser.add_argument("--data_dir", type=str, required=True, help="Path to the SSL4EO dataset")
-    parser.add_argument("--batch_size", type=int, default=32, help="Batch size for training")
-    parser.add_argument("--num_workers", type=int, default=4, help="Number of workers for data loading")
+    parser.add_argument("--dataloader_num_workers", type=int, default=4, help="Number of subprocesses to use for data loading")
+    parser.add_argument("--dataloader_pin_memory", action="store_true", help="Whether to pin memory for data loading")
+    parser.add_argument("--use_8bit", action="store_true", help="Whether to use 8-bit data loading")
 
     # Model arguments
     parser.add_argument("--patch_size", type=int, default=16, help="Size of patches for hyperspectral patch embedding")
@@ -32,24 +34,42 @@ def parse_args():
 
     # extra model arguments
     parser.add_argument("--return_dict", type=bool, default=False, help="Return a dictionary instead of a tuple")
-    parser.add_argument("--norm_pix_loss", type=bool, default=True, help="Use normalized pixel loss")
-    parser.add_argument("--use_perception_field_mask", type=bool, default=False, help="Use perception field mask")
+    parser.add_argument("--norm_pix_loss", action="store_true", help="Whether to normalize pixel loss")
+    parser.add_argument("--use_perception_field_mask", action="store_true", help="Use perception field mask")
     parser.add_argument("--attention_radius", type=int, default=640, help="Attention radius for perception field mask")
 
     # Training arguments
-    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
-    parser.add_argument("--weight_decay", type=float, default=0.05, help="Weight decay")
-    parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
-    parser.add_argument("--mask_ratio", type=float, default=0.5, help="Mask ratio for MAE")
+    parser.add_argument("--run_name", type=str, required=True, help="Name of the run")
+    parser.add_argument("--train_batch_size", type=int, default=32, help="Batch size for training")
+    parser.add_argument("--learning_rate", type=float, default=1e-4, help="Learning rate")
+    parser.add_argument("--adam_beta1", type=float, default=0.9, help="Adam optimizer beta1")
+    parser.add_argument("--adam_beta2", type=float, default=0.999, help="Adam optimizer beta2")
+    parser.add_argument("--adam_weight_decay", type=float, default=0.05, help="Adam optimizer weight decay")
+    parser.add_argument("--adam_epsilon", type=float, default=1e-8, help="Adam optimizer epsilon")
+    parser.add_argument("--max_train_steps", type=int, default=None, help="Total number of training steps")
+    parser.add_argument("--num_train_epochs", type=int, default=100, help="Total number of training epochs")
+    parser.add_argument("--lr_scheduler", type=str, default="cosine", help="Type of learning rate scheduler")
+    parser.add_argument("--lr_warmup_steps", type=int, default=500, help="Number of warmup steps for learning rate scheduler")
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help="Number of updates steps to accumulate before performing a backward/update pass")
+    parser.add_argument("--gradient_checkpointing", action="store_true", help="Whether to use gradient checkpointing to save memory at the expense of slower backward pass")
+    parser.add_argument("--mask_ratio", type=float, default=0.75, help="Mask ratio for MAE")
     parser.add_argument("--channel_mask_ratio", type=float, default=0.5, help="Channel mask ratio for MAE")
-
-    # Logging and checkpointing arguments
-    parser.add_argument("--log_dir", type=str, default="logs", help="Directory for saving logs")
-    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints", help="Directory for saving model checkpoints")
-    parser.add_argument("--save_frequency", type=int, default=10, help="Frequency of saving checkpoints (in epochs)")
-
+    
+    # Logging and saving arguments
+    parser.add_argument("--output_dir", type=str, default="output", help="Directory to save model checkpoints and logs")
+    parser.add_argument("--logging_dir", type=str, default="logs", help="Directory to save logs")
+    parser.add_argument("--report_to", type=str, default="wandb", help="Where to report results to (tensorboard, wandb, etc.)")
+    parser.add_argument("--save_steps", type=int, default=500, help="Save checkpoint every X updates steps")
+    parser.add_argument("--save_total_limit", type=int, default=None, help="If set, deletes the older checkpoints in output_dir")
+    parser.add_argument("--wandb_dir", type=str, default="wandb", help="Directory to save wandb logs")
+    
     # Other arguments
-    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
-    # parser.add_argument("--device", type=str, default="cuda", help="Device to use for training (cuda or cpu)")
-
-    return parser.parse_args()
+    parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training")
+    parser.add_argument("--mixed_precision", type=str, default=None, choices=[None, "fp16", "bf16"], help="Whether to use mixed precision. Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >= 1.10 and an Nvidia Ampere GPU")
+    parser.add_argument("--resume_from_checkpoint", type=str, default=None, help="If the training should continue from a checkpoint folder")
+    
+    # Append run name to directories
+    args = parser.parse_args()
+    args.output_dir = os.path.join(args.output_dir, args.run_name)
+    args.logging_dir = os.path.join(args.logging_dir, args.run_name)
+    return args

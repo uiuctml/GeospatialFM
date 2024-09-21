@@ -1,7 +1,6 @@
 import argparse
 import os
 import logging
-from logging import get_logger
 from pathlib import Path
 from datetime import timedelta
 import math
@@ -12,15 +11,18 @@ from torch.utils.data import DataLoader
 
 from accelerate import Accelerator
 from accelerate.utils import set_seed
+from accelerate.logging import get_logger
 from accelerate import InitProcessGroupKwargs
 from accelerate.utils import ProjectConfiguration
 
 import transformers
 from transformers import is_wandb_available
 from transformers import get_scheduler
+from transformers import TrainingArguments
 from datasets import load_dataset
 
 from GeospatialFM.datasets.utils import get_ssl4eo_metadata
+from GeospatialFM.datasets import SSL4EODataset
 from GeospatialFM.data import apply_transforms, pretrain_transform, multimodal_collate_fn
 from GeospatialFM.models import SpatialSpectralLowRankViTConfig, SpatialSpectralMAEViT
 from GeospatialFM.scripts.trainer import MAETrainer
@@ -71,11 +73,8 @@ def main(args):
             os.makedirs(args.output_dir, exist_ok=True)
                 
     # Initialize model
-    model_config = SpatialSpectralLowRankViTConfig(**args)
+    model_config = SpatialSpectralLowRankViTConfig(**vars(args))
     model = SpatialSpectralMAEViT(model_config)
-    
-    # set model to train mode
-    model.train()
     
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
@@ -101,11 +100,9 @@ def main(args):
     optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"]
     radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"]
     
-    dataset = load_dataset("GeospatialFM/datasets/ssl4eo", data_dir="/home/haozhesi/Dropbox/GeospatialFM/data/geospatial/SSL4EO")
-    apply_transform = partial(apply_transforms, optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std)
-    dataset = dataset.map(apply_transform)
-    
-    collate_fn = partial(multimodal_collate_fn, transform=pretrain_transform)
+    dataset = dict(train=SSL4EODataset(root=args.data_dir))
+    standard_transform = partial(apply_transforms, optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, use_8bit=args.use_8bit)
+    collate_fn = partial(multimodal_collate_fn, transform=pretrain_transform, normalization=standard_transform)
     
     train_dataloader = DataLoader(
             dataset['train'],
@@ -126,18 +123,28 @@ def main(args):
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
     
+    # Create TrainingArguments
+    training_args = TrainingArguments(
+        **{k: v for k, v in vars(args).items() if k in TrainingArguments.__dataclass_fields__},
+        per_device_train_batch_size=args.train_batch_size,
+        full_determinism=False,
+        dispatch_batches=None,
+        # deepspeed_plugin=None 
+    )
+    
     trainer = MAETrainer(
         model=model,
-        args=args,
+        args=training_args,
         train_dataset=dataset['train'],
         optimizers=(optimizer, lr_scheduler),
         accelerator=accelerator, 
         data_collator=collate_fn, 
         train_dataloader=train_dataloader,
+        weight_dtype=weight_dtype
     )
     
     if accelerator.is_main_process:
-        accelerator.init_trackers("gfm-pretraining", config=vars(args))
+        accelerator.init_trackers("gfm-pretraining", config=vars(args), init_kwargs={"wandb": {"name": args.run_name, "dir": args.wandb_dir}})
     
     trainer.train()
     

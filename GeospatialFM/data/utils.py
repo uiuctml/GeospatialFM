@@ -31,36 +31,38 @@ def apply_transforms(example, optical_mean, optical_std, radar_mean, radar_std, 
         # to tensor
         optical = torch.tensor(optical)
         # center crop
-        optical = TF.center_crop(optical, [224, 224])
+        optical = TF.center_crop(optical, [256, 256])
         # normalize
         optical = normalize(optical, optical_mean, optical_std)
-        example['optical'] = optical
+        example['optical'] = optical.numpy()
         
     if radar is not None:
         radar = torch.tensor(radar)
         # center crop
-        radar = TF.center_crop(radar, [224, 224])
+        radar = TF.center_crop(radar, [256, 256])
         # normalize
         radar = normalize(radar, radar_mean, radar_std)
-        example['radar'] = radar
+        example['radar'] = radar.numpy()
     
     return example
 
 # collate function for dataloader of multimodal data
-def multimodal_collate_fn(batch, transform=None, random_crop=True):
+def multimodal_collate_fn(batch, transform=None, random_crop=True, normalization=None):
     optical_list, radar_list = [], []
     optical_channel_wv, radar_channel_wv = None, None
     spatial_resolution = None
     
-    crop_size = np.random.choice([64, 128, 224]) if random_crop else None
+    crop_size = np.random.choice([128, 224, 256]) if random_crop else None
 
     for example in batch:
+        if normalization:
+            example = normalization(example)
         # to tensor
         example['optical'] = torch.tensor(example['optical'])
         example['radar'] = torch.tensor(example['radar'])
         example['optical_channel_wv'] = torch.tensor(example['optical_channel_wv']).unsqueeze(0)
         example['radar_channel_wv'] = torch.tensor(example['radar_channel_wv']).unsqueeze(0)
-        example['spatial_resolution'] = torch.tensor(example['spatial_resolution'])
+        example['spatial_resolution'] = example['spatial_resolution']
         
         if transform:
             example = transform(example, crop_size)

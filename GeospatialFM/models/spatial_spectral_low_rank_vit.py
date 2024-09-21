@@ -216,7 +216,7 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         # Apply transformer blocks
         for blk in self.blocks:
             x = blk(x, spatial_mask=perception_field_mask)
-        
+
         # Apply final layer norm
         x = self.norm(x)  # B N+1 L+1 D
         
@@ -474,7 +474,7 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
         
         x = x.reshape(shape=(x.shape[0], x.shape[1], h, w, p, p))
         x = torch.einsum('bchwpq->bchpwq', x)
-        imgs = x.reshape(shape=(x.shape[0], -1, h * p, w * p))
+        imgs = x.reshape(shape=(x.shape[0], x.shape[1], h * p, h * p))
         return imgs
 
     def forward_target(self, imgs):
@@ -498,8 +498,6 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
 
         h = w = imgs.shape[2] // p
         x = imgs.reshape(shape=(imgs.shape[0], imgs.shape[1], h, p, w, p))
-        x = torch.einsum('nchpwq->nchpwq', x)
+        x = torch.einsum('bchpwq->bchwpq', x)
         x = x.reshape(shape=(imgs.shape[0], imgs.shape[1], h * w, p**2))
         return x
-
-

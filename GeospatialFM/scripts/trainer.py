@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 logger = logging.getLogger(__name__)
 
 class MAETrainer(Trainer):
-    def __init__(self, model, args, train_dataset, optimizers, data_collator, accelerator, train_dataloader=None):
+    def __init__(self, model, args, train_dataset, optimizers, data_collator, accelerator, weight_dtype, train_dataloader=None):
         super().__init__(
             model=model,
             args=args,
@@ -27,16 +27,17 @@ class MAETrainer(Trainer):
         self.global_step = 0
         self.initial_global_step = 0
         self.first_epoch = 0
+        self.weight_dtype = weight_dtype
         
         self.train_dataloader = train_dataloader
 
     def compute_loss(self, model, inputs, return_outputs=False, mask_ratio=0.5, channel_mask_ratio=0.5):
-        optical = inputs.get("optical").to(self.accelerator.device)
-        radar = inputs.get("radar").to(self.accelerator.device)
-        optical_channel_wv = inputs.get("optical_channel_wv").to(self.accelerator.device)
-        radar_channel_wv = inputs.get("radar_channel_wv").to(self.accelerator.device)
-        spatial_resolution = inputs.get("spatial_resolution").to(self.accelerator.device)
-
+        optical = inputs.get("optical").to(self.accelerator.device, dtype=self.weight_dtype)
+        radar = inputs.get("radar").to(self.accelerator.device, dtype=self.weight_dtype)
+        optical_channel_wv = inputs.get("optical_channel_wv")
+        radar_channel_wv = inputs.get("radar_channel_wv")
+        spatial_resolution = inputs.get("spatial_resolution")
+        
         outputs = model(
             optical=optical,
             radar=radar,
@@ -44,16 +45,16 @@ class MAETrainer(Trainer):
             radar_channel_wv=radar_channel_wv,
             mask_ratio=mask_ratio,
             channel_mask_ratio=channel_mask_ratio,
-            spatial_resolution=spatial_resolution
+            spatial_resolution=spatial_resolution,
         )
 
-        loss = self.calculate_mae_loss(outputs)
+        loss = self.calculate_mse_loss(outputs)
 
         return (loss, outputs) if return_outputs else loss
 
     def calculate_mse_loss(self, outputs: Dict[str, torch.Tensor]) -> torch.Tensor:
         loss = {}
-        total_loss = 0
+        total_loss = 0.
         target = outputs['target']
         for modal in ['optical', 'radar', 'multi']:
             if f'{modal}_recon' in outputs:
@@ -61,9 +62,9 @@ class MAETrainer(Trainer):
                 channel_mask = outputs[f'{modal}_channel_mask']
                 pos_mask = outputs[f'{modal}_pos_mask']
                 # positional MSE
-                pos_loss = torch.mean((recon - target) ** 2 * pos_mask.unsqueeze(1).unsqueeze(-1).expand_as(recon)) / (pos_mask.sum() + 1e-5)
+                pos_loss = (torch.mean((recon - target) ** 2, dim=[1, 3]) * pos_mask).sum() / pos_mask.sum()
                 # channel MSE
-                channel_loss = torch.mean((recon - target) ** 2 * channel_mask.unsqueeze(-1).unsqueeze(-2).expand_as(recon)) / (channel_mask.sum() + 1e-5)
+                channel_loss = (torch.mean((recon - target) ** 2, dim=[2, 3]) * channel_mask).sum() / channel_mask.sum()
                 loss[f"{modal}_pos_loss"] = pos_loss
                 loss[f"{modal}_channel_loss"] = channel_loss
                 loss[f"{modal}_loss"] = pos_loss + channel_loss
@@ -125,7 +126,6 @@ class MAETrainer(Trainer):
         )
         
         for epoch in range(self.first_epoch, self.args.num_train_epochs):
-            model.train()
             train_losses = defaultdict(float)
             for step, batch in enumerate(self.train_dataloader):
                 with self.accelerator.accumulate(model):
@@ -143,7 +143,7 @@ class MAETrainer(Trainer):
                 if self.accelerator.sync_gradients:
                     progress_bar.update(1)
                     self.global_step += 1
-                    self.accelerator.log(train_losses, step=self.global_step)
+                    self.accelerator.log(train_losses.update(dict(epoch=epoch, lr=lr_scheduler.get_last_lr()[0])), step=self.global_step)
                     train_losses = defaultdict(float)
 
                     if self.global_step % self.args.save_steps == 0:
@@ -165,7 +165,7 @@ class MAETrainer(Trainer):
             self.accelerator.save_state(save_path)
             logger.info(f"Saved state to {save_path}")
 
-            if self.args.checkpoints_total_limit is not None:
+            if self.args.save_total_limit is not None:
                 self.rotate_checkpoints()
 
     def rotate_checkpoints(self):
@@ -173,8 +173,8 @@ class MAETrainer(Trainer):
         checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
         
         # If we exceed the limit, remove the oldest checkpoints
-        if len(checkpoints) > self.args.checkpoints_total_limit:
-            num_to_remove = len(checkpoints) - self.args.checkpoints_total_limit
+        if len(checkpoints) > self.args.save_total_limit:
+            num_to_remove = len(checkpoints) - self.args.save_total_limit
             removing_checkpoints = checkpoints[:num_to_remove]
             logger.info(
                 f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
