@@ -14,7 +14,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 class MAETrainer(Trainer):
-    def __init__(self, model, args, train_dataset, optimizers, data_collator, accelerator, weight_dtype, train_dataloader=None):
+    def __init__(self, model, args, train_dataset, optimizers, data_collator, accelerator, weight_dtype, train_dataloader=None, modal_mode=None):
         super().__init__(
             model=model,
             args=args,
@@ -28,20 +28,21 @@ class MAETrainer(Trainer):
         self.initial_global_step = 0
         self.first_epoch = 0
         self.weight_dtype = weight_dtype
+        self.modal_mode = modal_mode
         
         self.train_dataloader = train_dataloader
 
-    def compute_loss(self, model, inputs, return_outputs=False, mask_ratio=0.5, channel_mask_ratio=0.5):
+    def compute_loss(self, model, inputs, return_outputs=False, mask_ratio=None, channel_mask_ratio=None):
         optical = inputs.get("optical").to(self.accelerator.device, dtype=self.weight_dtype)
         radar = inputs.get("radar").to(self.accelerator.device, dtype=self.weight_dtype)
         optical_channel_wv = inputs.get("optical_channel_wv")
         radar_channel_wv = inputs.get("radar_channel_wv")
         spatial_resolution = inputs.get("spatial_resolution")
         
-        if self.args.modal_mode == "random":
+        if self.modal_mode == "random":
             modal = np.random.choice(['multi', 'optical', 'radar'])
         else:
-            modal = self.args.modal_mode
+            modal = self.modal_mode
         
         outputs = model(
             optical=optical,
@@ -54,7 +55,7 @@ class MAETrainer(Trainer):
             modal=modal
         )
 
-        loss = self.calculate_mse_loss(outputs)
+        loss = self.calculate_l1_loss(outputs)
 
         return (loss, outputs) if return_outputs else loss
 
@@ -71,6 +72,39 @@ class MAETrainer(Trainer):
                 pos_loss = (torch.mean((recon - target) ** 2, dim=[1, 3]) * pos_mask).sum() / pos_mask.sum()
                 # channel MSE
                 channel_loss = (torch.mean((recon - target) ** 2, dim=[2, 3]) * channel_mask).sum() / channel_mask.sum()
+                loss[f"{modal}_pos_loss"] = pos_loss
+                loss[f"{modal}_channel_loss"] = channel_loss
+                loss[f"{modal}_loss"] = pos_loss + channel_loss
+                total_loss += loss[f"{modal}_loss"]
+        loss['total_loss'] = total_loss
+        return loss
+    
+    def calculate_l1_loss(self, outputs: Dict[str, torch.Tensor]) -> torch.Tensor:
+        loss = {}
+        total_loss = 0.
+        target = outputs['target']
+        for modal in ['optical', 'radar', 'multi']:
+            if f'{modal}_recon' in outputs:
+                recon = outputs[f'{modal}_recon']
+                channel_mask = outputs[f'{modal}_channel_mask'] # B, C
+                pos_mask = outputs[f'{modal}_pos_mask']
+                # positional MSE
+                pos_loss = torch.mean((recon - target).abs(), dim=[3]) # B, C, HW
+                if channel_mask.sum() > 0:
+                    pos_loss = (pos_loss * (1 - channel_mask).unsqueeze(-1)).sum(dim=1) / (1 - channel_mask).sum(dim=1, keepdim=True) # B, HW
+                else:
+                    pos_loss = pos_loss.mean(dim=1)  # Average over channels if no channel masking
+                
+                if pos_mask.sum() == 0:
+                    pos_loss = pos_loss.mean()
+                else:
+                    pos_loss = (pos_loss * pos_mask).sum() / pos_mask.sum()
+                # channel MSE
+                channel_loss = torch.mean((recon - target).abs(), dim=[2, 3])
+                if channel_mask.sum() == 0:
+                    channel_loss = channel_loss.mean()
+                else:
+                    channel_loss = (channel_loss * channel_mask).sum() / channel_mask.sum()
                 loss[f"{modal}_pos_loss"] = pos_loss
                 loss[f"{modal}_channel_loss"] = channel_loss
                 loss[f"{modal}_loss"] = pos_loss + channel_loss

@@ -52,7 +52,8 @@ def multimodal_collate_fn(batch, transform=None, random_crop=True, normalization
     optical_channel_wv, radar_channel_wv = None, None
     spatial_resolution = None
     
-    crop_size = np.random.choice([128, 224, 256]) if random_crop else None
+    # crop_size = np.random.choice([128, 224, 256]) if random_crop else None
+    crop_size = 224
 
     for example in batch:
         if normalization:
@@ -65,7 +66,7 @@ def multimodal_collate_fn(batch, transform=None, random_crop=True, normalization
         example['spatial_resolution'] = example['spatial_resolution']
         
         if transform:
-            example = transform(example, crop_size)
+            example = transform(example, crop_size, scale=1)
             
         if optical_channel_wv is None and radar_channel_wv is None:
             optical_channel_wv = example['optical_channel_wv']

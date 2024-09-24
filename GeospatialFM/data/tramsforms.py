@@ -2,7 +2,7 @@ import numpy as np
 from torchvision import transforms
 from torchvision.transforms import functional as TF
 
-def pretrain_transform(example, crop_size=None):
+def pretrain_transform(example, crop_size=None, scale=None):
     optical = example['optical']
     radar = example['radar']
     
@@ -21,6 +21,11 @@ def pretrain_transform(example, crop_size=None):
     if np.random.random() < 0.5:
         optical = TF.vflip(optical)
         radar = TF.vflip(radar)
+        
+    if scale is not None:
+        optical = TF.resize(optical, scale*crop_size, interpolation=TF.InterpolationMode.BICUBIC, antialias=True)
+        radar = TF.resize(radar, scale*crop_size, interpolation=TF.InterpolationMode.BICUBIC, antialias=True)
+        example['spatial_resolution'] = example['spatial_resolution'] / scale
     
     example['optical'] = optical
     example['radar'] = radar

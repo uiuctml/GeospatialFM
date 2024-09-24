@@ -31,6 +31,7 @@ def parse_args():
     parser.add_argument("--decoder_num_heads", type=int, default=16, help="Number of attention heads for decoder")
     parser.add_argument("--decoder_out_chans", type=int, default=1, help="Number of output channels for decoder")
     parser.add_argument("--decoder_out_dims", type=int, default=1, help="Number of output dimensions for decoder")
+    parser.add_argument("--decoder_channel_embed_dims_per_head", type=int, default=4, help="Number of channel embedding dimensions per head for decoder")
 
     # extra model arguments
     parser.add_argument("--return_dict", type=bool, default=False, help="Return a dictionary instead of a tuple")
@@ -43,7 +44,7 @@ def parse_args():
     parser.add_argument("--train_batch_size", type=int, default=32, help="Batch size for training")
     parser.add_argument("--learning_rate", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="Adam optimizer beta1")
-    parser.add_argument("--adam_beta2", type=float, default=0.999, help="Adam optimizer beta2")
+    parser.add_argument("--adam_beta2", type=float, default=0.95, help="Adam optimizer beta2")
     parser.add_argument("--adam_weight_decay", type=float, default=0.05, help="Adam optimizer weight decay")
     parser.add_argument("--adam_epsilon", type=float, default=1e-8, help="Adam optimizer epsilon")
     parser.add_argument("--max_train_steps", type=int, default=None, help="Total number of training steps")

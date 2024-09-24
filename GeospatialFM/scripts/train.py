@@ -119,8 +119,8 @@ def main(args):
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
-        num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
+        num_warmup_steps=args.lr_warmup_steps,
+        num_training_steps=args.max_train_steps,
     )
     
     # Create TrainingArguments
@@ -140,7 +140,8 @@ def main(args):
         accelerator=accelerator, 
         data_collator=collate_fn, 
         train_dataloader=train_dataloader,
-        weight_dtype=weight_dtype
+        weight_dtype=weight_dtype,
+        modal_mode=args.modal_mode
     )
     
     if accelerator.is_main_process:

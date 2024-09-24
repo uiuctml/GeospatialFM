@@ -44,6 +44,43 @@ class PositionalChannelEmbedding():
             pos_channel_embed = torch.cat([torch.zeros_like(pos_channel_embed[:, :, :1, :]), pos_channel_embed], dim=2)
         return pos_channel_embed
     
+    def get_pos_embed(self, tokens: torch.Tensor, spatial_resolution: float, cls_token: bool = True):
+        _, HW, _ = tokens.shape
+        grid_size = int(np.sqrt(HW))
+        assert grid_size * grid_size == HW, "HW must be a square"
+        
+        if self.spactial_resolution == spatial_resolution and self.num_patches == HW:
+            pos_embed = self.pos_embed
+        else:
+            pos_embed = get_2d_sincos_pos_embed(self.embed_dim, grid_size, spatial_resolution, cls_token=False) # (1, HW, D)
+            self.pos_embed = pos_embed
+            self.spactial_resolution = spatial_resolution
+            self.num_patches = HW
+            
+        if cls_token:
+            pos_embed = torch.cat([torch.zeros_like(pos_embed[:, :1, :]), pos_embed], dim=1)
+            
+        return pos_embed
+    
+    def get_channel_embed(self, tokens: torch.Tensor, channel_ids: torch.Tensor, cls_token: bool = True):
+        """
+        channel_ids: (1, C)
+        return channel_embed: (1, C, D)
+        """
+        _, C, _ = tokens.shape
+        channel_ids = channel_ids.squeeze(0).detach().cpu().numpy()
+        if self.channel_ids is not None and tuple(self.channel_ids) == tuple(channel_ids):
+            channel_embed = self.channel_embed
+        else:
+            channel_embed = get_1d_sincos_channel_embed(self.embed_dim, channel_ids, cls_token=False) # (1, C, D)
+            self.channel_embed = channel_embed
+            self.channel_ids = channel_ids
+        
+        if cls_token:
+            channel_embed = torch.cat([torch.zeros_like(channel_embed[:, :1, :]), channel_embed], dim=1)
+        return channel_embed
+        
+    
     def __call__(self, tokens: torch.Tensor, spatial_resolution: float, channel_ids: torch.Tensor, cls_token: bool = True):
         _, C, HW, _ = tokens.shape
         assert channel_ids.shape == (1, C), "channel_ids must be the same length as the number of channels"

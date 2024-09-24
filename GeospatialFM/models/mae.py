@@ -2,16 +2,17 @@ import torch.nn as nn
 import numpy as np
 import torch
 from transformers import PreTrainedModel
-from .spatial_spectral_low_rank_vit import SpatialSpectralLowRankViTEncoder, SpatialSpectralLowRankViTDecoder, SpatialSpectralLowRankViTConfig
+from .spatial_spectral_low_rank_vit import SpatialSpectralLowRankViTEncoder, SpatialSpectralLowRankViTDecoder, SpatialSpectralLowRankViTConfig, SpatialViTDecoder, SpatialSpectralViTDecoder
 
 class SpatialSpectralMAEViT(PreTrainedModel):
     config_class = SpatialSpectralLowRankViTConfig
     def __init__(self, config):
         super().__init__(config)
         self.encoder = SpatialSpectralLowRankViTEncoder(config)
-        self.decoder = SpatialSpectralLowRankViTDecoder(config)
+        # self.decoder = SpatialSpectralLowRankViTDecoder(config)
+        self.decoder = SpatialViTDecoder(config)
 
-    def _forward(self, optical, radar, optical_channel_wv, radar_channel_wv, mask_ratio=0.5, channel_mask_ratio=0.5, spatial_resolution=10, prefix=''):
+    def _forward(self, optical, radar, optical_channel_wv, radar_channel_wv, mask_ratio=None, channel_mask_ratio=None, spatial_resolution=10, prefix=''):
         latent, channel_mask, channel_ids_restore, pos_mask, pos_ids_restore = self.encoder(optical=optical, radar=radar, optical_channel_wv=optical_channel_wv, radar_channel_wv=radar_channel_wv, 
                                                                        spatial_resolution=spatial_resolution, mask_ratio=mask_ratio, channel_mask_ratio=channel_mask_ratio)
         recon = self.decoder(latent, pos_ids_restore, channel_ids_restore, optical_channel_wv, radar_channel_wv, spatial_resolution, restore_input_dim=False)
@@ -23,7 +24,7 @@ class SpatialSpectralMAEViT(PreTrainedModel):
                       }
         return return_dict
     
-    def forward(self, optical, radar, optical_channel_wv, radar_channel_wv, mask_ratio=0.5, channel_mask_ratio=0.5, spatial_resolution=10, modal=None):
+    def forward(self, optical, radar, optical_channel_wv, radar_channel_wv, mask_ratio=None, channel_mask_ratio=None, spatial_resolution=10, modal=None):
         assert modal in ['multi', 'optical', 'radar', None]
         optical_target = self.decoder.forward_target(optical)
         radar_target = self.decoder.forward_target(radar)
