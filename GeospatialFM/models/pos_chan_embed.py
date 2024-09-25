@@ -32,16 +32,24 @@ class PositionalChannelEmbedding():
         return pos_embed: (1, C+1, HW+1, D) if cls_token else (1, C, HW, D)
         """
         n_chan = channel_embed.shape[1] # C
-        interpolated_pos_embed = pos_embed.unsqueeze(1).repeat(1, n_chan, 1, 1) # 1 C HW D
-        
         n_pos = pos_embed.shape[1] # HW
-        interpolated_channel_embed = channel_embed.unsqueeze(2).repeat(1, 1, n_pos, 1) # 1 C HW D
-        
-        pos_channel_embed = interpolated_channel_embed + interpolated_pos_embed # 1 C HW D
         
         if cls_token:
-            pos_channel_embed = torch.cat([torch.zeros_like(pos_channel_embed[:, :1, :, :]), pos_channel_embed], dim=1)
-            pos_channel_embed = torch.cat([torch.zeros_like(pos_channel_embed[:, :, :1, :]), pos_channel_embed], dim=2)
+            # Add cls token embeddings
+            pos_cls_embed = torch.zeros(1, 1, self.embed_dim, device=pos_embed.device)
+            pos_embed = torch.cat([pos_cls_embed, pos_embed], dim=1)  # (1, HW+1, D)
+            
+            chan_cls_embed = torch.zeros(1, 1, self.embed_dim, device=channel_embed.device)
+            channel_embed = torch.cat([chan_cls_embed, channel_embed], dim=1)  # (1, C+1, D)
+            
+            n_chan += 1
+            n_pos += 1
+            
+        interpolated_pos_embed = pos_embed.unsqueeze(1).repeat(1, n_chan, 1, 1) # 1 C HW D
+        interpolated_channel_embed = channel_embed.unsqueeze(2).repeat(1, 1, n_pos, 1) # 1 C HW D
+        
+        pos_channel_embed = (interpolated_channel_embed + interpolated_pos_embed) / 2 # 1 C HW D
+        
         return pos_channel_embed
     
     def get_pos_embed(self, tokens: torch.Tensor, spatial_resolution: float, cls_token: bool = True):

@@ -117,6 +117,8 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         
         # Learnable tokens and embeddings
         self.cls_token = nn.Parameter(torch.zeros(1, 1, config.embed_dim))
+        self.spatial_cls_token = nn.Parameter(torch.zeros(1, 1, config.embed_dim))
+        self.channel_cls_token = nn.Parameter(torch.zeros(1, 1, config.embed_dim))
         self.pos_chan_embed = PositionalChannelEmbedding(config.embed_dim)
         
         if config.drop_path_uniform is True:
@@ -176,6 +178,7 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         assert radar_channel_wv is None or len(radar_channel_wv.shape) == 2, "If radar ids are provided, they should be a 2D tensor"
         mask_ratio = self.config.mask_ratio if mask_ratio is None else mask_ratio
         channel_mask_ratio = self.config.channel_mask_ratio if channel_mask_ratio is None else channel_mask_ratio
+        hidden_states = []
         
         dummy_loss = 0 # dummy loss to avoid empty loss error
         if optical is not None:
@@ -205,16 +208,38 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         else:
             perception_field_mask = None
         
-        # Add positional and channel embedding
-        pos_chan_embed = self.pos_chan_embed(x, channel_ids=channel_ids, spatial_resolution=spatial_resolution, cls_token=False).to(x.device, dtype=x.dtype)
-        x = x + pos_chan_embed
         
+        B, C, HW, D = x.shape
+        # Create cls tokens for both Cin and HW dimensions
+        channel_cls_token = self.channel_cls_token.expand(B, 1, HW, D)
+        spatial_cls_token = self.spatial_cls_token.expand(B, C, 1, D)
+        cls_token = self.cls_token.expand(B, 1, 1, D)
+        spatial_cls_token = torch.cat((cls_token, spatial_cls_token), dim=1) # B C+1 HW D
+        
+        # Append cls token to Cin dimension
+        x = torch.cat((channel_cls_token, x), dim=1)
+        
+        # Append cls token to HW dimension
+        x = torch.cat((spatial_cls_token, x), dim=2)
+        hidden_states.append(x.detach().cpu())
+        
+        # Add positional and channel embedding
+        pos_chan_embed = self.pos_chan_embed(x[:, 1:, 1:, :], channel_ids=channel_ids, spatial_resolution=spatial_resolution, cls_token=True).to(x.device, dtype=x.dtype)
+        x = x + pos_chan_embed # B C+1 HW+1 D
+                
         # Apply masks after positional embedding
         if self.training:
-            x, channel_mask, channel_ids_restore = self.random_channel_masking(x, channel_mask_ratio) # B N HW D, B C, B C
-            x, pos_mask, pos_ids_restore, perception_field_mask = self.random_pos_masking(x, mask_ratio, perception_field_mask=perception_field_mask) # B N L D, B HW, B HW, L L
+            # mask the channel
+            x_ = x[:, 1:, :, :] # B C HW+1 D
+            x_, channel_mask, channel_ids_restore = self.random_channel_masking(x_, channel_mask_ratio) # B N HW+1 D, B C, B C
+            x = torch.cat((x[:, :1, :, :], x_), dim=1) # B N+1 HW+1 D
+            # mask the position
+            x_ = x[:, :, 1:, :] # B N+1 HW D
+            x_, pos_mask, pos_ids_restore, perception_field_mask = self.random_pos_masking(x_, mask_ratio, perception_field_mask=perception_field_mask) # B N+1 L D, B HW, B HW, L L
+            x = torch.cat((x[:, :, :1, :], x_), dim=2) # B N+1 L+1 D
         else:
             channel_mask = pos_mask = channel_ids_restore = pos_ids_restore = None
+            
             
         if perception_field_mask is not None:
             # append cls token
@@ -225,25 +250,16 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
             perception_field_mask = torch.cat([new_col, perception_field_mask], dim=0)
             perception_field_mask = perception_field_mask > 0 # L L bool
         
-        B, N, L, D = x.shape
-        
-        # Create cls tokens for both Cin and HW dimensions
-        cls_token_cin = self.cls_token.expand(B, 1, L, D)
-        cls_token_hw = self.cls_token.expand(B, N + 1, 1, D)
-        
-        # Append cls token to Cin dimension
-        x = torch.cat((cls_token_cin, x), dim=1)
-        
-        # Append cls token to HW dimension
-        x = torch.cat((cls_token_hw, x), dim=2)
+        hidden_states.append(x.detach().cpu())
         
         # Apply transformer blocks
         for blk in self.blocks:
             x = blk(x, spatial_mask=perception_field_mask)
+            hidden_states.append(x.detach().cpu())
 
         # Apply final layer norm
         x = self.norm(x)  # B N+1 L+1 D
-        
+        hidden_states.append(x.detach().cpu())
         cls_token = x[:, 0, 0]
         patch_tokens = x[:, 1:, 1:] # B N+1 L+1 D -> B N L D
 
@@ -251,12 +267,12 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
             return x + dummy_loss, channel_mask, channel_ids_restore, pos_mask, pos_ids_restore
         elif self.config.return_dict:
             return BaseModelOutput(
-                last_hidden_state=cls_token,
-                hidden_states=patch_tokens,
+                last_hidden_state=x,
+                hidden_states=hidden_states,
                 attentions=None,
             )
         else:
-            return x, cls_token, patch_tokens
+            return x, cls_token, patch_tokens, hidden_states
 
     def maybe_concat(self, x, y):
         if x is not None and y is not None:
@@ -772,6 +788,7 @@ class SpatialViTDecoder(PreTrainedModel):
     def forward(self, x, pos_ids_restore, channel_ids_restore, optical_channel_wv, radar_channel_wv, spatial_resolution, restore_input_dim=False):
         # use the sptial cls tokens to represent all channels
         x = x[:, 0] # B L+1 D
+        # x = x[:, 1:].mean(dim=1) # B L+1 D
         
         # embed tokens
         x = self.decoder_embed(x)  # B L+1 D

@@ -105,7 +105,7 @@ class AttentionPool(nn.Module):
 
         self.norm = norm_layer(dim)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
         B, C, N, D = x.shape
         x = x.reshape(B * C, N, D)  # B*C, N+1, D
         x_cls = x[:, 0, :] # B*C, 1, D; B*C, N, D
@@ -232,10 +232,10 @@ class LowRankAttention(nn.Module):
         
         assert self.head_dim == self.c_head_dim * self.s_head_dim, 'head_dim should be equal to c_head_dim * s_head_dim'
         
-        # self.channel_pool = AttentionPool(dim, channel_dim, norm_layer=norm_layer)
-        # self.spatial_pool = AttentionPool(dim, spatial_dim, norm_layer=norm_layer)
-        self.channel_pool = AvgPool(dim, channel_dim)
-        self.spatial_pool = AvgPool(dim, spatial_dim)
+        self.channel_pool = AttentionPool(dim, channel_dim, self.num_heads, norm_layer=norm_layer)
+        self.spatial_pool = AttentionPool(dim, spatial_dim, self.num_heads, norm_layer=norm_layer)
+        # self.channel_pool = AvgPool(dim, channel_dim)
+        # self.spatial_pool = AvgPool(dim, spatial_dim)
 
         self.channel_branch = AttentionBranch(channel_dim, num_heads, self.c_head_dim, qkv_bias, qk_norm, attn_drop, norm_layer)
         self.spatial_branch = AttentionBranch(spatial_dim, num_heads, self.s_head_dim, qkv_bias, qk_norm, attn_drop, norm_layer)
