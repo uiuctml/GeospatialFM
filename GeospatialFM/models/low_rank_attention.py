@@ -53,6 +53,17 @@ class AvgPool(nn.Module):
         x = self.linear(x)
         return x # B C D
 
+class ProjectionPool(nn.Module):
+    def __init__(self, dim: int, dim_out: int, **kwargs):
+        super().__init__()
+        self.linear = nn.Linear(dim, dim_out, bias=False)
+
+    def forward(self, x: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
+        # x is B C N D
+        x = x[:, :, 0] # B C D
+        x = self.linear(x)
+        return x # B C D
+
 class AttentionPool(nn.Module):
     def __init__(
         self,
@@ -107,8 +118,19 @@ class AttentionPool(nn.Module):
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
         B, C, N, D = x.shape
+        if mask is not None:
+            # mask in B N
+            # compute the indices of the masked entries
+            mask_indices = mask.nonzero(as_tuple=True)[1] # B*L
+            L = mask_indices.shape[0] // B # L
+            assert L * B == mask_indices.shape[0]
+
+            mask_indices = mask_indices.view(B, 1, -1, 1).expand(-1, C, -1, D) # B C L D
+            x = x.gather(2, mask_indices).view(B, C, L, D) # B C L D
+            N = L  # Update N to the new sequence length L
+            
         x = x.reshape(B * C, N, D)  # B*C, N+1, D
-        x_cls = x[:, 0, :] # B*C, 1, D; B*C, N, D
+        x_cls = x[:, 0, :] # B*C, 1, D
 
         x = self.norm(x)
         # qkv = self.qkv(x).reshape(B * C, N, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4) # 3, B*C, num_heads, N, head_dim
@@ -195,6 +217,7 @@ class LowRankAttention(nn.Module):
             attn_drop: float = 0.,
             proj_drop: float = 0.,
             norm_layer: nn.Module = nn.LayerNorm,
+            skip_pool: bool = False,
     ) -> None:
         """
         LowRankAttention module for low-rank attention in vision transformers.
@@ -231,11 +254,13 @@ class LowRankAttention(nn.Module):
         self.head_dim = self.dim // num_heads
         
         assert self.head_dim == self.c_head_dim * self.s_head_dim, 'head_dim should be equal to c_head_dim * s_head_dim'
-        
-        self.channel_pool = AttentionPool(dim, channel_dim, self.num_heads, norm_layer=norm_layer)
-        self.spatial_pool = AttentionPool(dim, spatial_dim, self.num_heads, norm_layer=norm_layer)
-        # self.channel_pool = AvgPool(dim, channel_dim)
-        # self.spatial_pool = AvgPool(dim, spatial_dim)
+
+        if skip_pool:
+            self.channel_pool = ProjectionPool(dim, channel_dim, norm_layer=norm_layer)
+            self.spatial_pool = ProjectionPool(dim, spatial_dim, norm_layer=norm_layer) 
+        else:
+            self.channel_pool = AttentionPool(dim, channel_dim, self.num_heads, norm_layer=norm_layer)
+            self.spatial_pool = AttentionPool(dim, spatial_dim, self.num_heads, norm_layer=norm_layer)
 
         self.channel_branch = AttentionBranch(channel_dim, num_heads, self.c_head_dim, qkv_bias, qk_norm, attn_drop, norm_layer)
         self.spatial_branch = AttentionBranch(spatial_dim, num_heads, self.s_head_dim, qkv_bias, qk_norm, attn_drop, norm_layer)
@@ -252,9 +277,8 @@ class LowRankAttention(nn.Module):
         
         xc = self.channel_branch(x_c)  # B, num_heads, C, c_head_dim
         xs = self.spatial_branch(x_s, spatial_mask)  # B, num_heads, HW, s_head_dim
-
-        x = torch.einsum('...ca,...nb->...cnab', xc, xs).flatten(-2) # B, num_heads, C*HW, D
-        x = x.transpose(1, 2).reshape(B, C, HW, D) # B, C, HW, D
+        x = torch.einsum('...ca,...nb->...cnab', xc, xs).flatten(-2) # B, num_heads, C, HW, D
+        x = x.permute(0, 2, 3, 1, 4).reshape(B, C, HW, D) # B, C, HW, D
         x = self.proj(x) # B, C, HW, D
         x = self.proj_drop(x) # B, C, HW, D
         return x
@@ -290,6 +314,7 @@ class LowRankBlock(nn.Module):
             act_layer: nn.Module = nn.GELU,
             norm_layer: nn.Module = nn.LayerNorm,
             mlp_layer: nn.Module = Mlp,
+            skip_pool: bool = False,
     ) -> None:
         super().__init__()
         self.norm1 = norm_layer(dim)
@@ -303,6 +328,7 @@ class LowRankBlock(nn.Module):
             attn_drop=attn_drop,
             proj_drop=proj_drop,
             norm_layer=norm_layer,
+            skip_pool=skip_pool,
         )
         self.ls1 = LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
         self.drop_path1 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
