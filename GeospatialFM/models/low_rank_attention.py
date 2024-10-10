@@ -54,26 +54,26 @@ class AvgPool(nn.Module):
         return x # B C D
 
 class ProjectionPool(nn.Module):
-    def __init__(self, dim: int, dim_out: int, **kwargs):
+    def __init__(self, dim: int, dim_out: int, norm_layer: nn.Module = nn.LayerNorm, **kwargs):
         super().__init__()
-        self.linear = nn.Linear(dim, dim_out, bias=False)
+        self.linear = nn.Linear(dim, dim_out, bias=True)
+        self.norm = norm_layer(dim_out)
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
         # x is B C N D
         x = x[:, :, 0] # B C D
         x = self.linear(x)
+        x = self.norm(x)
         return x # B C D
 
 class AttentionPool(nn.Module):
     def __init__(
         self,
         dim: int,
-        dim_out: int,
         num_heads: int = 1,
         qkv_bias: bool = False,
         qk_norm: bool = False,
         attn_drop: float = 0.,
-        proj_drop: float = 0.,
         norm_layer: nn.Module = nn.LayerNorm
     ) -> None:
         """
@@ -101,43 +101,27 @@ class AttentionPool(nn.Module):
         self.head_dim = dim // num_heads
         self.num_heads = num_heads
         self.dim = dim
-        self.dim_out = dim_out
+        self.dim_out = dim
         self.scale = (dim // num_heads) ** -0.5  # Scaling factor for attention scores
         self.fused_attn = use_fused_attn()
         
         self.q = nn.Linear(dim, dim, bias=qkv_bias)
-        self.kv = nn.Linear(dim, dim * 2, bias=qkv_bias)
+        self.k = nn.Linear(dim, dim, bias=qkv_bias)
+        self.v = nn.Identity()
         self.q_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
         self.k_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
 
         self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(dim, dim_out)
-        self.proj_drop = nn.Dropout(proj_drop)
 
-        self.norm = norm_layer(dim)
-
-    def forward(self, x: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, C, N, D = x.shape
-        if mask is not None:
-            # mask in B N
-            # compute the indices of the masked entries
-            mask_indices = mask.nonzero(as_tuple=True)[1] # B*L
-            L = mask_indices.shape[0] // B # L
-            assert L * B == mask_indices.shape[0]
-
-            mask_indices = mask_indices.view(B, 1, -1, 1).expand(-1, C, -1, D) # B C L D
-            x = x.gather(2, mask_indices).view(B, C, L, D) # B C L D
-            N = L  # Update N to the new sequence length L
             
         x = x.reshape(B * C, N, D)  # B*C, N+1, D
         x_cls = x[:, 0, :] # B*C, 1, D
 
-        x = self.norm(x)
-        # qkv = self.qkv(x).reshape(B * C, N, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4) # 3, B*C, num_heads, N, head_dim
-        # q, k, v = qkv.unbind(0) # B*C, num_heads, N, head_dim
         q = self.q(x_cls).reshape(B * C, 1, self.num_heads, self.head_dim).permute(0, 2, 1, 3) # B*C, num_heads, 1, head_dim
-        kv = self.kv(x).reshape(B * C, N, 2, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4) # 2, B*C, num_heads, N, head_dim
-        k, v = kv.unbind(0) # B*C, num_heads, N, head_dim
+        k = self.k(x).reshape(B * C, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3) # B*C, num_heads, N, head_dim
+        v = self.v(x).reshape(B * C, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3) # B*C, num_heads, N, head_dim
         q, k = self.q_norm(q), self.k_norm(k)
         
         if self.fused_attn:
@@ -151,12 +135,46 @@ class AttentionPool(nn.Module):
             attn = self.attn_drop(attn)
             x = (attn @ v).transpose(1, 2) # B*C, num_heads, 1, D
             
-        x = x.reshape(B * C, self.dim) # B*C, dim, take only cls token
+        x = x.reshape(B, C, self.dim) # B C dim, take only cls token
+        return x
 
-        x = self.proj(x) # B*C, dim_out
-        x = self.proj_drop(x) # B*C, dim_out
-
-        return x.reshape(B, C, self.dim_out)
+class LowDimPool(nn.Module):
+    def __init__(
+        self,
+        dim: int,
+        channel_dim: int,
+        spatial_dim: int,
+        num_heads: int = 8,
+        qkv_bias: bool = False,
+        qk_norm: bool = False,
+        attn_drop: float = 0.,
+        proj_drop: float = 0.,
+        norm_layer: nn.Module = nn.LayerNorm,
+    ) -> None:
+        super().__init__()
+        self.num_heads = num_heads
+        
+        self.channel_pool = AttentionPool(dim, channel_dim, self.num_heads, norm_layer=norm_layer) # B C N D -> B C dim
+        self.spatial_pool = AttentionPool(dim, spatial_dim, self.num_heads, norm_layer=norm_layer) # B HW N D -> B HW dim
+        
+        self.channel_linear = nn.Linear(dim, channel_dim) # B C dim -> B C channel_dim
+        self.spatial_linear = nn.Linear(dim, spatial_dim) # B HW dim -> B HW spatial_dim
+        
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x is B C HW D
+        B, C, HW, D = x.shape
+        x_c = x[:, :, 0] + self.channel_pool(x) # B, C, dim
+        x_s = x[:, 0] + self.spatial_pool(x.transpose(1, 2)) # B, HW, dim
+        
+        x_c = self.channel_linear(x_c) # B, C, channel_dim
+        x_s = self.spatial_linear(x_s) # B, HW, spatial_dim
+        
+        xs = x_s.reshape(B, HW, self.num_heads, -1).permute(0, 2, 1, 3)  # B, num_heads, HW, spatial_dim
+        xc = x_c.reshape(B, C, self.num_heads, -1).permute(0, 2, 1, 3) # B, num_heads, C, channel_dim
+        
+        x = torch.einsum('...ca,...nb->...cnab', xc, xs).flatten(-2) # B, C, HW, D
+        x = x.permute(0, 2, 3, 1, 4).reshape(B, C, HW, D)
+        return x_c, x_s, x
 
 class AttentionBranch(nn.Module):
     def __init__(
@@ -217,7 +235,6 @@ class LowRankAttention(nn.Module):
             attn_drop: float = 0.,
             proj_drop: float = 0.,
             norm_layer: nn.Module = nn.LayerNorm,
-            skip_pool: bool = False,
     ) -> None:
         """
         LowRankAttention module for low-rank attention in vision transformers.
@@ -255,30 +272,20 @@ class LowRankAttention(nn.Module):
         
         assert self.head_dim == self.c_head_dim * self.s_head_dim, 'head_dim should be equal to c_head_dim * s_head_dim'
 
-        if skip_pool:
-            self.channel_pool = ProjectionPool(dim, channel_dim, norm_layer=norm_layer)
-            self.spatial_pool = ProjectionPool(dim, spatial_dim, norm_layer=norm_layer) 
-        else:
-            self.channel_pool = AttentionPool(dim, channel_dim, self.num_heads, norm_layer=norm_layer)
-            self.spatial_pool = AttentionPool(dim, spatial_dim, self.num_heads, norm_layer=norm_layer)
-
         self.channel_branch = AttentionBranch(channel_dim, num_heads, self.c_head_dim, qkv_bias, qk_norm, attn_drop, norm_layer)
         self.spatial_branch = AttentionBranch(spatial_dim, num_heads, self.s_head_dim, qkv_bias, qk_norm, attn_drop, norm_layer)
 
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x: torch.Tensor, spatial_mask: torch.Tensor = None, channel_mask: torch.Tensor = None, pos_mask: torch.Tensor = None) -> torch.Tensor:
-        assert x.dim() == 4, 'LowRankAttention only supports 4D input'
-        B, C, HW, D = x.shape
-
-        x_c = self.channel_pool(x, pos_mask) # B, C, channel_dim
-        x_s = self.spatial_pool(x.transpose(1, 2), channel_mask) # B, HW, spatial_dim
+    def forward(self, x_c: torch.Tensor, x_s: torch.Tensor, spatial_mask: torch.Tensor = None) -> torch.Tensor:
+        B, C, D = x_c.shape
+        HW = x_s.shape[1]
         
         xc = self.channel_branch(x_c)  # B, num_heads, C, c_head_dim
         xs = self.spatial_branch(x_s, spatial_mask)  # B, num_heads, HW, s_head_dim
         x = torch.einsum('...ca,...nb->...cnab', xc, xs).flatten(-2) # B, num_heads, C, HW, D
-        x = x.permute(0, 2, 3, 1, 4).reshape(B, C, HW, D) # B, C, HW, D
+        x = x.permute(0, 2, 3, 1, 4).reshape(B, C, HW, -1) # B, C, HW, D
         x = self.proj(x) # B, C, HW, D
         x = self.proj_drop(x) # B, C, HW, D
         return x
@@ -314,10 +321,24 @@ class LowRankBlock(nn.Module):
             act_layer: nn.Module = nn.GELU,
             norm_layer: nn.Module = nn.LayerNorm,
             mlp_layer: nn.Module = Mlp,
-            skip_pool: bool = False,
     ) -> None:
         super().__init__()
         self.norm1 = norm_layer(dim)
+        
+        self.spatial_norm = norm_layer(spatial_dim)
+        self.channel_norm = norm_layer(channel_dim)
+        
+        self.low_dim_pool = LowDimPool(
+            dim=dim,
+            channel_dim=channel_dim,
+            spatial_dim=spatial_dim,
+            num_heads=num_heads,
+            qkv_bias=qkv_bias,
+            qk_norm=qk_norm,
+            attn_drop=attn_drop,
+            proj_drop=proj_drop,
+            norm_layer=norm_layer)
+        
         self.attn = LowRankAttention(
             dim=dim,
             num_heads=num_heads,
@@ -328,7 +349,6 @@ class LowRankBlock(nn.Module):
             attn_drop=attn_drop,
             proj_drop=proj_drop,
             norm_layer=norm_layer,
-            skip_pool=skip_pool,
         )
         self.ls1 = LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
         self.drop_path1 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
@@ -343,7 +363,8 @@ class LowRankBlock(nn.Module):
         self.ls2 = LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
         self.drop_path2 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
-    def forward(self, x: torch.Tensor, spatial_mask: torch.Tensor = None, channel_mask: torch.Tensor = None, pos_mask: torch.Tensor = None) -> torch.Tensor:
-        x = x + self.drop_path1(self.ls1(self.attn(self.norm1(x), spatial_mask, channel_mask, pos_mask)))
+    def forward(self, x: torch.Tensor, spatial_mask: torch.Tensor = None) -> torch.Tensor:
+        x_c, x_s, x = self.low_dim_pool(self.norm1(x))
+        x = x + self.drop_path1(self.ls1(self.attn(self.channel_norm(x_c), self.spatial_norm(x_s), spatial_mask)))
         x = x + self.drop_path2(self.ls2(self.mlp(self.norm2(x))))
         return x

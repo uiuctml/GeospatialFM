@@ -55,6 +55,8 @@ def parse_args():
     parser.add_argument("--gradient_checkpointing", action="store_true", help="Whether to use gradient checkpointing to save memory at the expense of slower backward pass")
     parser.add_argument("--mask_ratio", type=float, default=0.75, help="Mask ratio for MAE")
     parser.add_argument("--channel_mask_ratio", type=float, default=0.5, help="Channel mask ratio for MAE")
+    parser.add_argument("--max_grad_norm", type=float, default=None, help="Max gradient norm for gradient clipping")
+    parser.add_argument("--early_stop_steps", type=int, default=None, help="Stop training after X steps. Used for debugging.")
     
     # Logging and saving arguments
     parser.add_argument("--output_dir", type=str, default="output", help="Directory to save model checkpoints and logs")
