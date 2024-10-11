@@ -74,7 +74,8 @@ class AttentionPool(nn.Module):
         qkv_bias: bool = False,
         qk_norm: bool = False,
         attn_drop: float = 0.,
-        norm_layer: nn.Module = nn.LayerNorm
+        norm_layer: nn.Module = nn.LayerNorm,
+        proj_drop: float = 0.,
     ) -> None:
         """
         AttentionPool module for low-rank attention in vision transformers.
@@ -106,12 +107,14 @@ class AttentionPool(nn.Module):
         self.fused_attn = use_fused_attn()
         
         self.q = nn.Linear(dim, dim, bias=qkv_bias)
-        self.k = nn.Linear(dim, dim, bias=qkv_bias)
-        self.v = nn.Identity()
+        self.kv = nn.Linear(dim, dim*2, bias=qkv_bias)
         self.q_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
         self.k_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
 
         self.attn_drop = nn.Dropout(attn_drop)
+        
+        self.proj = nn.Linear(dim, dim)
+        self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, C, N, D = x.shape
@@ -120,8 +123,8 @@ class AttentionPool(nn.Module):
         x_cls = x[:, 0, :] # B*C, 1, D
 
         q = self.q(x_cls).reshape(B * C, 1, self.num_heads, self.head_dim).permute(0, 2, 1, 3) # B*C, num_heads, 1, head_dim
-        k = self.k(x).reshape(B * C, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3) # B*C, num_heads, N, head_dim
-        v = self.v(x).reshape(B * C, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3) # B*C, num_heads, N, head_dim
+        kv = self.kv(x).reshape(B * C, N, 2, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4) # 2, B*C, num_heads, N, head_dim
+        k, v = kv.unbind(0) # B*C, num_heads, N, head_dim
         q, k = self.q_norm(q), self.k_norm(k)
         
         if self.fused_attn:
@@ -136,6 +139,9 @@ class AttentionPool(nn.Module):
             x = (attn @ v).transpose(1, 2) # B*C, num_heads, 1, D
             
         x = x.reshape(B, C, self.dim) # B C dim, take only cls token
+        
+        x = self.proj(x)
+        x = self.proj_drop(x)
         return x
 
 class LowDimPool(nn.Module):
@@ -154,8 +160,8 @@ class LowDimPool(nn.Module):
         super().__init__()
         self.num_heads = num_heads
         
-        self.channel_pool = AttentionPool(dim, channel_dim, self.num_heads, norm_layer=norm_layer) # B C N D -> B C dim
-        self.spatial_pool = AttentionPool(dim, spatial_dim, self.num_heads, norm_layer=norm_layer) # B HW N D -> B HW dim
+        self.channel_pool = AttentionPool(dim, self.num_heads, norm_layer=norm_layer, qkv_bias=qkv_bias, qk_norm=qk_norm, attn_drop=attn_drop, proj_drop=proj_drop) # B C N D -> B C dim
+        self.spatial_pool = AttentionPool(dim, self.num_heads, norm_layer=norm_layer, qkv_bias=qkv_bias, qk_norm=qk_norm, attn_drop=attn_drop, proj_drop=proj_drop) # B HW N D -> B HW dim
         
         self.channel_linear = nn.Linear(dim, channel_dim) # B C dim -> B C channel_dim
         self.spatial_linear = nn.Linear(dim, spatial_dim) # B HW dim -> B HW spatial_dim
@@ -174,6 +180,7 @@ class LowDimPool(nn.Module):
         
         x = torch.einsum('...ca,...nb->...cnab', xc, xs).flatten(-2) # B, C, HW, D
         x = x.permute(0, 2, 3, 1, 4).reshape(B, C, HW, D)
+
         return x_c, x_s, x
 
 class AttentionBranch(nn.Module):

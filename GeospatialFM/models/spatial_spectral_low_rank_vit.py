@@ -546,11 +546,11 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
         
         self.decoder_norm = norm_layer(config.decoder_embed_dim)
         # self.decoder_pred = nn.Linear(config.decoder_embed_dim, config.patch_size**2 * config.decoder_out_chans, bias=True)
-        # self.decoder_pred = nn.ModuleList([
-        #     nn.Linear(config.decoder_embed_dim, config.patch_size**2, bias=True)
-        #     for _ in range(config.decoder_out_chans)
-        # ])
-        self.decoder_pred = nn.Linear(config.decoder_embed_dim, config.patch_size**2, bias=True)
+        self.decoder_pred = nn.ModuleList([
+            nn.Linear(config.decoder_embed_dim, config.patch_size**2, bias=True)
+            for _ in range(config.decoder_out_chans)
+        ])
+        # self.decoder_pred = nn.Linear(config.decoder_embed_dim, config.patch_size**2, bias=True)
         
         self.pos_chan_embed = PositionalChannelEmbedding(config.decoder_embed_dim)
         
@@ -632,13 +632,13 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
         x = self.decoder_norm(x)
         
         # predictor projection
-        x = self.decoder_pred(x)  # B HW+1 D -> B HW+1 patch_size**2 * C
+        # x = self.decoder_pred(x)  # B HW+1 D -> B HW+1 patch_size**2 * C
         x = x[:, 1:, 1:, :] # B, C, HW, D
-        # x_ = []
-        # for i in range(self.config.decoder_out_chans):
-        #     x_i = self.decoder_pred[i](x[:,i])
-        #     x_.append(x_i)
-        # x = torch.stack(x_, dim=1)
+        x_ = []
+        for i in range(self.config.decoder_out_chans):
+            x_i = self.decoder_pred[i](x[:,i])
+            x_.append(x_i)
+        x = torch.stack(x_, dim=1)
         
         # # remove cls token
         # x = x[:, 1:, :]  # B HW patch_size**2 * C
