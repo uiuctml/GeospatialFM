@@ -56,7 +56,7 @@ class MAETrainer(Trainer):
             modal=modal
         )
 
-        loss = self.calculate_mse_loss(outputs)
+        loss = self.calculate_l1_loss(outputs)
 
         return (loss, outputs) if return_outputs else loss
 

@@ -540,6 +540,7 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
                 drop_path=dpr[i],
                 init_values=config.init_values,
                 norm_layer=norm_layer,
+                skip_pool=False,
             )
             for i in range(config.decoder_depth)
         ])

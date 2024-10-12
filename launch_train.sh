@@ -19,11 +19,11 @@ NCCL_BLOCKING_WAIT=1 CUDA_VISIBLE_DEVICES=0,1,2,3 accelerate launch GeospatialFM
     --output_dir /home/haozhesi/Dropbox/GeospatialFM/results/models \
     --logging_dir /home/haozhesi/Dropbox/GeospatialFM/results/logs \
     --wandb_dir /home/haozhesi/Dropbox/GeospatialFM/results/ \
-    --run_name LRSSVIT-depth-1-change-residual \
+    --run_name LRSSVIT-depth-2 \
     --lr_scheduler cosine \
     --channel_embed_dims_per_head 1 \
     --decoder_channel_embed_dims_per_head 1 \
-    --decoder_depth 1 \
+    --decoder_depth 2 \
     --decoder_out_chans 15 \
     --use_perception_field_mask \
     --early_stop_steps 2000 \

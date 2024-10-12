@@ -156,12 +156,17 @@ class LowDimPool(nn.Module):
         attn_drop: float = 0.,
         proj_drop: float = 0.,
         norm_layer: nn.Module = nn.LayerNorm,
+        skip_pool: bool = False,
     ) -> None:
         super().__init__()
         self.num_heads = num_heads
         
-        self.channel_pool = AttentionPool(dim, self.num_heads, norm_layer=norm_layer, qkv_bias=qkv_bias, qk_norm=qk_norm, attn_drop=attn_drop, proj_drop=proj_drop) # B C N D -> B C dim
-        self.spatial_pool = AttentionPool(dim, self.num_heads, norm_layer=norm_layer, qkv_bias=qkv_bias, qk_norm=qk_norm, attn_drop=attn_drop, proj_drop=proj_drop) # B HW N D -> B HW dim
+        if skip_pool:
+            self.channel_pool = lambda x: x[:, :, 0]
+            self.spatial_pool = lambda x: x[:, :, 0]
+        else:
+            self.channel_pool = AttentionPool(dim=dim, num_heads=num_heads, norm_layer=norm_layer, qkv_bias=qkv_bias, qk_norm=qk_norm, attn_drop=attn_drop, proj_drop=proj_drop) # B C N D -> B C dim
+            self.spatial_pool = AttentionPool(dim=dim, num_heads=num_heads, norm_layer=norm_layer, qkv_bias=qkv_bias, qk_norm=qk_norm, attn_drop=attn_drop, proj_drop=proj_drop) # B HW N D -> B HW dim
         
         self.channel_linear = nn.Linear(dim, channel_dim) # B C dim -> B C channel_dim
         self.spatial_linear = nn.Linear(dim, spatial_dim) # B HW dim -> B HW spatial_dim
@@ -178,7 +183,7 @@ class LowDimPool(nn.Module):
         xs = x_s.reshape(B, HW, self.num_heads, -1).permute(0, 2, 1, 3)  # B, num_heads, HW, spatial_dim
         xc = x_c.reshape(B, C, self.num_heads, -1).permute(0, 2, 1, 3) # B, num_heads, C, channel_dim
         
-        x = torch.einsum('...ca,...nb->...cnab', xc, xs).flatten(-2) # B, C, HW, D
+        x = torch.einsum('...ca,...nb->...cnab', xc, xs).flatten(-2) # B, num_heads, C, HW, D
         x = x.permute(0, 2, 3, 1, 4).reshape(B, C, HW, D)
 
         return x_c, x_s, x
@@ -328,13 +333,14 @@ class LowRankBlock(nn.Module):
             act_layer: nn.Module = nn.GELU,
             norm_layer: nn.Module = nn.LayerNorm,
             mlp_layer: nn.Module = Mlp,
+            skip_pool: bool = False,
     ) -> None:
         super().__init__()
         self.norm1 = norm_layer(dim)
         
         self.spatial_norm = norm_layer(spatial_dim)
         self.channel_norm = norm_layer(channel_dim)
-        
+
         self.low_dim_pool = LowDimPool(
             dim=dim,
             channel_dim=channel_dim,
@@ -344,7 +350,9 @@ class LowRankBlock(nn.Module):
             qk_norm=qk_norm,
             attn_drop=attn_drop,
             proj_drop=proj_drop,
-            norm_layer=norm_layer)
+            norm_layer=norm_layer,
+            skip_pool=skip_pool,
+        )
         
         self.attn = LowRankAttention(
             dim=dim,
