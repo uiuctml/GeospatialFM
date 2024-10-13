@@ -6,7 +6,7 @@ NCCL_BLOCKING_WAIT=1 CUDA_VISIBLE_DEVICES=0,1,2,3 accelerate launch GeospatialFM
     --num_train_epochs 20 \
     --learning_rate 1.5e-4 \
     --adam_weight_decay 0.05 \
-    --mask_ratio 0.75 \
+    --mask_ratio 0.5 \
     --channel_mask_ratio 0.5 \
     --lr_warmup_steps 2000 \
     --report_to wandb \
@@ -19,11 +19,11 @@ NCCL_BLOCKING_WAIT=1 CUDA_VISIBLE_DEVICES=0,1,2,3 accelerate launch GeospatialFM
     --output_dir /home/haozhesi/Dropbox/GeospatialFM/results/models \
     --logging_dir /home/haozhesi/Dropbox/GeospatialFM/results/logs \
     --wandb_dir /home/haozhesi/Dropbox/GeospatialFM/results/ \
-    --run_name LRSSVIT-depth-2 \
+    --run_name LRSSVIT-depth-1-with-mask-decoder \
     --lr_scheduler cosine \
     --channel_embed_dims_per_head 1 \
     --decoder_channel_embed_dims_per_head 1 \
-    --decoder_depth 2 \
+    --decoder_depth 1 \
     --decoder_out_chans 15 \
     --use_perception_field_mask \
     --early_stop_steps 2000 \

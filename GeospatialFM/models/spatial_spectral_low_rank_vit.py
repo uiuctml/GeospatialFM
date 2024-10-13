@@ -618,12 +618,12 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
         x = x + pos_chan_embed
 
         hidden_states.append(x.detach().cpu())
-        # num_patches = x.shape[2] - 1
-        # if self.config.use_perception_field_mask:
-        #     perception_field_mask = get_perception_field_mask(num_patches, self.config.patch_size, spatial_resolution, attention_radius=self.config.attention_radius, cls_token=True).to(x.device)
-        # else:
-        #     perception_field_mask = None
-        perception_field_mask = None
+        num_patches = x.shape[2] - 1
+        if self.config.use_perception_field_mask:
+            perception_field_mask = get_perception_field_mask(num_patches, self.config.patch_size, spatial_resolution, attention_radius=self.config.attention_radius, cls_token=True).to(x.device)
+        else:
+            perception_field_mask = None
+        # perception_field_mask = None
 
         # apply Transformer blocks
         for blk in self.decoder_blocks:

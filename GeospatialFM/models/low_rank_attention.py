@@ -120,7 +120,7 @@ class AttentionPool(nn.Module):
         B, C, N, D = x.shape
             
         x = x.reshape(B * C, N, D)  # B*C, N+1, D
-        x_cls = x[:, 0, :] # B*C, 1, D
+        x_cls = x[:, :1, :] # B*C, 1, D
 
         q = self.q(x_cls).reshape(B * C, 1, self.num_heads, self.head_dim).permute(0, 2, 1, 3) # B*C, num_heads, 1, head_dim
         kv = self.kv(x).reshape(B * C, N, 2, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4) # 2, B*C, num_heads, N, head_dim
@@ -161,12 +161,15 @@ class LowDimPool(nn.Module):
         super().__init__()
         self.num_heads = num_heads
         
+        self.channel_norm = norm_layer(channel_dim)
+        self.spatial_norm = norm_layer(spatial_dim)
+        
         if skip_pool:
             self.channel_pool = lambda x: x[:, :, 0]
             self.spatial_pool = lambda x: x[:, :, 0]
         else:
-            self.channel_pool = AttentionPool(dim=dim, num_heads=num_heads, norm_layer=norm_layer, qkv_bias=qkv_bias, qk_norm=qk_norm, attn_drop=attn_drop, proj_drop=proj_drop) # B C N D -> B C dim
-            self.spatial_pool = AttentionPool(dim=dim, num_heads=num_heads, norm_layer=norm_layer, qkv_bias=qkv_bias, qk_norm=qk_norm, attn_drop=attn_drop, proj_drop=proj_drop) # B HW N D -> B HW dim
+            self.channel_pool = AttentionPool(dim=channel_dim, num_heads=num_heads, norm_layer=norm_layer, qkv_bias=qkv_bias, qk_norm=qk_norm, attn_drop=attn_drop, proj_drop=proj_drop) # B C N D -> B C dim
+            self.spatial_pool = AttentionPool(dim=spatial_dim, num_heads=num_heads, norm_layer=norm_layer, qkv_bias=qkv_bias, qk_norm=qk_norm, attn_drop=attn_drop, proj_drop=proj_drop) # B HW N D -> B HW dim
         
         self.channel_linear = nn.Linear(dim, channel_dim) # B C dim -> B C channel_dim
         self.spatial_linear = nn.Linear(dim, spatial_dim) # B HW dim -> B HW spatial_dim
@@ -174,11 +177,11 @@ class LowDimPool(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x is B C HW D
         B, C, HW, D = x.shape
-        x_c = x[:, :, 0] + self.channel_pool(x) # B, C, dim
-        x_s = x[:, 0] + self.spatial_pool(x.transpose(1, 2)) # B, HW, dim
+        x_c = self.channel_linear(x) # B, C, HW, channel_dim
+        x_s = self.spatial_linear(x) # B, C, HW, spatial_dim
         
-        x_c = self.channel_linear(x_c) # B, C, channel_dim
-        x_s = self.spatial_linear(x_s) # B, HW, spatial_dim
+        x_c = x_c[:, :, 0] + self.channel_pool(self.channel_norm(x_c)) # B, C, dim
+        x_s = x_s[:, 0] + self.spatial_pool(self.spatial_norm(x_s.transpose(1, 2))) # B, HW, dim
         
         xs = x_s.reshape(B, HW, self.num_heads, -1).permute(0, 2, 1, 3)  # B, num_heads, HW, spatial_dim
         xc = x_c.reshape(B, C, self.num_heads, -1).permute(0, 2, 1, 3) # B, num_heads, C, channel_dim
