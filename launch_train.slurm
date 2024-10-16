@@ -47,9 +47,7 @@ accelerate launch GeospatialFM/scripts/train.py \
     --decoder_depth 8 \
     --decoder_out_chans 15 \
     --use_perception_field_mask \
+    --resume_from_checkpoint latest \
     # --early_stop_steps 2000 \
     # --modal_mode multi
     # --max_grad_norm 1.0 \
-    # --norm_pix_loss \
-    # --use_8bit \
-    # --resume_from_checkpoint /home/haozhesi/Dropbox/GeospatialFM/pretrained_models/mae_pretrained_model.pth \

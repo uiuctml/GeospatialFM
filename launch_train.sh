@@ -1,9 +1,12 @@
-export PYTHONPATH=$PYTHONPATH:/home/haozhesi/Dropbox/GeospatialFM
-NCCL_BLOCKING_WAIT=1 CUDA_VISIBLE_DEVICES=0,1,2,3 accelerate launch GeospatialFM/scripts/train.py \
-    --data_dir /home/haozhesi/Dropbox/GeospatialFM/data/geospatial/SSL4EO \
-    --train_batch_size 32 \
-    --gradient_accumulation_steps 2 \
-    --num_train_epochs 20 \
+ROOT_DIR="/home/haozhesi/Dropbox/GeospatialFM"
+export PYTHONPATH=$PYTHONPATH:$ROOT_DIR
+export NCCL_BLOCKING_WAIT=1
+export CUDA_VISIBLE_DEVICES=0,1,2,3
+accelerate launch GeospatialFM/scripts/train.py \
+    --data_dir $ROOT_DIR/data/geospatial/SSL4EO \
+    --train_batch_size 16 \
+    --gradient_accumulation_steps 4 \
+    --num_train_epochs 100 \
     --learning_rate 1.5e-4 \
     --adam_weight_decay 0.05 \
     --mask_ratio 0.75 \
@@ -14,11 +17,11 @@ NCCL_BLOCKING_WAIT=1 CUDA_VISIBLE_DEVICES=0,1,2,3 accelerate launch GeospatialFM
     --save_total_limit 5 \
     --seed 42 \
     --mixed_precision bf16 \
-    --dataloader_num_workers 4 \
+    --dataloader_num_workers 8 \
     --dataloader_pin_memory \
-    --output_dir /home/haozhesi/Dropbox/GeospatialFM/results/models \
-    --logging_dir /home/haozhesi/Dropbox/GeospatialFM/results/logs \
-    --wandb_dir /home/haozhesi/Dropbox/GeospatialFM/results/ \
+    --output_dir $ROOT_DIR/results/models \
+    --logging_dir $ROOT_DIR/results/logs \
+    --wandb_dir $ROOT_DIR/results/ \
     --run_name LRSSVIT \
     --lr_scheduler cosine \
     --channel_embed_dims_per_head 1 \
