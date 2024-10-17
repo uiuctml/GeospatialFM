@@ -174,7 +174,7 @@ class LowDimPool(nn.Module):
         self.channel_linear = nn.Linear(dim, channel_dim) # B C dim -> B C channel_dim
         self.spatial_linear = nn.Linear(dim, spatial_dim) # B HW dim -> B HW spatial_dim
         
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, pos_chan_embedding: torch.Tensor = None) -> torch.Tensor:
         # x is B C HW D
         B, C, HW, D = x.shape
         x_c = self.channel_linear(x) # B, C, HW, channel_dim
@@ -188,6 +188,8 @@ class LowDimPool(nn.Module):
         
         x = torch.einsum('...ca,...nb->...cnab', xc, xs).flatten(-2) # B, num_heads, C, HW, D
         x = x.permute(0, 2, 3, 1, 4).reshape(B, C, HW, D)
+        if pos_chan_embedding is not None:
+            x = x + pos_chan_embedding
 
         return x_c, x_s, x
 
@@ -381,8 +383,8 @@ class LowRankBlock(nn.Module):
         self.ls2 = LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
         self.drop_path2 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
-    def forward(self, x: torch.Tensor, spatial_mask: torch.Tensor = None) -> torch.Tensor:
-        x_c, x_s, x = self.low_dim_pool(self.norm1(x))
+    def forward(self, x: torch.Tensor, spatial_mask: torch.Tensor = None, pos_chan_embedding: torch.Tensor = None) -> torch.Tensor:
+        x_c, x_s, x = self.low_dim_pool(self.norm1(x), pos_chan_embedding)
         x = x + self.drop_path1(self.ls1(self.attn(self.channel_norm(x_c), self.spatial_norm(x_s), spatial_mask)))
         x = x + self.drop_path2(self.ls2(self.mlp(self.norm2(x))))
         return x

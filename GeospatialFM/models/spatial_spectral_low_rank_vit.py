@@ -30,6 +30,7 @@ class SpatialSpectralLowRankViTConfig(PretrainedConfig):
         proj_drop: float = 0.0,
         mask_ratio: float = 0.75,
         channel_mask_ratio: float = 0.5,
+        pos_chan_embed_residual: bool = True,
         # Decoder-specific parameters
         decoder_embed_dim: int = 512,
         decoder_depth: int = 8,
@@ -77,6 +78,9 @@ class SpatialSpectralLowRankViTConfig(PretrainedConfig):
         # Perception field mask
         self.use_perception_field_mask = use_perception_field_mask
         self.attention_radius = attention_radius
+        
+        # Positional channel embedding residual
+        self.pos_chan_embed_residual = pos_chan_embed_residual
 
     @property
     def encoder_config(self):
@@ -226,20 +230,26 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         
         # Add positional and channel embedding
         pos_chan_embed = self.pos_chan_embed(x[:, 1:, 1:, :], channel_ids=channel_ids, spatial_resolution=spatial_resolution, cls_token=True).to(x.device, dtype=x.dtype)
-        x = x + pos_chan_embed # B C+1 HW+1 D
-                
+        pos_chan_embed = pos_chan_embed.repeat(B, 1, 1, 1)
+        
         # Apply masks after positional embedding
         if self.training:
             # mask the channel
             x_ = x[:, 1:, :, :] # B C HW+1 D
-            x_, channel_mask, channel_ids_restore = self.random_channel_masking(x_, channel_mask_ratio) # B N HW+1 D, B C, B C
+            pos_chan_embed_ = pos_chan_embed[:, 1:, :, :]
+            x_, pos_chan_embed_, channel_mask, channel_ids_restore = self.random_channel_masking(x_, pos_chan_embedding=pos_chan_embed_, channel_mask_ratio=channel_mask_ratio) # B N HW+1 D, B C, B C
             x = torch.cat((x[:, :1, :, :], x_), dim=1) # B N+1 HW+1 D
+            pos_chan_embed = torch.cat((pos_chan_embed[:, :1, :, :], pos_chan_embed_), dim=1) # B N+1 HW+1 D
             # mask the position
             x_ = x[:, :, 1:, :] # B N+1 HW D
-            x_, pos_mask, pos_ids_restore, perception_field_mask = self.random_pos_masking(x_, mask_ratio, perception_field_mask=perception_field_mask) # B N+1 L D, B HW, B HW, L L
+            pos_chan_embed_ = pos_chan_embed[:, :, 1:, :]
+            x_, pos_chan_embed_, pos_mask, pos_ids_restore, perception_field_mask = self.random_pos_masking(x_, pos_chan_embedding=pos_chan_embed_, mask_ratio=mask_ratio, perception_field_mask=perception_field_mask) # B N+1 L D, B HW, B HW, L L
             x = torch.cat((x[:, :, :1, :], x_), dim=2) # B N+1 L+1 D
+            pos_chan_embed = torch.cat((pos_chan_embed[:, :, :1, :], pos_chan_embed_), dim=2) # B N+1 L+1 D
         else:
             channel_mask = pos_mask = channel_ids_restore = pos_ids_restore = None
+            
+        x = x + pos_chan_embed # B N+1 L+1 D
             
         if perception_field_mask is not None:
             # append cls token
@@ -253,8 +263,9 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         hidden_states.append(x.detach().cpu())
         
         # Apply transformer blocks
-        for blk in self.blocks:
-            x = blk(x, spatial_mask=perception_field_mask)
+        for i,blk in enumerate(self.blocks):
+            pos_chan_embedding = pos_chan_embed*2**(-i) if self.config.pos_chan_embed_residual else pos_chan_embed
+            x = blk(x, spatial_mask=perception_field_mask, pos_chan_embedding=pos_chan_embedding)
             hidden_states.append(x.detach().cpu())
 
         # Apply final layer norm
@@ -282,7 +293,7 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         elif y is not None:
             return y
         
-    def random_pos_masking(self, x, mask_ratio, batch_wise_mask=False, perception_field_mask=None):
+    def random_pos_masking(self, x, pos_chan_embedding=None, mask_ratio=0.75, batch_wise_mask=False, perception_field_mask=None):
         """
         Perform per-sample random masking by per-sample shuffling.
         Per-sample shuffling is done by argsort random noise.
@@ -296,7 +307,10 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         if mask_ratio == 0:
             mask = torch.zeros([B, HW], device=x.device)
             ids_restore = torch.arange(HW, device=x.device).unsqueeze(0).repeat(B, 1)
-            return x, mask, ids_restore, perception_field_mask
+            if pos_chan_embedding is not None:
+                return x, pos_chan_embedding, mask, ids_restore, perception_field_mask
+            else:
+                return x, mask, ids_restore, perception_field_mask
         
         x = x.permute(0, 2, 1, 3) # B, HW, C, D
         len_keep = int(HW * (1 - mask_ratio)) # L
@@ -314,6 +328,12 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         # keep the first subset
         ids_keep = ids_shuffle[:, :len_keep] # B, L
         x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, C, D)) # B, L, C, D
+        
+        if pos_chan_embedding is not None:
+            pos_chan_embedding = pos_chan_embedding.permute(0, 2, 1, 3) # B, HW, C, D
+            pos_chan_embed_masked = torch.gather(pos_chan_embedding, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, C, D)) # B, L, C, D
+            pos_chan_embed_masked = pos_chan_embed_masked.permute(0, 2, 1, 3) # B, C, L, D
+        
         if perception_field_mask is not None:
             # remove the corresponding ids in perception_field_mask
             ids_keep_ = ids_keep[0].cpu() # L
@@ -327,13 +347,17 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         mask = torch.gather(mask, dim=1, index=ids_restore) # B, HW
         
         x_masked = x_masked.permute(0, 2, 1, 3)  # [B, C, L, D]
-        return x_masked, mask, ids_restore, perception_field_mask
+        if pos_chan_embedding is not None:
+            return x_masked, pos_chan_embed_masked, mask, ids_restore, perception_field_mask
+        else:
+            return x_masked, mask, ids_restore, perception_field_mask
     
-    def random_channel_masking(self, x, channel_mask_ratio, batch_wise_mask=False):
+    def random_channel_masking(self, x, pos_chan_embedding=None, channel_mask_ratio=0.5, batch_wise_mask=False):
         """
         Perform per-sample random masking by per-sample shuffling.
         Per-sample shuffling is done by argsort random noise.
         x: [B, C, HW, D], sequence
+        pos_chan_embedding: [B, C, HW, D], positional embedding
         Return:
             x_masked: [B, N, HW, D]
             mask: [B, C]
@@ -343,7 +367,10 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         if channel_mask_ratio == 0:
             mask = torch.zeros([B, C], device=x.device)
             ids_restore = torch.arange(C, device=x.device).unsqueeze(0).repeat(B, 1)
-            return x, mask, ids_restore
+            if pos_chan_embedding is not None:
+                return x, pos_chan_embedding, mask, ids_restore
+            else:
+                return x, mask, ids_restore
         
         len_keep = max(int(C * (1 - channel_mask_ratio)), 2) # at least 2 channel is kept, N
         
@@ -360,14 +387,19 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         # keep the first subset
         ids_keep = ids_shuffle[:, :len_keep]
         x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, HW, D)) # B, N, HW, D
-
+        if pos_chan_embedding is not None:
+            pos_chan_embed_masked = torch.gather(pos_chan_embedding, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, HW, D)) # B, N, HW, D
+        
         # generate the binary mask: 0 is keep, 1 is remove
         mask = torch.ones([B, C], device=x.device) # B C
         mask[:, :len_keep] = 0
         # unshuffle to get the binary mask
         mask = torch.gather(mask, dim=1, index=ids_restore) # B C
     
-        return x_masked, mask, ids_restore
+        if pos_chan_embedding is not None:
+            return x_masked, pos_chan_embed_masked, mask, ids_restore
+        else:
+            return x_masked, mask, ids_restore
 
 class SpatialViTDecoder(PreTrainedModel):
     config_class = SpatialSpectralLowRankViTConfig
@@ -626,8 +658,9 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
         # perception_field_mask = None
 
         # apply Transformer blocks
-        for blk in self.decoder_blocks:
-            x = blk(x, spatial_mask=perception_field_mask)
+        for i, blk in enumerate(self.decoder_blocks):
+            pos_chan_embedding = pos_chan_embed*2**(-i) if self.config.pos_chan_embed_residual else None
+            x = blk(x, spatial_mask=perception_field_mask, pos_chan_embedding=pos_chan_embedding)
             hidden_states.append(x.detach().cpu())
             
         x = self.decoder_norm(x)
