@@ -152,7 +152,7 @@ class FMoW(datasets.GeneratorBasedBuilder):
         )
 
     def _split_generators(self, dl_manager):
-        if self.config.data_dir = is None:
+        if self.config.data_dir is None:
             data_dir = dl_manager.download_and_extract("https://huggingface.co/datasets/yuxuanw8/FMoW/resolve/main/FMoW.zip") # TODO: check out the correct address for downloading and extracting
         else:
             data_dir = os.path.join(self.config.data_dir, "FMoW")
