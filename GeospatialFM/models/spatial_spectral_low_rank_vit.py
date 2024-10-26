@@ -647,6 +647,7 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
         
         # add positional and channel embedding
         pos_chan_embed = self.pos_chan_embed(x[:, 1:, 1:, :], channel_ids=channel_wv, spatial_resolution=spatial_resolution, cls_token=True).to(x.device, dtype=x.dtype)
+        hidden_states.append(pos_chan_embed.detach().cpu())
         x = x + pos_chan_embed
 
         hidden_states.append(x.detach().cpu())
