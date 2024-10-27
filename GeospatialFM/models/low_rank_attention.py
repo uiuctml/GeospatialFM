@@ -163,6 +163,7 @@ class LowDimPool(nn.Module):
         
         self.channel_norm = norm_layer(channel_dim)
         self.spatial_norm = norm_layer(spatial_dim)
+        self.norm = norm_layer(dim)
         
         if skip_pool:
             self.channel_pool = lambda x: x[:, :, 0]
@@ -190,7 +191,7 @@ class LowDimPool(nn.Module):
         x = x.permute(0, 2, 3, 1, 4).reshape(B, C, HW, D)
         if pos_chan_embedding is not None:
             x = x + pos_chan_embedding
-
+        x = self.norm(x)
         return x_c, x_s, x
 
 class AttentionBranch(nn.Module):
