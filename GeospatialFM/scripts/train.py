@@ -143,7 +143,8 @@ def main(args):
         train_dataloader=train_dataloader,
         weight_dtype=weight_dtype,
         modal_mode=args.modal_mode,
-        early_stop_steps=args.early_stop_steps
+        early_stop_steps=args.early_stop_steps,
+        loss_type=args.loss_type
     )
     
     if accelerator.is_main_process:
