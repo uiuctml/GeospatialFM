@@ -4,6 +4,8 @@ import numpy as np
 import tifffile
 
 from typing import ClassVar
+from datasets import load_dataset
+from torch.utils.data import Dataset
 
 all_band_names = (
         'B1',
@@ -44,6 +46,9 @@ class EuroSATConfig(datasets.BuilderConfig):
             "band_indices": self.band_indices,
         }
         return config
+    
+    def __str__(self):
+        return f"EuroSATConfig: bands={self.bands}, band_indices={self.band_indices}"
 
 class EuroSAT(datasets.GeneratorBasedBuilder):
     """
@@ -51,8 +56,8 @@ class EuroSAT(datasets.GeneratorBasedBuilder):
         - bands
         - band_indices: auto updated with bands, no need to manually entered to config
     """
-    spatial_resolution = 10 # TODO: not sure, make sure this is correct.
-    metadata = { # TODO, drop bands and channel_wv, according to self.config.bands
+    spatial_resolution = 10 
+    metadata = {
         "s2c": {
             "bands": ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B10", "B11", "B12"],
             "channel_wv": [442.7, 492.4, 559.8, 664.6, 704.1, 740.5, 782.8, 832.8, 864.7, 945.1, 1373.5, 1613.7, 2202.4],
@@ -115,6 +120,9 @@ class EuroSAT(datasets.GeneratorBasedBuilder):
         ]
         super().__init__(*args, **kwargs)
         self.num_channels = len(self.config.band_indices)
+        
+        for key in self.metadata["s2c"].keys():
+            self.metadata["s2c"][key] = [elem for i, elem in enumerate(self.metadata["s2c"][key]) if i in self.config.band_indices]
 
         print(self.config)
 
@@ -203,3 +211,17 @@ class EuroSAT(datasets.GeneratorBasedBuilder):
                 }
 
                 yield f"{label}_{file_name}", sample
+
+class EuroSATDataset(Dataset):
+    """
+    Wrapper class
+    """
+    def __init__(self, root, split="train", config=None):
+        super().__init__()
+        self.data = load_dataset(root, split=split, config=config, trust_remote_code=True)
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        return self.data[idx]

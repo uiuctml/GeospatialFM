@@ -53,7 +53,7 @@ def multimodal_collate_fn(batch, transform=None, random_crop=True, normalization
     spatial_resolution = None
     
     # crop_size = np.random.choice([128, 224, 256]) if random_crop else None
-    crop_size = 224
+    crop_size = 128
 
     for example in batch:
         if normalization:
@@ -66,7 +66,7 @@ def multimodal_collate_fn(batch, transform=None, random_crop=True, normalization
         example['spatial_resolution'] = example['spatial_resolution']
         
         if transform:
-            example = transform(example, crop_size, scale=1)
+            example = transform(example, crop_size, scale=2)
             
         if optical_channel_wv is None and radar_channel_wv is None:
             optical_channel_wv = example['optical_channel_wv']
@@ -93,3 +93,17 @@ def multimodal_collate_fn(batch, transform=None, random_crop=True, normalization
         'radar_channel_wv': radar_channel_wv,
         'spatial_resolution': spatial_resolution
     }
+
+class DataCollator:
+    def __init__(self, collate_fn_train, collate_fn_eval):
+        self.collate_fn_train = collate_fn_train
+        self.collate_fn_eval = collate_fn_eval
+    
+    def __call__(self, batch):
+        if self.training_mode:
+            return self.collate_fn_train(batch)
+        else:
+            return self.collate_fn_eval(batch)
+
+    def set_training_mode(self, training_mode=True):
+        self.training_mode = training_mode

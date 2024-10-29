@@ -30,6 +30,7 @@ class SpatialSpectralLowRankViTConfig(PretrainedConfig):
         proj_drop: float = 0.0,
         mask_ratio: float = 0.75,
         channel_mask_ratio: float = 0.5,
+        pos_chan_embed_residual: bool = True,
         # Decoder-specific parameters
         decoder_embed_dim: int = 512,
         decoder_depth: int = 8,
@@ -77,6 +78,9 @@ class SpatialSpectralLowRankViTConfig(PretrainedConfig):
         # Perception field mask
         self.use_perception_field_mask = use_perception_field_mask
         self.attention_radius = attention_radius
+        
+        # Positional channel embedding residual
+        self.pos_chan_embed_residual = pos_chan_embed_residual
 
     @property
     def encoder_config(self):
@@ -226,20 +230,26 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         
         # Add positional and channel embedding
         pos_chan_embed = self.pos_chan_embed(x[:, 1:, 1:, :], channel_ids=channel_ids, spatial_resolution=spatial_resolution, cls_token=True).to(x.device, dtype=x.dtype)
-        x = x + pos_chan_embed # B C+1 HW+1 D
-                
+        pos_chan_embed = pos_chan_embed.repeat(B, 1, 1, 1)
+        
         # Apply masks after positional embedding
         if self.training:
             # mask the channel
             x_ = x[:, 1:, :, :] # B C HW+1 D
-            x_, channel_mask, channel_ids_restore = self.random_channel_masking(x_, channel_mask_ratio) # B N HW+1 D, B C, B C
+            pos_chan_embed_ = pos_chan_embed[:, 1:, :, :]
+            x_, pos_chan_embed_, channel_mask, channel_ids_restore = self.random_channel_masking(x_, pos_chan_embedding=pos_chan_embed_, channel_mask_ratio=channel_mask_ratio) # B N HW+1 D, B C, B C
             x = torch.cat((x[:, :1, :, :], x_), dim=1) # B N+1 HW+1 D
+            pos_chan_embed = torch.cat((pos_chan_embed[:, :1, :, :], pos_chan_embed_), dim=1) # B N+1 HW+1 D
             # mask the position
             x_ = x[:, :, 1:, :] # B N+1 HW D
-            x_, pos_mask, pos_ids_restore, perception_field_mask = self.random_pos_masking(x_, mask_ratio, perception_field_mask=perception_field_mask) # B N+1 L D, B HW, B HW, L L
+            pos_chan_embed_ = pos_chan_embed[:, :, 1:, :]
+            x_, pos_chan_embed_, pos_mask, pos_ids_restore, perception_field_mask = self.random_pos_masking(x_, pos_chan_embedding=pos_chan_embed_, mask_ratio=mask_ratio, perception_field_mask=perception_field_mask) # B N+1 L D, B HW, B HW, L L
             x = torch.cat((x[:, :, :1, :], x_), dim=2) # B N+1 L+1 D
+            pos_chan_embed = torch.cat((pos_chan_embed[:, :, :1, :], pos_chan_embed_), dim=2) # B N+1 L+1 D
         else:
             channel_mask = pos_mask = channel_ids_restore = pos_ids_restore = None
+            
+        x = x + pos_chan_embed # B N+1 L+1 D
             
         if perception_field_mask is not None:
             # append cls token
@@ -253,8 +263,9 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         hidden_states.append(x.detach().cpu())
         
         # Apply transformer blocks
-        for blk in self.blocks:
-            x = blk(x, spatial_mask=perception_field_mask)
+        for i,blk in enumerate(self.blocks):
+            pos_chan_embedding = pos_chan_embed*2**(-i) if self.config.pos_chan_embed_residual else pos_chan_embed
+            x = blk(x, spatial_mask=perception_field_mask, pos_chan_embedding=pos_chan_embedding)
             hidden_states.append(x.detach().cpu())
 
         # Apply final layer norm
@@ -282,7 +293,7 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         elif y is not None:
             return y
         
-    def random_pos_masking(self, x, mask_ratio, batch_wise_mask=False, perception_field_mask=None):
+    def random_pos_masking(self, x, pos_chan_embedding=None, mask_ratio=0.75, batch_wise_mask=False, perception_field_mask=None):
         """
         Perform per-sample random masking by per-sample shuffling.
         Per-sample shuffling is done by argsort random noise.
@@ -296,7 +307,10 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         if mask_ratio == 0:
             mask = torch.zeros([B, HW], device=x.device)
             ids_restore = torch.arange(HW, device=x.device).unsqueeze(0).repeat(B, 1)
-            return x, mask, ids_restore, perception_field_mask
+            if pos_chan_embedding is not None:
+                return x, pos_chan_embedding, mask, ids_restore, perception_field_mask
+            else:
+                return x, mask, ids_restore, perception_field_mask
         
         x = x.permute(0, 2, 1, 3) # B, HW, C, D
         len_keep = int(HW * (1 - mask_ratio)) # L
@@ -314,6 +328,12 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         # keep the first subset
         ids_keep = ids_shuffle[:, :len_keep] # B, L
         x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, C, D)) # B, L, C, D
+        
+        if pos_chan_embedding is not None:
+            pos_chan_embedding = pos_chan_embedding.permute(0, 2, 1, 3) # B, HW, C, D
+            pos_chan_embed_masked = torch.gather(pos_chan_embedding, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, C, D)) # B, L, C, D
+            pos_chan_embed_masked = pos_chan_embed_masked.permute(0, 2, 1, 3) # B, C, L, D
+        
         if perception_field_mask is not None:
             # remove the corresponding ids in perception_field_mask
             ids_keep_ = ids_keep[0].cpu() # L
@@ -327,13 +347,17 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         mask = torch.gather(mask, dim=1, index=ids_restore) # B, HW
         
         x_masked = x_masked.permute(0, 2, 1, 3)  # [B, C, L, D]
-        return x_masked, mask, ids_restore, perception_field_mask
+        if pos_chan_embedding is not None:
+            return x_masked, pos_chan_embed_masked, mask, ids_restore, perception_field_mask
+        else:
+            return x_masked, mask, ids_restore, perception_field_mask
     
-    def random_channel_masking(self, x, channel_mask_ratio, batch_wise_mask=False):
+    def random_channel_masking(self, x, pos_chan_embedding=None, channel_mask_ratio=0.5, batch_wise_mask=False):
         """
         Perform per-sample random masking by per-sample shuffling.
         Per-sample shuffling is done by argsort random noise.
         x: [B, C, HW, D], sequence
+        pos_chan_embedding: [B, C, HW, D], positional embedding
         Return:
             x_masked: [B, N, HW, D]
             mask: [B, C]
@@ -343,7 +367,10 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         if channel_mask_ratio == 0:
             mask = torch.zeros([B, C], device=x.device)
             ids_restore = torch.arange(C, device=x.device).unsqueeze(0).repeat(B, 1)
-            return x, mask, ids_restore
+            if pos_chan_embedding is not None:
+                return x, pos_chan_embedding, mask, ids_restore
+            else:
+                return x, mask, ids_restore
         
         len_keep = max(int(C * (1 - channel_mask_ratio)), 2) # at least 2 channel is kept, N
         
@@ -360,382 +387,20 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         # keep the first subset
         ids_keep = ids_shuffle[:, :len_keep]
         x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, HW, D)) # B, N, HW, D
-
+        if pos_chan_embedding is not None:
+            pos_chan_embed_masked = torch.gather(pos_chan_embedding, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, HW, D)) # B, N, HW, D
+        
         # generate the binary mask: 0 is keep, 1 is remove
         mask = torch.ones([B, C], device=x.device) # B C
         mask[:, :len_keep] = 0
         # unshuffle to get the binary mask
         mask = torch.gather(mask, dim=1, index=ids_restore) # B C
     
-        return x_masked, mask, ids_restore
-
-class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
-    config_class = SpatialSpectralLowRankViTConfig
-
-    def __init__(self, config: SpatialSpectralLowRankViTConfig):
-        super().__init__(config)
-        self.config = config
-        norm_layer = partial(nn.LayerNorm, eps=1e-6)
-        
-        self.decoder_embed = nn.Linear(config.embed_dim, config.decoder_embed_dim, bias=True)
-        self.mask_token = nn.Parameter(torch.zeros(1, 1, 1, config.decoder_embed_dim), requires_grad=False)
-        self.spatial_mask_token = nn.Parameter(torch.zeros(1, 1, 1, config.decoder_embed_dim))
-        self.channel_mask_token = nn.Parameter(torch.zeros(1, 1, 1, config.decoder_embed_dim))
-        
-        if config.drop_path_uniform is True:
-            dpr = [config.drop_path_rate] * config.decoder_depth
+        if pos_chan_embedding is not None:
+            return x_masked, pos_chan_embed_masked, mask, ids_restore
         else:
-            dpr = [x.item() for x in torch.linspace(0, config.drop_path_rate, config.decoder_depth)]
-        
-        self.decoder_blocks = nn.ModuleList([
-            LowRankBlock(
-                dim=config.decoder_embed_dim,
-                num_heads=config.decoder_num_heads,
-                channel_dim=config.decoder_channel_dim,
-                spatial_dim=config.decoder_spatial_dim,
-                mlp_ratio=config.mlp_ratio,
-                qkv_bias=config.qkv_bias,
-                qk_norm=config.qk_norm,
-                proj_drop=config.proj_drop,
-                attn_drop=config.attn_drop,
-                drop_path=dpr[i],
-                init_values=config.init_values,
-                norm_layer=norm_layer,
-                skip_pool=i == 0,
-            )
-            for i in range(config.decoder_depth)
-        ])
-        
-        self.decoder_norm = norm_layer(config.decoder_embed_dim)
-        # self.decoder_pred = nn.Linear(config.decoder_embed_dim, config.patch_size**2, bias=True)
-        self.decoder_pred = nn.Conv2d(config.decoder_out_chans * config.decoder_embed_dim,
-                                      config.decoder_out_chans * config.patch_size * config.patch_size,
-                                      kernel_size=1, groups=config.decoder_out_chans, bias=True)
+            return x_masked, mask, ids_restore
 
-        self.pos_chan_embed = PositionalChannelEmbedding(config.decoder_embed_dim)
-        
-        self.initialize_weights()
-
-    def initialize_weights(self):
-        torch.nn.init.normal_(self.mask_token, std=.02)
-        torch.nn.init.normal_(self.spatial_mask_token, std=.02)
-        torch.nn.init.normal_(self.channel_mask_token, std=.02)
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            torch.nn.init.xavier_uniform_(m.weight)
-            if isinstance(m, nn.Linear) and m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.LayerNorm):
-            nn.init.constant_(m.bias, 0)
-            nn.init.constant_(m.weight, 1.0)
-
-    def forward(self, x, pos_ids_restore, channel_ids_restore, optical_channel_wv, radar_channel_wv, spatial_resolution, restore_input_dim=False):
-        assert len(optical_channel_wv.shape) == 2, "Optical ids should be a 2D tensor"
-        assert len(radar_channel_wv.shape) == 2, "Radar ids should be a 2D tensor"
-        
-        hidden_states = []
-        
-        # embed tokens
-        x = self.decoder_embed(x)  # B N+1 L+1 D
-        channel_wv = torch.cat((optical_channel_wv, radar_channel_wv), dim=1)  # 1 C = Co + Cr or B C
-        
-        # remove cls token
-        B, N, L, D = x[:, 1:, 1:, :].shape
-        C = channel_ids_restore.shape[1]
-        HW = pos_ids_restore.shape[1]
-        
-        # append mask tokens to sequence
-        mask_tokens = self.mask_token.expand(B, N, HW - L, -1)
-        spatial_mask_tokens = self.spatial_mask_token.expand(B, 1, HW - L, -1)
-        mask_tokens = torch.cat([spatial_mask_tokens, mask_tokens], dim=1) # B N+1 HW-L D
-        x_ = torch.cat([x[:, :, 1:], mask_tokens], dim=2)  # B N+1 HW D, remove cls token
-        x_ = torch.gather(x_, dim=2, index=pos_ids_restore.unsqueeze(1).unsqueeze(-1).repeat(1, N + 1, 1, D))  # unshuffle, B N+1 HW D
-        x = torch.cat([x[:, :, :1], x_], dim=2)  # B N+1 HW+1 D, add cls token
-        
-        # append mask tokens for channels
-        mask_tokens = self.mask_token.expand(B, C - N, HW, -1)
-        channel_mask_tokens = self.channel_mask_token.expand(B, C - N, 1, -1)
-        mask_tokens = torch.cat([channel_mask_tokens, mask_tokens], dim=2) # B C-N HW+1 D
-        x_ = torch.cat([x[:, 1:], mask_tokens], dim=1)  # B, C, HW+1, D, remove cls token
-        x_ = torch.gather(x_, dim=1, index=channel_ids_restore.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, HW + 1, D))  # unshuffle, B C HW+1 D
-        x = torch.cat([x[:, :1], x_], dim=1)  # B C+1 HW+1 D, add cls token
-        
-        if C == optical_channel_wv.shape[1]: 
-            # missing radar channels from encoder
-            n_radar_channels = radar_channel_wv.shape[1]
-            # extend x to C+n_radar_channels to the end
-            mask_tokens = self.mask_token.expand(B, n_radar_channels, HW, -1)  # B C HW D
-            channel_mask_tokens = self.channel_mask_token.expand(B, n_radar_channels, 1, -1)
-            mask_tokens = torch.cat([channel_mask_tokens, mask_tokens], dim=2) # B C-N HW+1 D
-            x = torch.cat([x, mask_tokens], dim=1)
-        elif C == radar_channel_wv.shape[1]:
-            # missing optical channels from encoder
-            n_optical_channels = optical_channel_wv.shape[1]
-            # extend x to C+n_optical_channels to the front behind the cls token
-            mask_tokens = self.mask_token.expand(B, n_optical_channels, HW, -1)
-            channel_mask_tokens = self.channel_mask_token.expand(B, n_optical_channels, 1, -1)
-            mask_tokens = torch.cat([channel_mask_tokens, mask_tokens], dim=2) # B C-N HW+1 D
-            x = torch.cat([x[:, :1, :, :], mask_tokens, x[:, 1:, :, :]], dim=1)  # B C+1 HW+1 D
-            
-        hidden_states.append(x.detach().cpu())
-            
-        # # generate a mask that mark all the mask_tokens
-        # mask_tokens_mask = torch.isclose(x, self.channel_mask_token.expand_as(x), rtol=1e-5, atol=1e-8)
-        # mask_tokens_mask = mask_tokens_mask.all(dim=-1)  # B, C, HW
-        # mask_tokens_mask = ~mask_tokens_mask # non-mask tokens are 1
-        # mask_tokens_mask_channel = mask_tokens_mask[:, :, 0] # B C
-        # mask_tokens_mask_pos = mask_tokens_mask[:, 0, :] # B HW
-
-        # add positional and channel embedding
-        pos_chan_embed = self.pos_chan_embed(x[:, 1:, 1:, :], channel_ids=channel_wv, spatial_resolution=spatial_resolution, cls_token=True).to(x.device, dtype=x.dtype)
-        x = x + pos_chan_embed
-
-        hidden_states.append(x.detach().cpu())
-        num_patches = x.shape[2] - 1
-        if self.config.use_perception_field_mask:
-            perception_field_mask = get_perception_field_mask(num_patches, self.config.patch_size, spatial_resolution, attention_radius=self.config.attention_radius, cls_token=True).to(x.device)
-        else:
-            perception_field_mask = None
-
-        # apply Transformer blocks
-        for blk in self.decoder_blocks:
-            x = blk(x, spatial_mask=perception_field_mask)
-            hidden_states.append(x.detach().cpu())
-
-        x = self.decoder_norm(x)
-        
-        # predictor projection
-        x = x[:, 1:, 1:, :] # B C HW D
-        B, C, HW, D = x.shape
-        x = x.permute(0, 1, 3, 2).reshape(B, C*D, HW, 1) # B C*D HW 1
-        x = self.decoder_pred(x)  # B C*D HW 1 -> B C*D HW patch_size**2
-        x = x.reshape(B, C, self.config.patch_size*self.config.patch_size, HW) # B C patch_size**2 HW
-        x = x.permute(0, 1, 3, 2) # B C HW patch_size**2
-        
-        # # remove cls token
-        # x = x[:, 1:, 1:, :]  # B C HW patch_size**2
-        
-        if restore_input_dim:
-            x = self.unpatchify(x)
-        
-        if self.config.return_dict:
-            # Return as BaseModelOutput for Hugging Face compatibility
-            return BaseModelOutput(
-                last_hidden_state=x,
-                hidden_states=hidden_states,
-                attentions=None,  # You can modify this if you have attention weights to return
-            )
-        else:
-            return x, hidden_states
-
-    def unpatchify(self, x):
-        """
-        x: (B, C, HW, patch_size**2)
-        imgs: (B, C, H, W)
-        """
-        p = self.config.patch_size
-        h = w = int(x.shape[2]**.5)
-        assert h * w == x.shape[2]
-        
-        x = x.reshape(shape=(x.shape[0], x.shape[1], h, w, p, p))
-        x = torch.einsum('bchwpq->bchpwq', x)
-        imgs = x.reshape(shape=(x.shape[0], x.shape[1], h * p, h * p))
-        return imgs
-
-    def forward_target(self, imgs):
-        """
-        imgs: [B, C, H, W]
-        """
-        target = self.patchify(imgs)
-        if self.config.norm_pix_loss:
-            mean = target.mean(dim=-1, keepdim=True)
-            var = target.var(dim=-1, keepdim=True)
-            target = (target - mean) / (var + 1.e-6)**.5
-        return target # B C HW patch_size**2
-
-    def patchify(self, imgs):
-        """
-        imgs: (B, C, H, W)
-        x: (B, C, HW, patch_size**2)
-        """
-        p = self.config.patch_size
-        assert imgs.shape[2] == imgs.shape[3] and imgs.shape[2] % p == 0
-
-        h = w = imgs.shape[2] // p
-        x = imgs.reshape(shape=(imgs.shape[0], imgs.shape[1], h, p, w, p))
-        x = torch.einsum('bchpwq->bchwpq', x)
-        x = x.reshape(shape=(imgs.shape[0], imgs.shape[1], h * w, p**2))
-        return x
-
-class SpatialSpectralViTDecoder(PreTrainedModel):
-    config_class = SpatialSpectralLowRankViTConfig
-
-    def __init__(self, config: SpatialSpectralLowRankViTConfig):
-        super().__init__(config)
-        self.config = config
-        norm_layer = partial(nn.LayerNorm, eps=1e-6)
-        
-        self.decoder_embed = nn.Linear(config.embed_dim, config.decoder_embed_dim, bias=True)
-        self.mask_token = nn.Parameter(torch.zeros(1, 1, 1, config.decoder_embed_dim))
-        
-        if config.drop_path_uniform is True:
-            dpr = [config.drop_path_rate] * config.decoder_depth
-        else:
-            dpr = [x.item() for x in torch.linspace(0, config.drop_path_rate, config.decoder_depth)]
-        
-        self.decoder_blocks = nn.ModuleList([
-            LowRankBlock(
-                dim=config.decoder_embed_dim,
-                num_heads=config.decoder_num_heads,
-                channel_dim=config.decoder_channel_dim,
-                spatial_dim=config.decoder_spatial_dim,
-                mlp_ratio=config.mlp_ratio,
-                qkv_bias=config.qkv_bias,
-                qk_norm=config.qk_norm,
-                proj_drop=config.proj_drop,
-                attn_drop=config.attn_drop,
-                drop_path=dpr[i],
-                init_values=config.init_values,
-                norm_layer=norm_layer,
-            )
-            for i in range(config.decoder_depth)
-        ])
-        
-        self.decoder_norm = norm_layer(config.decoder_embed_dim)
-        self.decoder_pred = nn.Linear(config.decoder_embed_dim, config.patch_size**2, bias=True)
-        
-        self.pos_chan_embed = PositionalChannelEmbedding(config.decoder_embed_dim)
-        
-        self.initialize_weights()
-
-    def initialize_weights(self):
-        torch.nn.init.normal_(self.mask_token, std=.02)
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            torch.nn.init.xavier_uniform_(m.weight)
-            if isinstance(m, nn.Linear) and m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.LayerNorm):
-            nn.init.constant_(m.bias, 0)
-            nn.init.constant_(m.weight, 1.0)
-
-    def forward(self, x, pos_ids_restore, channel_ids_restore, optical_channel_wv, radar_channel_wv, spatial_resolution, restore_input_dim=False):
-        assert len(optical_channel_wv.shape) == 2, "Optical ids should be a 2D tensor"
-        assert len(radar_channel_wv.shape) == 2, "Radar ids should be a 2D tensor"
-        
-        # embed tokens
-        x = self.decoder_embed(x)  # B N+1 L+1 D
-        
-        channel_wv = torch.cat((optical_channel_wv, radar_channel_wv), dim=1)  # 1 C = Co + Cr or B C
-        
-        # remove cls token
-        B, N, L, D = x[:, 1:, 1:, :].shape
-        C = channel_ids_restore.shape[1]
-        HW = pos_ids_restore.shape[1]
-        
-        # append mask tokens to sequence
-        mask_tokens = self.mask_token.expand(B, N + 1, HW - L, -1)
-        x_ = torch.cat([x[:, :, 1:], mask_tokens], dim=2)  # B N+1 HW D, remove cls token
-        x_ = torch.gather(x_, dim=2, index=pos_ids_restore.unsqueeze(1).unsqueeze(-1).repeat(1, N+1, 1, D))  # unshuffle, B N+1 HW D
-        x = torch.cat([x[:, :, :1], x_], dim=2)  # B N+1 HW+1 D, add cls token
-        
-        # append mask tokens for channels
-        mask_tokens = self.mask_token.expand(B, C - N, HW + 1, -1)
-        x_ = torch.cat([x[:, 1:], mask_tokens], dim=1)  # B, C, HW+1, D, remove cls token
-        x_ = torch.gather(x_, dim=1, index=channel_ids_restore.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, HW + 1, D))  # unshuffle, B C HW+1 D
-        x = torch.cat([x[:, :1], x_], dim=1)  # B C+1 HW+1 D, add cls token
-        
-        if C == optical_channel_wv.shape[1]: 
-            # missing radar channels from encoder
-            n_radar_channels = radar_channel_wv.shape[1]
-            # extend x to C+n_radar_channels to the end
-            mask_tokens = self.mask_token.expand(B, n_radar_channels, HW + 1, -1)  # B C HW+1 D
-            x = torch.cat([x, mask_tokens], dim=1)
-        elif C == radar_channel_wv.shape[1]:
-            # missing optical channels from encoder
-            n_optical_channels = optical_channel_wv.shape[1]
-            # extend x to C+n_optical_channels to the front behind the cls token
-            mask_tokens = self.mask_token.expand(B, n_optical_channels, HW + 1, -1)
-            x = torch.cat([x[:, :1, :, :], mask_tokens, x[:, 1:, :, :]], dim=1)  # B C+1 HW+1 D
-
-        # add positional and channel embedding
-        pos_chan_embed = self.pos_chan_embed(x[:, 1:, 1:, :], channel_ids=channel_wv, spatial_resolution=spatial_resolution, cls_token=True).to(x.device, dtype=x.dtype)
-        x = x + pos_chan_embed
-
-        num_patches = x.shape[2] - 1
-        if self.config.use_perception_field_mask:
-            perception_field_mask = get_perception_field_mask(num_patches, self.config.patch_size, spatial_resolution, attention_radius=self.config.attention_radius, cls_token=True).to(x.device)
-        else:
-            perception_field_mask = None
-
-        # apply Transformer blocks
-        for blk in self.decoder_blocks:
-            x = blk(x, spatial_mask=perception_field_mask)
-
-        x = self.decoder_norm(x)
-        
-        # predictor projection
-        x = self.decoder_pred(x)  # B C+1 HW+1 D -> B C+1 HW+1 patch_size**2
-        
-        # remove cls token
-        x = x[:, 1:, 1:, :]  # B C HW patch_size**2
-        
-        if restore_input_dim:
-            x = self.unpatchify(x)
-        
-        if self.config.return_dict:
-            # Return as BaseModelOutput for Hugging Face compatibility
-            return BaseModelOutput(
-                last_hidden_state=x,
-                hidden_states=None,
-                attentions=None,  # You can modify this if you have attention weights to return
-            )
-        else:
-            return x
-
-    def unpatchify(self, x):
-        """
-        x: (B, C, HW, patch_size**2)
-        imgs: (B, C, H, W)
-        """
-        p = self.config.patch_size
-        h = w = int(x.shape[2]**.5)
-        assert h * w == x.shape[2]
-        
-        x = x.reshape(shape=(x.shape[0], x.shape[1], h, w, p, p))
-        x = torch.einsum('bchwpq->bchpwq', x)
-        imgs = x.reshape(shape=(x.shape[0], x.shape[1], h * p, h * p))
-        return imgs
-
-    def forward_target(self, imgs):
-        """
-        imgs: [B, C, H, W]
-        """
-        target = self.patchify(imgs)
-        if self.config.norm_pix_loss:
-            mean = target.mean(dim=-1, keepdim=True)
-            var = target.var(dim=-1, keepdim=True)
-            target = (target - mean) / (var + 1.e-6)**.5
-        return target # B C HW patch_size**2
-
-    def patchify(self, imgs):
-        """
-        imgs: (B, C, H, W)
-        x: (B, C, HW, patch_size**2)
-        """
-        p = self.config.patch_size
-        assert imgs.shape[2] == imgs.shape[3] and imgs.shape[2] % p == 0
-
-        h = w = imgs.shape[2] // p
-        x = imgs.reshape(shape=(imgs.shape[0], imgs.shape[1], h, p, w, p))
-        x = torch.einsum('bchpwq->bchwpq', x)
-        x = x.reshape(shape=(imgs.shape[0], imgs.shape[1], h * w, p**2))
-        return x
-    
 class SpatialViTDecoder(PreTrainedModel):
     config_class = SpatialSpectralLowRankViTConfig
 
@@ -792,6 +457,8 @@ class SpatialViTDecoder(PreTrainedModel):
         x = x[:, 0] # B L+1 D
         # x = x[:, 1:].mean(dim=1) # B L+1 D
         
+        hidden_states = []
+        
         # embed tokens
         x = self.decoder_embed(x)  # B L+1 D
         
@@ -803,13 +470,17 @@ class SpatialViTDecoder(PreTrainedModel):
         x_ = torch.cat([x[:, 1:], mask_tokens], dim=1)  # B HW D, remove cls token
         x_ = torch.gather(x_, dim=1, index=pos_ids_restore.unsqueeze(-1).repeat(1, 1, D))  # unshuffle, B HW D
         x = torch.cat([x[:, :1], x_], dim=1)  # B HW+1 D, add cls token
+        
+        hidden_states.append(x.detach().cpu())
 
         pos_embed = self.pos_chan_embed.get_pos_embed(x[:, 1:, :], spatial_resolution=spatial_resolution, cls_token=True).to(x.device, dtype=x.dtype)
         x = x + pos_embed
         
+        hidden_states.append(x.detach().cpu())
+        
         for blk in self.decoder_blocks:
             x = blk(x)
-
+            hidden_states.append(x.detach().cpu())
         x = self.decoder_norm(x)
         
         # predictor projection
@@ -826,11 +497,11 @@ class SpatialViTDecoder(PreTrainedModel):
             # Return as BaseModelOutput for Hugging Face compatibility
             return BaseModelOutput(
                 last_hidden_state=x,
-                hidden_states=None,
+                hidden_states=hidden_states,
                 attentions=None,  # You can modify this if you have attention weights to return
             )
         else:
-            return x
+            return x, hidden_states
 
     def unpatchify(self, x):
         """
@@ -870,4 +541,193 @@ class SpatialViTDecoder(PreTrainedModel):
         x = torch.einsum('bchpwq->bchwpq', x)
         x = x.reshape(shape=(imgs.shape[0], imgs.shape[1], h * w, p**2))
         return x
-    
+        
+class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
+    config_class = SpatialSpectralLowRankViTConfig
+
+    def __init__(self, config: SpatialSpectralLowRankViTConfig):
+        super().__init__(config)
+        self.config = config
+        norm_layer = partial(nn.LayerNorm, eps=1e-6)
+        
+        self.decoder_embed = nn.Linear(config.embed_dim, config.decoder_embed_dim, bias=True)
+        self.mask_token = nn.Parameter(torch.zeros(1, 1, 1, config.decoder_embed_dim))
+        
+        if config.drop_path_uniform is True:
+            dpr = [config.drop_path_rate] * config.decoder_depth
+        else:
+            dpr = [x.item() for x in torch.linspace(0, config.drop_path_rate, config.decoder_depth)]
+        
+        self.decoder_blocks = nn.ModuleList([
+            LowRankBlock(
+                dim=config.decoder_embed_dim,
+                num_heads=config.decoder_num_heads,
+                channel_dim=config.decoder_channel_dim,
+                spatial_dim=config.decoder_spatial_dim,
+                mlp_ratio=config.mlp_ratio,
+                qkv_bias=config.qkv_bias,
+                qk_norm=config.qk_norm,
+                proj_drop=config.proj_drop,
+                attn_drop=config.attn_drop,
+                drop_path=dpr[i],
+                init_values=config.init_values,
+                norm_layer=norm_layer,
+                skip_pool=False,
+            )
+            for i in range(config.decoder_depth)
+        ])
+        
+        self.decoder_norm = norm_layer(config.decoder_embed_dim)
+        # self.decoder_pred = nn.Linear(config.decoder_embed_dim, config.patch_size**2 * config.decoder_out_chans, bias=True)
+        self.decoder_pred = nn.ModuleList([
+            nn.Linear(config.decoder_embed_dim, config.patch_size**2, bias=True)
+            for _ in range(config.decoder_out_chans)
+        ])
+        # self.decoder_pred = nn.Linear(config.decoder_embed_dim, config.patch_size**2, bias=True)
+        
+        self.pos_chan_embed = PositionalChannelEmbedding(config.decoder_embed_dim)
+        
+        self.initialize_weights()
+
+    def initialize_weights(self):
+        torch.nn.init.normal_(self.mask_token, std=.02)
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            torch.nn.init.xavier_uniform_(m.weight)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+
+    def forward(self, x, pos_ids_restore, channel_ids_restore, optical_channel_wv, radar_channel_wv, spatial_resolution, restore_input_dim=False):
+        # use the sptial cls tokens to represent all channels
+        # x = x[:, 0] # B L+1 D
+        # x = x[:, 1:].mean(dim=1) # B L+1 D
+        
+        hidden_states = []
+        
+        # embed tokens
+        x = self.decoder_embed(x)  # B N+1 L+1 D
+        channel_wv = torch.cat((optical_channel_wv, radar_channel_wv), dim=1)  # 1 C = Co + Cr or B C
+        
+        # remove cls token
+        B, N, L, D = x[:, 1:, 1:, :].shape
+        C = channel_ids_restore.shape[1]
+        HW = pos_ids_restore.shape[1]
+
+        # append mask tokens to sequence
+        mask_tokens = self.mask_token.expand(B, N+1, HW - L, -1)
+        x_ = torch.cat([x[:, :, 1:], mask_tokens], dim=2)  # B N+1 HW D, remove cls token
+        x_ = torch.gather(x_, dim=2, index=pos_ids_restore.unsqueeze(1).unsqueeze(-1).repeat(1, N + 1, 1, D))  # unshuffle, B N+1 HW D
+        x = torch.cat([x[:, :, :1], x_], dim=2)  # B N+1 HW+1 D, add cls token
+        
+        # append channel mask tokens to sequence
+        mask_tokens = self.mask_token.expand(B, C - N, HW+1, -1)
+        x_ = torch.cat([x[:, 1:], mask_tokens], dim=1)  # B, C, HW+1, D, remove cls token
+        x_ = torch.gather(x_, dim=1, index=channel_ids_restore.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, HW + 1, D))  # unshuffle, B C HW+1 D
+        x = torch.cat([x[:, :1], x_], dim=1)  # B C+1 HW+1 D, add cls token
+        
+        if C == optical_channel_wv.shape[1]: 
+            # missing radar channels from encoder
+            n_radar_channels = radar_channel_wv.shape[1]
+            # extend x to C+n_radar_channels to the end
+            mask_tokens = self.mask_token.expand(B, n_radar_channels, HW+1, -1)  # B C HW D
+            x = torch.cat([x, mask_tokens], dim=1)
+        elif C == radar_channel_wv.shape[1]:
+            # missing optical channels from encoder
+            n_optical_channels = optical_channel_wv.shape[1]
+            # extend x to C+n_optical_channels to the front behind the cls token
+            mask_tokens = self.mask_token.expand(B, n_optical_channels, HW+1, -1)
+            x = torch.cat([x[:, :1, :, :], mask_tokens, x[:, 1:, :, :]], dim=1)
+            
+        hidden_states.append(x.detach().cpu())
+        
+        # add positional and channel embedding
+        pos_chan_embed = self.pos_chan_embed(x[:, 1:, 1:, :], channel_ids=channel_wv, spatial_resolution=spatial_resolution, cls_token=True).to(x.device, dtype=x.dtype)
+        hidden_states.append(pos_chan_embed.detach().cpu())
+        x = x + pos_chan_embed
+
+        hidden_states.append(x.detach().cpu())
+        num_patches = x.shape[2] - 1
+        if self.config.use_perception_field_mask:
+            perception_field_mask = get_perception_field_mask(num_patches, self.config.patch_size, spatial_resolution, attention_radius=self.config.attention_radius, cls_token=True).to(x.device)
+        else:
+            perception_field_mask = None
+        # perception_field_mask = None
+
+        # apply Transformer blocks
+        for i, blk in enumerate(self.decoder_blocks):
+            pos_chan_embedding = pos_chan_embed*2**(-i) if self.config.pos_chan_embed_residual else None
+            x = blk(x, spatial_mask=perception_field_mask, pos_chan_embedding=pos_chan_embedding)
+            hidden_states.append(x.detach().cpu())
+            
+        x = self.decoder_norm(x)
+        
+        # predictor projection
+        # x = self.decoder_pred(x)  # B HW+1 D -> B HW+1 patch_size**2 * C
+        x = x[:, 1:, 1:, :] # B, C, HW, D
+        x_ = []
+        for i in range(self.config.decoder_out_chans):
+            x_i = self.decoder_pred[i](x[:,i])
+            x_.append(x_i)
+        x = torch.stack(x_, dim=1)
+        
+        # # remove cls token
+        # x = x[:, 1:, :]  # B HW patch_size**2 * C
+        # x = x.reshape(B, HW, self.config.decoder_out_chans, -1).permute(0, 2, 1, 3) # B C HW D
+        
+        if restore_input_dim:
+            x = self.unpatchify(x)
+        
+        if self.config.return_dict:
+            # Return as BaseModelOutput for Hugging Face compatibility
+            return BaseModelOutput(
+                last_hidden_state=x,
+                hidden_states=hidden_states,
+                attentions=None,  # You can modify this if you have attention weights to return
+            )
+        else:
+            return x, hidden_states
+
+    def unpatchify(self, x):
+        """
+        x: (B, C, HW, patch_size**2)
+        imgs: (B, C, H, W)
+        """
+        p = self.config.patch_size
+        h = w = int(x.shape[2]**.5)
+        assert h * w == x.shape[2]
+        
+        x = x.reshape(shape=(x.shape[0], x.shape[1], h, w, p, p))
+        x = torch.einsum('bchwpq->bchpwq', x)
+        imgs = x.reshape(shape=(x.shape[0], x.shape[1], h * p, h * p))
+        return imgs
+
+    def forward_target(self, imgs):
+        """
+        imgs: [B, C, H, W]
+        """
+        target = self.patchify(imgs)
+        if self.config.norm_pix_loss:
+            mean = target.mean(dim=-1, keepdim=True)
+            var = target.var(dim=-1, keepdim=True)
+            target = (target - mean) / (var + 1.e-6)**.5
+        return target # B C HW patch_size**2
+
+    def patchify(self, imgs):
+        """
+        imgs: (B, C, H, W)
+        x: (B, C, HW, patch_size**2)
+        """
+        p = self.config.patch_size
+        assert imgs.shape[2] == imgs.shape[3] and imgs.shape[2] % p == 0
+
+        h = w = imgs.shape[2] // p
+        x = imgs.reshape(shape=(imgs.shape[0], imgs.shape[1], h, p, w, p))
+        x = torch.einsum('bchpwq->bchwpq', x)
+        x = x.reshape(shape=(imgs.shape[0], imgs.shape[1], h * w, p**2))
+        return x
+        

@@ -1,4 +1,5 @@
 import os
+import torch
 import datasets
 
 import pandas as pd
@@ -137,7 +138,7 @@ class FMoW(datasets.GeneratorBasedBuilder):
         # process self.metadata according to self.config.dropped_bands
         if self.config.dropped_bands is not None:
             for key in self.metadata["s2c"].keys():
-                self.metadata["s2c"][key] = [elem for i, elem in enumerate(self.metadata["s2c"][key]) if not i not in self.config.dropped_bands_indices]
+                self.metadata["s2c"][key] = [elem for i, elem in enumerate(self.metadata["s2c"][key]) if i not in self.config.dropped_bands_indices]
 
         print(self.config)
 

@@ -14,7 +14,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 class MAETrainer(Trainer):
-    def __init__(self, model, args, train_dataset, optimizers, data_collator, accelerator, weight_dtype, train_dataloader=None, modal_mode=None):
+    def __init__(self, model, args, train_dataset, optimizers, data_collator, accelerator, weight_dtype, train_dataloader=None, modal_mode=None, early_stop_steps=None):
         super().__init__(
             model=model,
             args=args,
@@ -29,7 +29,8 @@ class MAETrainer(Trainer):
         self.first_epoch = 0
         self.weight_dtype = weight_dtype
         self.modal_mode = modal_mode
-        
+        self.max_grad_norm = args.max_grad_norm  # Add this line
+        self.early_stop_steps = early_stop_steps
         self.train_dataloader = train_dataloader
 
     def compute_loss(self, model, inputs, return_outputs=False, mask_ratio=None, channel_mask_ratio=None):
@@ -83,28 +84,50 @@ class MAETrainer(Trainer):
         loss = {}
         total_loss = 0.
         target = outputs['target']
+        optical_target = target[:, :-2]
+        radar_target = target[:, -2:]
         for modal in ['optical', 'radar', 'multi']:
             if f'{modal}_recon' in outputs:
                 recon = outputs[f'{modal}_recon']
-                channel_mask = outputs[f'{modal}_channel_mask'] # B, C
-                pos_mask = outputs[f'{modal}_pos_mask']
-                # positional MSE
-                pos_loss = torch.mean((recon - target).abs(), dim=[3]) # B, C, HW
-                if channel_mask.sum() > 0:
-                    pos_loss = (pos_loss * (1 - channel_mask).unsqueeze(-1)).sum(dim=1) / (1 - channel_mask).sum(dim=1, keepdim=True) # B, HW
-                else:
-                    pos_loss = pos_loss.mean(dim=1)  # Average over channels if no channel masking
+                optical_recon = recon[:, :-2]
+                radar_recon = recon[:, -2:]
                 
-                if pos_mask.sum() == 0:
-                    pos_loss = pos_loss.mean()
-                else:
-                    pos_loss = (pos_loss * pos_mask).sum() / pos_mask.sum()
-                # channel MSE
-                channel_loss = torch.mean((recon - target).abs(), dim=[2, 3])
-                if channel_mask.sum() == 0:
-                    channel_loss = channel_loss.mean()
-                else:
-                    channel_loss = (channel_loss * channel_mask).sum() / channel_mask.sum()
+                channel_mask = outputs[f'{modal}_channel_mask'] # B, C
+                optical_channel_mask = channel_mask[:, :-2]
+                radar_channel_mask = channel_mask[:, -2:]
+                
+                pos_mask = outputs[f'{modal}_pos_mask'] # B, HW
+                
+                pos_loss = 0.
+                channel_loss = 0.
+                modal_cnt = 2
+                
+                for modal_target, modal_recon, modal_channel_mask in zip([optical_target, radar_target], [optical_recon, radar_recon], [optical_channel_mask, radar_channel_mask]):
+                    # positional MSE
+                    # modal_pos_loss = torch.mean((modal_recon - modal_target).abs(), dim=[3]) # B, C, HW
+                    # if channel_mask.sum() > 0:
+                    #     pos_loss = (pos_loss * (1 - channel_mask).unsqueeze(-1)).sum(dim=1) / (1 - channel_mask).sum(dim=1, keepdim=True) # B, HW
+                    # else:
+                    #     pos_loss = pos_loss.mean(dim=1)  # Average over channels if no channel masking
+
+                    modal_pos_loss = torch.mean((modal_recon - modal_target).abs(), dim=[1, 3]) # B, HW
+                    if pos_mask.sum() == 0:
+                        # pos_loss += modal_pos_loss.mean()
+                        pos_loss += torch.zeros_like(modal_pos_loss.mean())
+                    else:
+                        pos_loss += (modal_pos_loss * pos_mask).sum() / pos_mask.sum()
+                        
+                    # channel MSE
+                    modal_channel_loss = torch.mean((modal_recon - modal_target).abs(), dim=[2, 3])
+                    if modal_channel_mask.sum() == 0:
+                        # channel_loss = modal_channel_loss.mean()
+                        channel_loss += torch.zeros_like(modal_channel_loss.mean())
+                        modal_cnt -= 1
+                    else:
+                        channel_loss += (modal_channel_loss * modal_channel_mask).sum() / modal_channel_mask.sum()
+
+                pos_loss /= 2
+                channel_loss /= modal_cnt
                 loss[f"{modal}_pos_loss"] = pos_loss
                 loss[f"{modal}_channel_loss"] = channel_loss
                 loss[f"{modal}_loss"] = pos_loss + channel_loss
@@ -156,6 +179,9 @@ class MAETrainer(Trainer):
             self.load_checkpoint()
         else:
             self.initial_global_step = 0
+            
+        if self.early_stop_steps is not None:
+            self.args.max_train_steps = self.early_stop_steps
 
         progress_bar = tqdm(
             range(0, self.args.max_train_steps),
@@ -176,6 +202,11 @@ class MAETrainer(Trainer):
                         train_losses[key] += avg_loss.item() / self.args.gradient_accumulation_steps
                     
                     self.accelerator.backward(loss['total_loss'])
+
+                    # Add gradient clipping here
+                    if self.max_grad_norm is not None:
+                        self.accelerator.clip_grad_norm_(model.parameters(), self.max_grad_norm)
+
                     optimizer.step()
                     lr_scheduler.step()
                     optimizer.zero_grad()

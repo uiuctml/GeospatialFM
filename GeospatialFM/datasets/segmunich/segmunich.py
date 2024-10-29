@@ -1,7 +1,13 @@
 import os
 import datasets
-import numpy as np
 import tifffile
+
+import pandas as pd
+import numpy as np
+
+from PIL import Image
+from datasets import load_dataset
+from torch.utils.data import Dataset
 
 all_band_names = [
         'B1',
@@ -20,9 +26,9 @@ all_band_names = [
 
 rgb_bands = ('B4', 'B3', 'B2')
 
-S2_MEAN = [752.40087073, 884.29673756, 1144.16202635, 1297.47289228, 1624.90992062, 2194.6423161, 2422.21248945, 2517.76053101, 2581.64687018, 2645.51888987, 2368.51236873, 1805.06846033]
+S2_MEAN = [752.40087073, 884.29673756, 1144.16202635, 1297.47289228, 1624.90992062, 2194.6423161, 2422.21248945, 2581.64687018, 2368.51236873, 1805.06846033]
 
-S2_STD = [1108.02887453, 1155.15170768, 1183.6292542, 1368.11351514, 1370.265037, 1355.55390699, 1416.51487101, 1474.78900051, 1439.3086061, 1582.28010962, 1455.52084939, 1343.48379601]
+S2_STD = [1108.02887453, 1155.15170768, 1183.6292542, 1368.11351514, 1370.265037, 1355.55390699, 1416.51487101, 1439.3086061, 1455.52084939, 1343.48379601]
 
 class SegMunichConfig(datasets.BuilderConfig):
     """BuilderConfig for SegMunich"""
@@ -46,8 +52,8 @@ class SegMunich(datasets.GeneratorBasedBuilder):
     spatial_resolution = 10 # TODO: not sure, make sure this is correct.
     metadata = {
         "s2c": {
-            "bands": ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B11", "B12"],
-            "channel_wv": [442.7, 492.4, 559.8, 664.6, 704.1, 740.5, 782.8, 832.8, 864.7, 945.1, 1613.7, 2202.4],
+            "bands": ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8A", "B11", "B12"],
+            "channel_wv": [442.7, 492.4, 559.8, 664.6, 704.1, 740.5, 782.8, 864.7, 1613.7, 2202.4],
             "mean": S2_MEAN,
             "std": S2_STD,
         },
@@ -75,7 +81,7 @@ class SegMunich(datasets.GeneratorBasedBuilder):
     def __init__(self, *args, **kwargs):
         config = kwargs.pop('config', None)
         config_keywords = ['data_dir', 'pad_s2']
-        self.num_channels = 12
+        self.num_channels = 10
      
         if config:
             if isinstance(config, dict):
@@ -84,7 +90,7 @@ class SegMunich(datasets.GeneratorBasedBuilder):
                         kwargs[key] = value
                         if key == "pad_s2":
                             if value:
-                                self.num_channels += 1
+                                self.num_channels += 3
             elif isinstance(config, SegMunichConfig):
                 configure = config.get_config()
                 for key, value in configure.items():
@@ -92,12 +98,22 @@ class SegMunich(datasets.GeneratorBasedBuilder):
                         kwargs[key] = value
                         if key == "pad_s2":
                             if value:
-                                self.num_channels += 1
+                                self.num_channels += 3
 
         super().__init__(*args, **kwargs)
 
         # modify metadata based on pad_s2
         if self.config.pad_s2:
+            self.metadata["s2c"]["bands"].insert(7, "B8")
+            self.metadata["s2c"]["channel_wv"].insert(7, 832.8)
+            self.metadata["s2c"]["mean"].insert(7, 0.0)
+            self.metadata["s2c"]["std"].insert(7, 0.0)
+
+            self.metadata["s2c"]["bands"].insert(9, "B9")
+            self.metadata["s2c"]["channel_wv"].insert(9, 945.1)
+            self.metadata["s2c"]["mean"].insert(9, 0.0)
+            self.metadata["s2c"]["std"].insert(9, 0.0)
+
             self.metadata["s2c"]["bands"].insert(10, "B10")
             self.metadata["s2c"]["channel_wv"].insert(10, 1373.5)
             self.metadata["s2c"]["mean"].insert(10, 0.0)
@@ -109,84 +125,104 @@ class SegMunich(datasets.GeneratorBasedBuilder):
         return datasets.DatasetInfo(
             features=datasets.Features({
                 "optical": datasets.Array3D(shape=(self.num_channels, self.HEIGHT, self.WIDTH), dtype="float32"),
-                "label": datasets.ClassLabel(names=self.labels),
+                "label": datasets.Array2D(shape=(self.HEIGHT, self.WIDTH), dtype="long"),
                 "optical_channel_wv": datasets.Sequence(datasets.Value("float32")),
                 "spatial_resolution": datasets.Value("int32"),
             }),
         )
 
     def _split_generators(self, dl_manager):
-        data_dir = dl_manager.download_and_extract("https://huggingface.co/datasets/yuxuanw8/EuroSAT/resolve/main/EuroSAT.zip") # TODO: check out the correct address for downloading and extracting
+        if self.config.data_dir is None:
+            data_dir = dl_manager.download_and_extract("https://huggingface.co/datasets/yuxuanw8/SegMunich/resolve/main/SegMunich.zip")
+        else:
+            data_dir = os.path.join(self.config.data_dir, "SegMunich")
+
+        split_file = os.path.join(data_dir, "dataset", "metadata.csv")
+        metadata = pd.read_csv(split_file)
+
+        counts = metadata['source'].value_counts()
+        size = counts.get("train")
+        np.random.seed(42)
+        indices = np.arange(size)
+        np.random.shuffle(indices)
+        self.train_size = int(0.9 * size)
+        self.val_size = size - self.train_size
+
+        self.train_indices = indices[:self.train_size]
+        self.val_indices = indices[self.train_size:]
 
         return [
             datasets.SplitGenerator(
                 name="train",
                 gen_kwargs={
-                    "split_file": os.path.join(data_dir, "eurosat-train.txt"),
-                    "data_dir": os.path.join(data_dir, "EuroSAT"), 
+                    "split_file": split_file,
+                    "data_dir": os.path.join(data_dir, "train"), 
+                    "indices": self.train_indices,
                 },
             ),
             datasets.SplitGenerator(
                 name="val",
                 gen_kwargs={
-                    "split_file": os.path.join(data_dir, "eurosat-val.txt"),
-                    "data_dir": os.path.join(data_dir, "EuroSAT"),
+                    "split_file": split_file,
+                    "data_dir": os.path.join(data_dir, "train"),
+                    "indices": self.val_indices,
                 },
             ),
             datasets.SplitGenerator(
                 name="test",
                 gen_kwargs={
-                    "split_file": os.path.join(data_dir, "eurosat-test.txt"),
-                    "data_dir": os.path.join(data_dir, "EuroSAT"),
+                    "split_file": split_file,
+                    "data_dir": os.path.join(data_dir, "test"),
+                    "indices": None,
                 },
             )
         ]
 
-    def _generate_examples(self, split_file, data_dir):
+    def _generate_examples(self, split_file, data_dir, indices=None):
+        metadata = pd.read_csv(split_file)
+        if indices is None:
+            metadata = metadata[metadata['source'] == 'test'].reset_index(drop=True)
+        else:
+            metadata = metadata[metadata['source'] == 'train'].reset_index(drop=True)
+            metadata = metadata.iloc[indices]
 
-        """
-        split_file: the filename that lists all data points
-        data_dir: directory where the actual data is stored
-        """
+        for index, row in metadata.iterrows():
+            file_name = row.id
+            image_path = os.path.join(data_dir, "img", file_name + ".tif")
+            mask_path = os.path.join(data_dir, "label", file_name + ".tif")
 
-        """
-        data_dir should be in following structure:
-            - EuroSAT
-                - AnnualCrop
-                    - AnnualCrop_1.tif
-                    - AnnualCrop_2.tif
-                    - ...
-                - Forest
-                    - Forest_1.tif
-                    - FOrest_2.tif
-                    - ...
-                - ...
-        """
+            img = tifffile.imread(image_path) # [128, 128, 10]
+            img = np.transpose(img, (2, 0, 1)) #[10, 128, 128]
+            target = np.array(Image.open(mask_path).convert("P")) # [128, 128]    
+            target[target == 21] = 1 
+            target[target == 22] = 2
+            target[target == 23] = 3
+            target[target == 31] = 4
+            target[target == 32] = 6
+            target[target == 33] = 7
+            target[target == 41] = 8
+            target[target == 13] = 9
+            target[target == 14] = 10
 
-        with open(split_file, 'r') as f:
-            for line in f:
-                line = line.strip()
-        
-                file_name = line.replace(".jpg", ".tif")
-                label = file_name.split('_')[0]
-                data_path = os.path.join(data_dir, label, file_name)
-                
-                img = tifffile.imread(data_path)
+            sample = {
+                "optical": img,
+                "label": target,
+                "optical_channel_wv": self.metadata["s2c"]["channel_wv"],
+                "spatial_resolution": self.spatial_resolution,
+            }
 
-                # permute img from HxWxC to CxHxW
-                img = np.transpose(img, (2, 0, 1))
+            yield index, sample
 
-                # drop any channels if applicable
-                img = np.take(img, indices=self.config.band_indices, axis=0)
+class SegMunichDataset(Dataset):
+    """
+    Wrapper class
+    """
+    def __init__(self, root, split="train", config=None):
+        super().__init__()
+        self.data = load_dataset(root, split=split, config=config, trust_remote_code=True)
 
-                optical_channel_wv = np.array(self.metadata["s2c"]["channel_wv"])
-                optical_channel_wv = np.take(optical_channel_wv, indices=self.config.band_indices, axis=0)
+    def __len__(self):
+        return len(self.data)
 
-                sample = {
-                    "optical": img.astype(np.float32),
-                    "label": self.info.features['label'].str2int(label),
-                    "optical_channel_wv": np.array(optical_channel_wv),
-                    "spatial_resolution": self.spatial_resolution,
-                }
-
-                yield f"{label}_{file_name}", sample
+    def __getitem__(self, idx):
+        return self.data[idx]

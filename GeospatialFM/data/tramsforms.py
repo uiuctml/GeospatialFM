@@ -31,3 +31,15 @@ def pretrain_transform(example, crop_size=None, scale=None):
     example['radar'] = radar
 
     return example
+
+def train_classification_transform(): # TODO
+    pass
+
+def eval_classification_transform(): # TODO
+    pass
+
+def train_segmentation_transform(): # TODO
+    pass
+
+def eval_segmentation_transform(): # TODO
+    pass

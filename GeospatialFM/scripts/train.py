@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from accelerate import Accelerator
 from accelerate.utils import set_seed
 from accelerate.logging import get_logger
-from accelerate import InitProcessGroupKwargs
+from accelerate import InitProcessGroupKwargs, DistributedDataParallelKwargs
 from accelerate.utils import ProjectConfiguration
 
 import transformers
@@ -36,6 +36,7 @@ def main(args):
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
 
     kwargs = InitProcessGroupKwargs(timeout=timedelta(seconds=12000))
+    # kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
@@ -141,7 +142,8 @@ def main(args):
         data_collator=collate_fn, 
         train_dataloader=train_dataloader,
         weight_dtype=weight_dtype,
-        modal_mode=args.modal_mode
+        modal_mode=args.modal_mode,
+        early_stop_steps=args.early_stop_steps
     )
     
     if accelerator.is_main_process:
