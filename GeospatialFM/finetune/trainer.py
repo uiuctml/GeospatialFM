@@ -30,7 +30,7 @@ class MAETrainer(Trainer):
         self.initial_global_step = 0
         self.first_epoch = 0
         self.weight_dtype = weight_dtype
-        self.max_grad_norm = args.max_grad_norm  # Add this line
+        self.max_grad_norm = args.max_grad_norm 
         self.early_stop_steps = early_stop_steps
         self.train_dataloader = train_dataloader
         self.eval_dataloader = eval_dataloader
