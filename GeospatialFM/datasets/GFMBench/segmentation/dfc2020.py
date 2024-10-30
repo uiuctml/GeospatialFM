@@ -46,7 +46,7 @@ class DFC2020(datasets.GeneratorBasedBuilder):
         },
         "s1": {
             "bands": ["VV", "VH"],
-            "channel_wv": [5500, 5700],,
+            "channel_wv": [5500, 5700],
             "mean": S1_MEAN,
             "std": S1_STD   
         }
@@ -183,7 +183,7 @@ class DFC2020(datasets.GeneratorBasedBuilder):
             img_width, img_height = img.width, img.height
             assert img_width == 256 and img_height == 256
 
-            step_szie = self.patch_size - self.overlap
+            step_size = self.patch_size - self.overlap
             img_limits = product(
                 range(0, img_height - self.patch_size + 1, step_size), 
                 range(0, img_width - self.patch_size + 1, step_size)

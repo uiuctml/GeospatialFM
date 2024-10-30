@@ -7,7 +7,6 @@ import pathlib
 import rasterio
 
 import numpy as np
-import skimage.io as io
 
 from typing import Union
 from rasterio.enums import Resampling

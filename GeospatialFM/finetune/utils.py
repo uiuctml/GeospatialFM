@@ -2,8 +2,7 @@ from GeospatialFM.data import apply_transforms, pretrain_transform, multimodal_c
 from GeospatialFM.datasets.utils import get_ssl4eo_metadata, get_dataset, prepare_dataset_config
 from torch.utils.data import DataLoader
 from functools import partial
-from GeospatialFM.datasets import SSL4EODataset
-from GeospatialFM.models.task_head import UPerNet
+from GeospatialFM.models.UPerNet import UPerNet
 
 import torch.nn as nn
 
