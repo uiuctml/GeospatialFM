@@ -43,7 +43,6 @@ class EuroSATConfig(datasets.BuilderConfig):
     def get_config(self):
         config = {
             "bands": self.bands,
-            "band_indices": self.band_indices,
         }
         return config
     
@@ -201,7 +200,7 @@ class EuroSAT(datasets.GeneratorBasedBuilder):
                 img = np.take(img, indices=self.config.band_indices, axis=0)
 
                 optical_channel_wv = np.array(self.metadata["s2c"]["channel_wv"])
-                optical_channel_wv = np.take(optical_channel_wv, indices=self.config.band_indices, axis=0)
+                # optical_channel_wv = np.take(optical_channel_wv, indices=self.config.band_indices, axis=0)
 
                 sample = {
                     "optical": img.astype(np.float32),

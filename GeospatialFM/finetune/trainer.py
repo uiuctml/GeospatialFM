@@ -68,33 +68,7 @@ class MAETrainer(Trainer):
         return None
     
     def evaluate(self):
-        model, self.eval_dataloader = self.accelerator.prepare(
-            self.model, self.get_eval_dataloader()
-        )
-
-        total_batch_size = self.args.eval_batch_size * self.accelerator.num_processes
-        logger.info("***** Running training *****")
-        logger.info(f"  Num examples = {len(self.eval_dataset)}")
-        logger.info(f"  Instantaneous batch size per device = {self.args.eval_batch_size}")
-        logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
-
-        progress_bar = tqdm(
-            self.eval_dataloader,
-            desc="Eval",
-            disable=not self.accelerator.is_local_main_process,
-        )
-
-        eval_losses = defaultdict(float)
-        for batch in self.eval_dataloader:
-            with torch.no_grad():
-                loss = self.compute_loss(model, batch)
-
-                for key, value in loss.items():
-                    avg_loss = self.accelerator.gather(value.repeat(self.args.eval_batch_size)).mean()
-                    eval_losses[key] += avg_loss.item()
-
-                
-                
+        pass
 
     def train(self):
         # Prepare everything

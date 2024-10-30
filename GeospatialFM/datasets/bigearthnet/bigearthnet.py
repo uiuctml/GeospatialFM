@@ -9,10 +9,12 @@ import rasterio
 import numpy as np
 import skimage.io as io
 
-from typing import TypeAlias
+from typing import Union
 from rasterio.enums import Resampling
+from datasets import load_dataset
+from torch.utils.data import Dataset
 
-Path: TypeAlias = str | pathlib.Path
+Path = Union[str, pathlib.Path]
 
 class_sets = {
         19: [
@@ -425,3 +427,17 @@ class BigEarthNet(datasets.GeneratorBasedBuilder):
             for pair in pairs
         ]
         return folders
+    
+class BigEarthNetDataset(Dataset):
+    """
+    Wrapper class
+    """
+    def __init__(self, root, split="train", config=None):
+        super().__init__()
+        self.data = load_dataset(root, split=split, config=config, trust_remote_code=True)
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        return self.data[idx]

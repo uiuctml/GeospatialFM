@@ -3,6 +3,7 @@ from GeospatialFM.datasets.utils import get_ssl4eo_metadata, get_dataset, prepar
 from torch.utils.data import DataLoader
 from functools import partial
 from GeospatialFM.datasets import SSL4EODataset
+from GeospatialFM.models.task_head import UPerNet
 
 import torch.nn as nn
 
@@ -17,8 +18,20 @@ class SpatialSpectralLowRankViTWithTaskHead(nn.Module):
         x = self.task_head(x)
         return x
 
-def get_task_head(model_config): # TODO
-    pass
+def get_task_head(task_type, **kwargs): # TODO
+    print(f"Constructing {task_type} head...")
+    in_features = kwargs.pop("in_features", 768)
+    num_classes = kwargs.pop("num_classes",2)
+    use_bias = kwargs.pop("use_bias", True)
+    kernel_size = kwargs.pop("kernel_size", 256)
+    image_size = kwargs.pop("image_size", 128)
+    if task_type == 'classification' or task_type == 'multilabel':
+        head = nn.Linear(in_features=in_features, out_features=num_classes, bias=use_bias)
+    elif task_type == 'segmentation':
+        head = UPerNet(num_classes, kernel_size=kernel_size, image_size=image_size)
+    else:
+        raise NotImplementedError
+    return head
 
 def get_dataloader(args):
     dataset_config = prepare_dataset_config(args)
