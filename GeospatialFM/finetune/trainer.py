@@ -105,6 +105,7 @@ class MAETrainer(Trainer):
             # Only show the progress bar once on each machine.
             disable=not self.accelerator.is_local_main_process,
         )
+        best_results = None
         
         for epoch in range(self.first_epoch, self.args.num_train_epochs):
             train_losses = defaultdict(float)
@@ -134,10 +135,12 @@ class MAETrainer(Trainer):
 
                     if self.args.eval_strategy == "steps" and self.global_step % self.args.eval_steps == 0:
                         # TODO: implement evaluation
-                        self.evaluate()
+                        results = self.evaluate()
                         # self.accelerator.log(eval_losses, step=self.global_step)
                         # TODO: save best model
-                        self.save_checkpoint()
+                        if best_results is None or results['total_loss'] < best_results['total_loss']:
+                            best_results = results
+                            self.save_checkpoint()
 
                 logs = {"step_loss": loss['total_loss'].detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
                 progress_bar.set_postfix(**logs)
