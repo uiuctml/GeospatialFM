@@ -1,6 +1,7 @@
 import os
 import torch
 import math
+import datasets
 from transformers import Trainer, get_scheduler
 from typing import Dict
 from tqdm import tqdm
@@ -14,7 +15,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 class MAETrainer(Trainer):
-    def __init__(self, model, args, train_dataset, eval_dataset, optimizers, data_collator, accelerator, weight_dtype, train_dataloader, eval_dataloader, early_stop_steps=None):
+    def __init__(self, model, args, train_dataset, eval_dataset, optimizers, data_collator, accelerator, weight_dtype, train_dataloader, eval_dataloader, modal_mode, early_stop_steps=None):
         super().__init__(
             model=model,
             args=args,
@@ -33,6 +34,7 @@ class MAETrainer(Trainer):
         self.early_stop_steps = early_stop_steps
         self.train_dataloader = train_dataloader
         self.eval_dataloader = eval_dataloader
+        self.modal_mode = modal_mode
         
     def compute_loss(self, model, inputs, return_outputs=False, mask_ratio=None, channel_mask_ratio=None):
         optical = inputs.get("optical").to(self.accelerator.device, dtype=self.weight_dtype)
@@ -66,8 +68,7 @@ class MAETrainer(Trainer):
         return None
     
     def evaluate(self):
-        # TODO: implement evaluation
-        return None
+        pass
 
     def train(self):
         # Prepare everything
@@ -200,3 +201,13 @@ class MAETrainer(Trainer):
             self.global_step = int(path.split("-")[1])
             self.initial_global_step = self.global_step
             self.first_epoch = self.global_step // self.num_update_steps_per_epoch
+    
+    def get_train_dataloader(self):
+        # Set training mode to True before training
+        self.data_collator.set_training_mode(training_mode=True)
+        return super().get_train_dataloader()
+
+    def get_eval_dataloader(self, eval_dataset=None):
+        # Set training mode to False before evaluation
+        self.data_collator.set_training_mode(training_mode=False)
+        return super().get_eval_dataloader(eval_dataset)

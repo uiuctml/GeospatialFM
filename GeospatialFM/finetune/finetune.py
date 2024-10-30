@@ -98,7 +98,8 @@ def main(args):
                 )
 
     # Load dataset
-    dataset, collate_fn, dataloader = get_dataloader(args)
+    # dataset, collate_fn, dataloader = get_dataloader(args)
+    dataset, dataloader, data_collator = get_dataloader(args)
 
     # Scheduler and math around the number of training steps.
     num_update_steps_per_epoch = math.ceil(len(dataloader['train']) / args.gradient_accumulation_steps)
@@ -126,7 +127,8 @@ def main(args):
         eval_dataset=dataset['val'],
         optimizers=(optimizer, lr_scheduler),
         accelerator=accelerator, 
-        data_collator=collate_fn, 
+        # data_collator=collate_fn, 
+        data_collator=data_collator,
         train_dataloader=dataloader['train'],
         eval_dataloader=dataloader['val'],
         weight_dtype=weight_dtype,

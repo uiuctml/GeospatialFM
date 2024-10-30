@@ -1,8 +1,9 @@
-from GeospatialFM.data import apply_transforms, pretrain_transform, multimodal_collate_fn
-from GeospatialFM.datasets.utils import get_ssl4eo_metadata
+from GeospatialFM.data import apply_transforms, pretrain_transform, multimodal_collate_fn, DataCollator, train_classification_transform, eval_classification_transform, train_segmentation_transform, eval_segmentation_transform
+from GeospatialFM.datasets.utils import get_ssl4eo_metadata, get_dataset, prepare_dataset_config
 from torch.utils.data import DataLoader
 from functools import partial
 from GeospatialFM.datasets import SSL4EODataset
+from GeospatialFM.models.task_head import UPerNet
 
 import torch.nn as nn
 
@@ -17,25 +18,71 @@ class SpatialSpectralLowRankViTWithTaskHead(nn.Module):
         x = self.task_head(x)
         return x
 
-def get_task_head(model_config):
-    pass
+def get_task_head(task_type, **kwargs): # TODO
+    print(f"Constructing {task_type} head...")
+    in_features = kwargs.pop("in_features", 768)
+    num_classes = kwargs.pop("num_classes",2)
+    use_bias = kwargs.pop("use_bias", True)
+    kernel_size = kwargs.pop("kernel_size", 256)
+    image_size = kwargs.pop("image_size", 128)
+    if task_type == 'classification' or task_type == 'multilabel':
+        head = nn.Linear(in_features=in_features, out_features=num_classes, bias=use_bias)
+    elif task_type == 'segmentation':
+        head = UPerNet(num_classes, kernel_size=kernel_size, image_size=image_size)
+    else:
+        raise NotImplementedError
+    return head
 
 def get_dataloader(args):
-    metadata = get_ssl4eo_metadata()
+    dataset_config = prepare_dataset_config(args)
+    dataset, metadata = get_dataset(args=args, config=dataset_config)
     optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"]
     radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"]
-    
-    dataset = dict(train=SSL4EODataset(root=args.data_dir))
+
     standard_transform = partial(apply_transforms, optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, use_8bit=args.use_8bit)
-    collate_fn = partial(multimodal_collate_fn, transform=pretrain_transform, normalization=standard_transform)
     
+    assert args.task_type in ["classification", "multilabel", "segmentation"], f"invalid task type: {args.task_type}"
+    train_transform = train_classification_transform if args.task_type in ["classification", "multilabel"] else train_segmentation_transform
+    eval_transform = eval_classification_transform if args.task_type in ["classification", "multilabel"] else eval_segmentation_transform
+
+    train_collate_fn = partial(multimodal_collate_fn, transform=train_transform, normalization=standard_transform)
+    eval_collate_fn = partial(multimodal_collate_fn, transform=eval_transform, normalization=standard_transform)
+
     train_dataloader = DataLoader(
-            dataset['train'],
-            batch_size = args.train_batch_size,
-            collate_fn=collate_fn,
-            num_workers = args.dataloader_num_workers,
-            pin_memory = args.dataloader_pin_memory,
-            shuffle=True
-        )
-    
-    return dataset, collate_fn, train_dataloader
+        dataset['train'],
+        batch_size=args.train_batch_size,
+        collate_fn=train_collate_fn,
+        num_workers = args.dataloader_num_workers,
+        pin_memory = args.dataloader_pin_memory,
+        shuffle=True,
+    )
+    eval_dataloader = DataLoader(
+        dataset['val'],
+        batch_size=args.eval_batch_size,
+        collate_fn=eval_collate_fn,
+        num_workers = args.dataloader_num_workers,
+        pin_memory = args.dataloader_pin_memory,
+        shuffle=False,
+    )
+
+    test_dataloader = DataLoader(
+        dataset['test'],
+        batch_size=args.eval_batch_size,
+        collate_fn=eval_collate_fn,
+        num_workers = args.dataloader_num_workers,
+        pin_memory = args.dataloader_pin_memory,
+        shuffle=False,
+    )
+
+    dataloader = {
+        "train": train_dataloader,
+        "val": eval_dataloader,
+        "test": test_dataloader,
+    }
+
+    data_collator = DataCollator(
+        collate_fn_train=train_collate_fn,
+        collate_fn_eval=eval_collate_fn,
+    )
+
+    return dataset, dataloader, data_collator # dataloader may be redundant

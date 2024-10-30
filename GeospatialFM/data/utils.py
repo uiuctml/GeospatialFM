@@ -93,3 +93,17 @@ def multimodal_collate_fn(batch, transform=None, random_crop=True, normalization
         'radar_channel_wv': radar_channel_wv,
         'spatial_resolution': spatial_resolution
     }
+
+class DataCollator:
+    def __init__(self, collate_fn_train, collate_fn_eval):
+        self.collate_fn_train = collate_fn_train
+        self.collate_fn_eval = collate_fn_eval
+    
+    def __call__(self, batch):
+        if self.training_mode:
+            return self.collate_fn_train(batch)
+        else:
+            return self.collate_fn_eval(batch)
+
+    def set_training_mode(self, training_mode=True):
+        self.training_mode = training_mode
