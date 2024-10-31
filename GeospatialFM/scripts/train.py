@@ -147,7 +147,7 @@ def main(args):
     )
     
     if accelerator.is_main_process:
-        accelerator.init_trackers("gfm-pretraining", config=vars(args), init_kwargs={"wandb": {"name": args.run_name, "dir": args.wandb_dir}})
+        accelerator.init_trackers("less-pretraining", config=vars(args), init_kwargs={"wandb": {"name": args.run_name, "dir": args.wandb_dir}})
     
     trainer.train()
     
