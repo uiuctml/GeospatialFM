@@ -21,8 +21,7 @@ from transformers import get_scheduler
 from transformers import TrainingArguments
 from datasets import load_dataset
 
-from GeospatialFM.datasets.ssl4eo.utils import get_ssl4eo_metadata
-from GeospatialFM.datasets.ssl4eo import SSL4EODataset
+from GeospatialFM.datasets.ssl4eo import get_ssl4eo_metadata, SSL4EODataset
 from GeospatialFM.data_process import apply_normalization, pretrain_transform, multimodal_collate_fn
 from GeospatialFM.models import SpatialSpectralLowRankViTConfig, SpatialSpectralMAEViT
 from GeospatialFM.scripts.trainer import MAETrainer
