@@ -171,7 +171,7 @@ all_s2_band_names = (
 all_band_names = all_s1_band_names + all_s2_band_names
 
 all_s2_band_wv = [492.4, 559.8, 664.6, 704.1, 740.5, 782.8, 832.8, 864.7, 1613.7, 2202.4]
-all_s1_band_wv = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+all_s1_band_wv = [5200, 5300, 5400, 5500, 5600, 5700, 5800, 5900] # dummy values
 
 rgb_bands = ('S2_B04', 'S2_B03', 'S2_B02')
 

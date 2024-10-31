@@ -3,53 +3,30 @@ import datasets
 import numpy as np
 import tifffile
 
-from typing import ClassVar
-from datasets import load_dataset
-from torch.utils.data import Dataset
-
-all_band_names = (
-        'B1',
-        'B2',
-        'B3',
-        'B4',
-        'B5',
-        'B6',
-        'B7',
-        'B8',
-        'B8A',
-        'B9',
-        'B10',
-        'B11',
-        'B12',
-    )
-
+all_band_names = ('B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12')
 rgb_bands = ('B4', 'B3', 'B2')
 
 S2_MEAN = [1354.40546513, 1118.24399958, 1042.92983953, 947.62620298, 1199.47283961, 1999.79090914, 2369.22292565, 2296.82608323, 732.08340178, 12.11327804, 1819.01027855, 1118.92391149, 2594.14080798]
-
 S2_STD = [245.71762908, 333.00778264, 395.09249139, 593.75055589, 566.4170017, 861.18399006, 1086.63139075, 1117.98170791, 404.91978886, 4.77584468, 1002.58768311, 761.30323499, 1231.58581042]
 
 class EuroSATConfig(datasets.BuilderConfig):
-    BAND_SETS: ClassVar[dict[str, tuple[str, ...]]] = {
+    BAND_SETS = {
         'all': all_band_names,
         'rgb': rgb_bands,
     }
-    """BuilderConfig for EuroSAT"""
+
     def __init__(self, bands=BAND_SETS['all'], **kwargs):
         super(EuroSATConfig, self).__init__(**kwargs)
         self.bands = bands
         self.band_indices = [int(all_band_names.index(b)) for b in bands if b in all_band_names]
     
     def get_config(self):
-        config = {
-            "bands": self.bands,
-        }
-        return config
+        return {'bands': self.bands}
     
     def __str__(self):
         return f"EuroSATConfig: bands={self.bands}, band_indices={self.band_indices}"
 
-class EuroSAT(datasets.GeneratorBasedBuilder):
+class EuroSATDataset(datasets.GeneratorBasedBuilder):
     """
     Config Args:
         - bands
@@ -86,51 +63,43 @@ class EuroSAT(datasets.GeneratorBasedBuilder):
 
     def __init__(self, *args, **kwargs):
         config = kwargs.pop('config', None)
-        config_keywords = ['bands']
-    
         if config:
             if isinstance(config, dict):
-                for key, value in config.items():
-                    if key in config_keywords:
-                        kwargs[key] = value
-                        if key in ['bands']:
-                            kwargs['band_indices'] = [int(all_band_names.index(b)) for b in kwargs['bands'] if b in all_band_names]
+                bands = config.get('bands')
             elif isinstance(config, EuroSATConfig):
-                configure = config.get_config()
-                for key, value in configure.items():
-                    if key in config_keywords:
-                        kwargs[key] = value
-                        if key in ['bands']:
-                            kwargs['band_indices'] = [int(all_band_names.index(b)) for b in kwargs['bands'] if b in all_band_names]
+                bands = config.get_config().get('bands')
+            
+            if bands:
+                kwargs['bands'] = bands
+                kwargs['band_indices'] = [all_band_names.index(b) for b in bands if b in all_band_names]
 
-        self.height = self.HEIGHT
-        self.width = self.WIDTH
+            
+        self.height, self.width = self.HEIGHT, self.WIDTH
         self.labels = [
-          "AnnualCrop",
-          "Forest", 
-          "HerbaceousVegetation",
-          "Highway",
-          "Industrial",
-          "Pasture",
-          "PermanentCrop",
-          "Residential",
-          "River", 
-          "SeaLake",
+            "AnnualCrop", "Forest", "HerbaceousVegetation", "Highway",
+            "Industrial", "Pasture", "PermanentCrop", "Residential",
+            "River", "SeaLake",
         ]
+
         super().__init__(*args, **kwargs)
         self.num_channels = len(self.config.band_indices)
         
-        for key in self.metadata["s2c"].keys():
-            self.metadata["s2c"][key] = [elem for i, elem in enumerate(self.metadata["s2c"][key]) if i in self.config.band_indices]
+        self.metadata["s2c"] = {
+            key: [elem for i, elem in enumerate(value) 
+                 if i in self.config.band_indices]
+            for key, value in self.metadata["s2c"].items()
+        }   
 
         print(self.config)
 
     def _info(self):
         return datasets.DatasetInfo(
             features=datasets.Features({
+                "radar": datasets.Array3D(shape=(2, self.height, self.width), dtype="float32"),  # Assuming radar has 2 channels (VV, VH)
                 "optical": datasets.Array3D(shape=(len(self.config.band_indices), self.height, self.width), dtype="float32"),
                 "label": datasets.ClassLabel(names=self.labels),
                 "optical_channel_wv": datasets.Sequence(datasets.Value("float32")),
+                "radar_channel_wv": datasets.Sequence(datasets.Value("float32")),
                 "spatial_resolution": datasets.Value("int32"),
             }),
         )
@@ -185,42 +154,27 @@ class EuroSAT(datasets.GeneratorBasedBuilder):
 
         with open(split_file, 'r') as f:
             for line in f:
-                line = line.strip()
-        
-                file_name = line.replace(".jpg", ".tif")
+                file_name = line.strip().replace(".jpg", ".tif")
                 label = file_name.split('_')[0]
                 data_path = os.path.join(data_dir, label, file_name)
                 
+                # read the image
                 img = tifffile.imread(data_path)
 
                 # permute img from HxWxC to CxHxW
                 img = np.transpose(img, (2, 0, 1))
-
                 # drop any channels if applicable
                 img = np.take(img, indices=self.config.band_indices, axis=0)
 
                 optical_channel_wv = np.array(self.metadata["s2c"]["channel_wv"])
-                # optical_channel_wv = np.take(optical_channel_wv, indices=self.config.band_indices, axis=0)
 
                 sample = {
+                    "radar": None,
                     "optical": img.astype(np.float32),
                     "label": self.info.features['label'].str2int(label),
                     "optical_channel_wv": np.array(optical_channel_wv),
+                    "radar_channel_wv": None,
                     "spatial_resolution": self.spatial_resolution,
                 }
 
                 yield f"{label}_{file_name}", sample
-
-class EuroSATDataset(Dataset):
-    """
-    Wrapper class
-    """
-    def __init__(self, root, split="train", config=None):
-        super().__init__()
-        self.data = load_dataset(root, split=split, config=config, trust_remote_code=True)
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        return self.data[idx]

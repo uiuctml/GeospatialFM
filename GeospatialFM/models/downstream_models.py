@@ -102,7 +102,6 @@ class LESSWithProjection(PreTrainedModel):
 
         return {"logits": logits} if self.config.return_dict else logits
 
-
 class LESSWithUPerNet(PreTrainedModel):
     def __init__(self, config):
         super().__init__(config)

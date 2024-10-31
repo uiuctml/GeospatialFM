@@ -25,6 +25,19 @@ from GeospatialFM.finetune.utils import get_loss_fn, get_metric, get_task_model
 
 logger = get_logger(__name__)
 
+def compute_metrics(eval_pred: EvalPrediction) -> Dict:
+    """
+    Compute metrics for evaluation.
+    Modify this function based on your specific task (classification, regression, etc.)
+    """
+    predictions = eval_pred.predictions
+    labels = eval_pred.label_ids
+    
+    # Example for classification task
+    predictions = np.argmax(predictions, axis=1)
+    accuracy = (predictions == labels).mean()
+    return {"accuracy": accuracy}
+
 def main(args):    
     # Set up wandb first if using it
     if args.report_to == "wandb":

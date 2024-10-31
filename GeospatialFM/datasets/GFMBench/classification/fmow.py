@@ -10,21 +10,7 @@ from typing import ClassVar
 from typing import Optional
 from torchvision import transforms
 
-all_band_names = (
-        'B1',
-        'B2',
-        'B3',
-        'B4',
-        'B5',
-        'B6',
-        'B7',
-        'B8',
-        'B8A',
-        'B9',
-        'B10',
-        'B11',
-        'B12',
-    )
+all_band_names = ('B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12')
 
 rgb_bands = ('B4', 'B3', 'B2')
 
@@ -146,7 +132,7 @@ class FMoW(datasets.GeneratorBasedBuilder):
         return datasets.DatasetInfo(
             features=datasets.Features({
                 "optical": datasets.Array3D(shape=(len(all_band_names) - len(self.config.dropped_bands), self.height, self.width), dtype="float32"),
-                "label": datasets.Value("float32")
+                "label": datasets.Value("float32"),
                 "optical_channel_wv": datasets.Sequence(datasets.Value("float32")),
                 "spatial_resolution": datasets.Value("int32"),
             }),

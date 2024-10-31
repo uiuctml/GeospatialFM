@@ -1,5 +1,5 @@
-from .classification import EuroSAT, BigEarthNet, So2Sat, FMoW, EuroSATDataset, BigEarthNetDataset, So2SatDataset, FMoWDataset
-from .segmentation import SegMunich, DFC2020, MARIDA, SegMunichDataset, DFC2020Dataset, MARIDADataset
+from .classification import EuroSATConfig, BigEarthNetConfig, So2SatConfig, FMoWConfig, EuroSATDataset, BigEarthNetDataset, So2SatDataset, FMoWDataset
+from .segmentation import SegMunichConfig, DFC2020Config, MARIDAConfig, SegMunichDataset, DFC2020Dataset, MARIDADataset
 
 import os
 
@@ -23,30 +23,27 @@ DATASET = {
     "MARIDA": MARIDADataset,
 }
 
-METADATA = {
-    "EuroSAT": EuroSAT.metadata,
-    "BigEarthNet": BigEarthNet.metadata,
-    "So2Sat": So2Sat.metadata,
-    "FMoW": FMoW.metadata,
-    "SegMunich": SegMunich.metadata,
-    "DFC2020": DFC2020.metadata,
-    "MARIDA": MARIDA.metadata,
+CONFIG = {
+    "EuroSAT": EuroSATConfig,
+    "BigEarthNet": BigEarthNetConfig,
+    "So2Sat": So2SatConfig,
+    "FMoW": FMoWConfig,
+    "SegMunich": SegMunichConfig,
+    "DFC2020": DFC2020Config,
+    "MARIDA": MARIDAConfig,
 }
 
 def get_metadata(dataset_name):
-    return METADATA[dataset_name]
+    return DATASET[dataset_name].metadata
 
 def get_dataset(args, train_transform, eval_transform):
     dataset_path = DATASET_PATH[args.dataset_name]
     dataset_path = os.path.join(args.data_dir, dataset_path)
     dataset_class = DATASET[args.dataset_name]
-    config = get_dataset_config(args)
-
+    config = CONFIG[args.dataset_name]() # TODO: what to pass in?
+    
     dataset_dict = {}
     for split in ["train", "val", "test"]:
         transform = train_transform if split == "train" else eval_transform
         dataset_dict[split] = dataset_class(root=dataset_path, split=split, config=config).with_transform(transform)
     return dataset_dict
-
-def get_dataset_config(args):
-    pass

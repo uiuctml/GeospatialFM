@@ -1,39 +1,78 @@
-from GeospatialFM.models.UPerNet import UPerNet
+from GeospatialFM.models.downstream_models import LESSWithProjectionConfig, LESSWithUPerNetConfig, LESSWithProjection, LESSWithUPerNet
 import torch.nn as nn
 import torch
+from functools import partial
+from typing import Dict
+import numpy as np
+from transformers import EvalPrediction
+from sklearn.metrics import accuracy_score, average_precision_score, jaccard_score
 
-class SpatialSpectralLowRankViTWithTaskHead(nn.Module):
-    def __init__(self, encoder, task_head):
-        super().__init__()
-        self.encoder = encoder
-        self.task_head = task_head
-
-    def forward(self, optical, radar, optical_channel_wv, radar_channel_wv, spatial_resolution=10):
-        # Pass all inputs to the encoder
-        features = self.encoder(
-            optical=optical,
-            radar=radar,
-            optical_channel_wv=optical_channel_wv,
-            radar_channel_wv=radar_channel_wv,
-            spatial_resolution=spatial_resolution
-        )
-        # Pass encoder output through task head
-        outputs = self.task_head(features)
-        
-        return outputs
-
-def get_task_head(task_type, **kwargs): # TODO
-    print(f"Constructing {task_type} head...")
-    in_features = kwargs.pop("in_features", 768)
-    num_classes = kwargs.pop("num_classes",2)
-    use_bias = kwargs.pop("use_bias", True)
-    kernel_size = kwargs.pop("kernel_size", 256)
-    image_size = kwargs.pop("image_size", 128)
-    if task_type == 'classification' or task_type == 'multilabel':
-        head = nn.Linear(in_features=in_features, out_features=num_classes, bias=use_bias)
-    elif task_type == 'segmentation':
-        head = UPerNet(num_classes, kernel_size=kernel_size, image_size=image_size)
+def get_task_model(task_type, num_classes=None, image_size=None):
+    if task_type == "classification" or task_type == "multilabel":
+        assert num_classes is not None
+        config = LESSWithProjectionConfig(num_labels=num_classes)
+        model = LESSWithProjection(config)
+    elif task_type == "segmentation":
+        assert num_classes is not None and image_size is not None
+        config = LESSWithUPerNetConfig(num_labels=num_classes, image_size=image_size)
+        model = LESSWithUPerNet(config)
     else:
         raise NotImplementedError
-    return head
+    return model
 
+def custom_loss_function(outputs, labels, loss_fct):
+    """
+    Custom loss function.
+    Modify this function based on your specific task.
+    """
+    logits = outputs.get("logits")
+    loss = loss_fct(logits.view(-1, logits.size(-1)), labels.view(-1))
+    return loss
+
+def get_loss_fn(task_type):
+    if task_type == "classification" or task_type == "segmentation":
+        loss_fct = torch.nn.CrossEntropyLoss()
+    elif task_type == "multilabel":
+        loss_fct = torch.nn.MultiLabelSoftMarginLoss()
+    else:
+        raise NotImplementedError
+    
+    loss_fn = partial(custom_loss_function, loss_fct=loss_fct)
+    return loss_fn
+
+def compute_metrics_acc(eval_pred: EvalPrediction) -> Dict:
+    predictions = eval_pred.predictions
+    labels = eval_pred.label_ids
+
+    predictions = np.argmax(predictions, axis=1)
+    accuracy = accuracy_score(labels.flatten(), predictions.flatten())
+
+    return {"accuracy": accuracy}
+
+def compute_metrics_mAP(eval_pred: EvalPrediction) -> Dict:
+    predictions = eval_pred.predictions
+    labels = eval_pred.label_ids
+
+    macro_mAP = average_precision_score(labels, predictions, average="macro")
+    micro_mAP = average_precision_score(labels, predictions, average="micro")
+
+    return {"macro_mAP": macro_mAP, "micro_mAP": micro_mAP}
+
+def compute_metrics_IoU(eval_pred: EvalPrediction) -> Dict:
+    predictions = eval_pred.predictions
+    labels = eval_pred.label_ids
+
+    predictions = np.argmax(predictions, axis=1)
+    IoU = jaccard_score(labels.flatten(), predictions.flatten(), average="macro")
+
+    return {"IoU": IoU}
+
+def get_metric(task_type):
+    if task_type == "classification":
+        return compute_metrics_acc
+    elif task_type == "multilabel":
+        return compute_metrics_mAP
+    elif task_type == "segmentation":
+        return compute_metrics_IoU
+    else:
+        raise NotImplementedError
