@@ -6,8 +6,8 @@ def parse_args():
 
     # Dataset arguments
     parser.add_argument("--dataset_name", type=str, required=True, help="Name of the dataset")
-    parser.add_argument("--task_type", type=str, required=True, help="Task type")
-    parser.add_argument("--data_dir", type=str, required=True, help="Path to the SSL4EO dataset")
+    parser.add_argument("--task_type", type=str, choices=["classification", "multilabel", "segmentation"], required=True, help="Task type")
+    parser.add_argument("--data_dir", type=str, required=True, help="Path to the GFMBench")
     parser.add_argument("--dataloader_num_workers", type=int, default=4, help="Number of subprocesses to use for data loading")
     parser.add_argument("--dataloader_pin_memory", action="store_true", help="Whether to pin memory for data loading")
     parser.add_argument("--use_8bit", action="store_true", help="Whether to use 8-bit data loading")
@@ -59,6 +59,7 @@ def parse_args():
     parser.add_argument("--output_dir", type=str, default="output", help="Directory to save model checkpoints and logs")
     parser.add_argument("--logging_dir", type=str, default="logs", help="Directory to save logs")
     parser.add_argument("--report_to", type=str, default="wandb", help="Where to report results to (tensorboard, wandb, etc.)")
+    parser.add_argument("--save_strategy", type=str, default="epoch", help="Save strategy")
     parser.add_argument("--save_steps", type=int, default=500, help="Save checkpoint every X updates steps")
     parser.add_argument("--save_total_limit", type=int, default=None, help="If set, deletes the older checkpoints in output_dir")
     parser.add_argument("--wandb_dir", type=str, default="wandb", help="Directory to save wandb logs")

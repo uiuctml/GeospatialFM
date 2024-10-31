@@ -51,7 +51,7 @@ class FMoWConfig(datasets.BuilderConfig):
 
     def get_config(self):
         config = {
-            "data_dir": self.data_dir
+            "data_dir": self.data_dir,
             "img_size": self.img_size,
             "dropped_bands": self.dropped_bands,
             "dropped_bands_indices": self.dropped_bands_indices,

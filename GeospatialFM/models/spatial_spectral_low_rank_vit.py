@@ -63,6 +63,7 @@ class SpatialSpectralLowRankViTConfig(PretrainedConfig):
         self.return_dict = return_dict
         self.mask_ratio = mask_ratio
         self.channel_mask_ratio = channel_mask_ratio
+        self.pretrain = True
 
         # Decoder-specific attributes
         self.decoder_embed_dim = decoder_embed_dim
@@ -233,7 +234,7 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         pos_chan_embed = pos_chan_embed.repeat(B, 1, 1, 1)
         
         # Apply masks after positional embedding
-        if self.training:
+        if self.training and self.config.pretrain:
             # mask the channel
             x_ = x[:, 1:, :, :] # B C HW+1 D
             pos_chan_embed_ = pos_chan_embed[:, 1:, :, :]
@@ -274,7 +275,7 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         cls_token = x[:, 0, 0]
         patch_tokens = x[:, 1:, 1:] # B N+1 L+1 D -> B N L D
 
-        if self.training:
+        if self.training and self.config.pretrain:
             return x + dummy_loss, channel_mask, channel_ids_restore, pos_mask, pos_ids_restore
         elif self.config.return_dict:
             return BaseModelOutput(

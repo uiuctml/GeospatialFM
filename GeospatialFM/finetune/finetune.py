@@ -6,45 +6,62 @@ from datetime import timedelta
 import math
 
 import torch
-
-from accelerate import Accelerator
-from accelerate.utils import set_seed
 from accelerate.logging import get_logger
-from accelerate import InitProcessGroupKwargs, DistributedDataParallelKwargs
-from accelerate.utils import ProjectConfiguration
 
 import transformers
 from transformers import is_wandb_available
-from transformers import get_scheduler
-from transformers import TrainingArguments
-from datasets import load_dataset
+from transformers import TrainingArguments, Trainer
+from typing import Dict
+import numpy as np
+from transformers import EvalPrediction
+
+from functools import partial
 
 from GeospatialFM.models import SpatialSpectralLowRankViTConfig, SpatialSpectralLowRankViTEncoder
-from GeospatialFM.finetune.trainer import MAETrainer
 from GeospatialFM.finetune.args import parse_args
-from GeospatialFM.finetune.utils import get_task_head, SpatialSpectralLowRankViTWithTaskHead, get_dataloader
+from GeospatialFM.finetune.utils import get_task_head, SpatialSpectralLowRankViTWithTaskHead
+from GeospatialFM.datasets.GFMBench.utils import get_dataset, get_metadata
+from GeospatialFM.data_process.tramsforms import get_transform
+from GeospatialFM.data_process.collate_func import single_modal_collate_fn, apply_normalization
+
 
 logger = get_logger(__name__)
 
+def compute_metrics(eval_pred: EvalPrediction) -> Dict:
+    """
+    Compute metrics for evaluation.
+    Modify this function based on your specific task (classification, regression, etc.)
+    """
+    predictions = eval_pred.predictions
+    labels = eval_pred.label_ids
+    
+    # Example for classification task
+    predictions = np.argmax(predictions, axis=1)
+    accuracy = (predictions == labels).mean()
+    return {"accuracy": accuracy}
+
+def custom_loss_function(outputs, labels):
+    """
+    Custom loss function.
+    Modify this function based on your specific task.
+    """
+    logits = outputs.get("logits")
+    loss_fct = torch.nn.CrossEntropyLoss()
+    loss = loss_fct(logits.view(-1, logits.size(-1)), labels.view(-1))
+    return loss
+
 def main(args):    
-    # Set up accelerator
-    logging_dir = Path(args.output_dir, args.logging_dir)
-    accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
-
-    kwargs = InitProcessGroupKwargs(timeout=timedelta(seconds=12000))
-    # kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
-    accelerator = Accelerator(
-        gradient_accumulation_steps=args.gradient_accumulation_steps,
-        mixed_precision=args.mixed_precision,
-        log_with=args.report_to,
-        project_config=accelerator_project_config,
-        kwargs_handlers=[kwargs]
-    )
-
+    # Set up wandb first if using it
     if args.report_to == "wandb":
         if not is_wandb_available():
             raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
-            import wandb
+        import wandb
+        wandb.init(
+            project=f"gfm-{args.dataset_name}",
+            name=args.run_name,
+            dir=args.wandb_dir,
+            config=vars(args)
+        )
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
@@ -52,22 +69,10 @@ def main(args):
         datefmt="%m/%d/%Y %H:%M:%S",
         level=logging.INFO,
     )
-    logger.info(accelerator.state, main_process_only=False)
-    if accelerator.is_local_main_process:
-        # datasets.utils.logging.set_verbosity_warning()
-        transformers.utils.logging.set_verbosity_warning()
-    else:
-        # datasets.utils.logging.set_verbosity_error()
-        transformers.utils.logging.set_verbosity_error()
-
-    # If passed along, set the training seed now.
-    if args.seed is not None:
-        set_seed(args.seed)
 
     # Handle the repository creation
-    if accelerator.is_main_process:
-        if args.output_dir is not None:
-            os.makedirs(args.output_dir, exist_ok=True)
+    if args.output_dir is not None:
+        os.makedirs(args.output_dir, exist_ok=True)
                 
     # Initialize model
     model_config = SpatialSpectralLowRankViTConfig(**vars(args))
@@ -75,13 +80,6 @@ def main(args):
     task_head = get_task_head(args.task_type)
     model = SpatialSpectralLowRankViTWithTaskHead(encoder, task_head)
     
-    weight_dtype = torch.float32
-    if accelerator.mixed_precision == "fp16":
-        weight_dtype = torch.float16
-    elif accelerator.mixed_precision == "bf16":
-        weight_dtype = torch.bfloat16
-        
-    model.to(accelerator.device, dtype=weight_dtype)
     if args.freeze_encoder:
         for param in model.encoder.parameters():
             param.requires_grad = False
@@ -89,57 +87,57 @@ def main(args):
     if args.gradient_checkpointing:
         model.gradient_checkpointing_enable()
 
-    # Initialize optimizer
-    optimizer = torch.optim.AdamW(model.parameters(),       
-                    lr=args.learning_rate,
-                    betas=(args.adam_beta1, args.adam_beta2),
-                    weight_decay=args.adam_weight_decay,
-                    eps=args.adam_epsilon,
-                )
-
     # Load dataset
-    # dataset, collate_fn, dataloader = get_dataloader(args)
-    dataset, dataloader, data_collator = get_dataloader(args)
-
-    # Scheduler and math around the number of training steps.
-    num_update_steps_per_epoch = math.ceil(len(dataloader['train']) / args.gradient_accumulation_steps)
-    args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
-    lr_scheduler = get_scheduler(
-        args.lr_scheduler,
-        optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps,
-        num_training_steps=args.max_train_steps,
-    )
+    metadata = get_metadata(args.dataset_name)
     
-    # Create TrainingArguments
+    optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"]
+    radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"]
+    
+    standard_transform = partial(apply_normalization, optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, use_8bit=args.use_8bit)
+    collate_fn = partial(single_modal_collate_fn, normalization=standard_transform)
+    
+    train_transform, eval_transform = get_transform(args.task_type)
+    dataset = get_dataset(args, train_transform, eval_transform)
+
+    # Create TrainingArguments with evaluation settings
     training_args = TrainingArguments(
         **{k: v for k, v in vars(args).items() if k in TrainingArguments.__dataclass_fields__},
         per_device_train_batch_size=args.train_batch_size,
+        per_device_eval_batch_size=args.eval_batch_size,
         full_determinism=False,
         dispatch_batches=None,
-        # deepspeed_plugin=None 
+        fp16=(args.mixed_precision == "fp16"),
+        bf16=(args.mixed_precision == "bf16"),
+        load_best_model_at_end=True,  
+        greater_is_better=True,
+        # logging_strategy="no"
     )
     
-    trainer = MAETrainer(
+    trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=dataset['train'],
         eval_dataset=dataset['val'],
-        optimizers=(optimizer, lr_scheduler),
-        accelerator=accelerator, 
-        # data_collator=collate_fn, 
-        data_collator=data_collator,
-        train_dataloader=dataloader['train'],
-        eval_dataloader=dataloader['val'],
-        weight_dtype=weight_dtype,
-        modal_mode=args.modal_mode,
-        early_stop_steps=args.early_stop_steps
+        data_collator=collate_fn,
+        compute_metrics=compute_metrics,  # Add the metrics computation function
+        compute_loss_func=custom_loss_function  # Pass the custom loss function
     )
     
-    if accelerator.is_main_process:
-        accelerator.init_trackers(f"gfm-{args.dataset_name}", config=vars(args), init_kwargs={"wandb": {"name": args.run_name, "dir": args.wandb_dir}})
+    # Train and evaluate
+    train_result = trainer.train()
     
-    trainer.train()
+    # Final evaluation
+    metrics = trainer.evaluate(eval_dataset=dataset['test'])
+    
+    # Log the metrics
+    trainer.log_metrics("eval", metrics)
+    trainer.save_metrics("eval", metrics)
+    
+    # Save the final model
+    trainer.save_model(os.path.join(args.output_dir, "final_model"))
+    
+    # Save training state
+    trainer.save_state()
     
 if __name__ == "__main__":
     args = parse_args()

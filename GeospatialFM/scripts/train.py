@@ -21,9 +21,9 @@ from transformers import get_scheduler
 from transformers import TrainingArguments
 from datasets import load_dataset
 
-from GeospatialFM.datasets.utils import get_ssl4eo_metadata
-from GeospatialFM.datasets import SSL4EODataset
-from GeospatialFM.data import apply_transforms, pretrain_transform, multimodal_collate_fn
+from GeospatialFM.datasets.ssl4eo.utils import get_ssl4eo_metadata
+from GeospatialFM.datasets.ssl4eo import SSL4EODataset
+from GeospatialFM.data_process import apply_normalization, pretrain_transform, multimodal_collate_fn
 from GeospatialFM.models import SpatialSpectralLowRankViTConfig, SpatialSpectralMAEViT
 from GeospatialFM.scripts.trainer import MAETrainer
 from GeospatialFM.scripts.args import parse_args
@@ -102,7 +102,7 @@ def main(args):
     radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"]
     
     dataset = dict(train=SSL4EODataset(root=args.data_dir))
-    standard_transform = partial(apply_transforms, optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, use_8bit=args.use_8bit)
+    standard_transform = partial(apply_normalization, optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, use_8bit=args.use_8bit)
     collate_fn = partial(multimodal_collate_fn, transform=pretrain_transform, normalization=standard_transform)
     
     train_dataloader = DataLoader(
