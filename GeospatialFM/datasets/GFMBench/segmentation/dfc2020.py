@@ -5,6 +5,7 @@ import rasterio
 
 import pandas as pd
 import numpy as np
+from skimage.io import io
 
 from PIL import Image
 from itertools import product

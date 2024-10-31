@@ -237,10 +237,10 @@ class BigEarthNet(datasets.GeneratorBasedBuilder):
                             num_classes_exist = True
         
         if bands_exist:
-            self.image_channels = self.s2_channels_lookup(kwargs['bands'])
-            self.radar_channels = self.s1_channels_lookup(kwargs['bands'])
-        if pad_s2_exist and bands_exist and kwargs['bands'] in ['s2', 'all']:
-            self.image_channels += 1 # will pad B10 channel
+            self.image_channels = self.s2_channels_lookup[kwargs['bands']]
+            self.radar_channels = self.s1_channels_lookup[kwargs['bands']]
+            if pad_s2_exist and bands_exist and kwargs['bands'] in ['s2', 'all']:
+                self.image_channels += 1 # will pad B10 channel
             assert self.image_channels == 13, "check code above again"
 
         self.labels = class_sets[kwargs['num_classes']] if num_classes_exist else class_sets[19]
@@ -360,7 +360,7 @@ class BigEarthNet(datasets.GeneratorBasedBuilder):
             paths_s1 = sorted(paths_s1) if paths_s1 is not None else None
             paths_s2 = sorted(paths_s2, key=sort_sentinel2_bands)
             paths = paths_s1 + paths_s2 if paths_s1 is not None else paths_s2
-        elif self.bands == 's1':
+        elif self.config.bands == 's1':
             if files_folder['s1'] is None:
                 paths = None
             else:
@@ -368,7 +368,7 @@ class BigEarthNet(datasets.GeneratorBasedBuilder):
                 paths = glob.glob(os.path.join(folder, '*.tif')) 
                 paths = sorted(paths)
         else:
-            folder = files_folder[index]['s2']
+            folder = files_folder['s2']
             paths = glob.glob(os.path.join(folder, '*.tif'))
             paths = sorted(paths, key=sort_sentinel2_bands)
 
