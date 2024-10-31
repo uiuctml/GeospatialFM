@@ -16,24 +16,40 @@ S2C_MEAN = [1612.9, 1397.6, 1322.3, 1373.1, 1561.0, 2108.4, 2390.7, 2318.7, 2581
 S2C_STD = [791.0, 854.3, 878.7, 1144.9, 1127.5, 1164.2, 1276.0, 1249.5, 1345.9, 577.5, 47.5, 1340.0, 1142.9]
 
 class SSL4EODataset(Dataset):
+    spatial_resolution = 10
+    metadata = {
+        "s2c": {
+            "bands": ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B10", "B11", "B12"],
+            "channel_wv": [442.7, 492.4, 559.8, 664.6, 704.1, 740.5, 782.8, 832.8, 864.7, 945.1, 1373.5, 1613.7, 2202.4],
+            "mean": S2C_MEAN,
+            "std": S2C_STD
+        },
+        "s1": {
+            "bands": ["VV", "VH"],
+            "channel_wv": [5500., 5700.],
+            "mean": S1_MEAN,
+            "std": S1_STD
+        }
+    }
+
     def __init__(self, root, metadata_url=_METADATA_URL):
         self.root = root
         self.size = 264
-        self.spatial_resolution = 10
-        self.metadata = {
-            "s2c": {
-                "bands": ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B10", "B11", "B12"],
-                "channel_wv": [442.7, 492.4, 559.8, 664.6, 704.1, 740.5, 782.8, 832.8, 864.7, 945.1, 1373.5, 1613.7, 2202.4],
-                "mean": S2C_MEAN,
-                "std": S2C_STD
-            },
-            "s1": {
-                "bands": ["VV", "VH"],
-                "channel_wv": [5500., 5700.],
-                "mean": S1_MEAN,
-                "std": S1_STD
-            }
-        }
+        # self.spatial_resolution = 10
+        # self.metadata = {
+        #     "s2c": {
+        #         "bands": ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B10", "B11", "B12"],
+        #         "channel_wv": [442.7, 492.4, 559.8, 664.6, 704.1, 740.5, 782.8, 832.8, 864.7, 945.1, 1373.5, 1613.7, 2202.4],
+        #         "mean": S2C_MEAN,
+        #         "std": S2C_STD
+        #     },
+        #     "s1": {
+        #         "bands": ["VV", "VH"],
+        #         "channel_wv": [5500., 5700.],
+        #         "mean": S1_MEAN,
+        #         "std": S1_STD
+        #     }
+        # }
         
         metadata_path = os.path.join(root, metadata_url)
         self.metadata_df = pd.read_csv(metadata_path)
