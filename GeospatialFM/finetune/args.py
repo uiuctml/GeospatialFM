@@ -38,7 +38,7 @@ def parse_args():
 
     # Training arguments
     parser.add_argument("--run_name", type=str, required=True, help="Name of the run")
-    parser.add_argument("--train_batch_size", type=int, default=32, help="Batch size for training")
+    parser.add_argument("--per_device_train_batch_size", type=int, default=32, help="Batch size for training")
     parser.add_argument("--learning_rate", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="Adam optimizer beta1")
     parser.add_argument("--adam_beta2", type=float, default=0.95, help="Adam optimizer beta2")
@@ -46,8 +46,8 @@ def parse_args():
     parser.add_argument("--adam_epsilon", type=float, default=1e-8, help="Adam optimizer epsilon")
     parser.add_argument("--max_train_steps", type=int, default=None, help="Total number of training steps")
     parser.add_argument("--num_train_epochs", type=int, default=100, help="Total number of training epochs")
-    parser.add_argument("--lr_scheduler", type=str, default="cosine", help="Type of learning rate scheduler")
-    parser.add_argument("--lr_warmup_steps", type=int, default=500, help="Number of warmup steps for learning rate scheduler")
+    parser.add_argument("--lr_scheduler_type", type=str, default="cosine", help="Type of learning rate scheduler")
+    parser.add_argument("--warmup_steps", type=int, default=500, help="Number of warmup steps for learning rate scheduler")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help="Number of updates steps to accumulate before performing a backward/update pass")
     parser.add_argument("--gradient_checkpointing", action="store_true", help="Whether to use gradient checkpointing to save memory at the expense of slower backward pass")
     parser.add_argument("--max_grad_norm", type=float, default=None, help="Max gradient norm for gradient clipping")
@@ -55,7 +55,7 @@ def parse_args():
     parser.add_argument("--freeze_encoder", action="store_true", help="Freeze the encoder")
     
     # Evaluation arguments
-    parser.add_argument("--eval_batch_size", type=int, default=32, help="Batch size for evaluation")
+    parser.add_argument("--per_device_eval_batch_size", type=int, default=32, help="Batch size for evaluation")
     parser.add_argument("--eval_steps", type=int, default=500, help="Evaluate every X updates steps")
     parser.add_argument("--eval_strategy", type=str, choices=["epoch", "steps", "no"], default="epoch", help="Evaluation strategy")
     

@@ -71,23 +71,21 @@ def main(args):
     
     # get loss function and metric
     custom_loss_function = get_loss_fn(args.task_type)
-    compute_metrics = get_metric(args.task_type)
+    compute_metrics, metric_name = get_metric(args.task_type)
 
     # Create TrainingArguments with evaluation settings
     training_args = TrainingArguments(
         **{k: v for k, v in vars(args).items() if k in TrainingArguments.__dataclass_fields__},
-        per_device_train_batch_size=args.train_batch_size,
-        per_device_eval_batch_size=args.eval_batch_size,
         full_determinism=False,
         dispatch_batches=None,
         fp16=(args.mixed_precision == "fp16"),
         bf16=(args.mixed_precision == "bf16"),
         load_best_model_at_end=True,  
         greater_is_better=True,
-        # logging_strategy="no"
-        skip_memory_metrics=True,
-        disable_tqdm=False,
+        logging_strategy="steps",
+        logging_steps=1,
         logging_first_step=True,
+        metric_for_best_model=metric_name
     )
     
     # Set up wandb first if using it
@@ -116,15 +114,25 @@ def main(args):
     # Train and evaluate
     train_result = trainer.train()
     
+    # Save the best model first
+    trainer.save_model(os.path.join(args.output_dir, "best_model"))
+    
     # Final evaluation
     metrics = trainer.evaluate(eval_dataset=dataset['test'])
     
     # Log the metrics
-    trainer.log_metrics("eval", metrics)
-    trainer.save_metrics("eval", metrics)
+    trainer.log_metrics("test", metrics)
+    trainer.save_metrics("test", metrics)
     
-    # Save the final model
-    trainer.save_model(os.path.join(args.output_dir, "final_model"))
+    # Final evaluation
+    metrics = trainer.evaluate(eval_dataset=dataset['val'])
+    
+    # Log the metrics
+    trainer.log_metrics("val", metrics)
+    trainer.save_metrics("val", metrics)
+    
+    # # Save the final model
+    # trainer.save_model(os.path.join(args.output_dir, "final_model"))
     
     # Save training state
     trainer.save_state()

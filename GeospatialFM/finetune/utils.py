@@ -69,10 +69,10 @@ def compute_metrics_IoU(eval_pred: EvalPrediction) -> Dict:
 
 def get_metric(task_type):
     if task_type == "classification":
-        return compute_metrics_acc
+        return compute_metrics_acc, "accuracy"
     elif task_type == "multilabel":
-        return compute_metrics_mAP
+        return compute_metrics_mAP, "micro_mAP"
     elif task_type == "segmentation":
-        return compute_metrics_IoU
+        return compute_metrics_IoU, "IoU"
     else:
         raise NotImplementedError
