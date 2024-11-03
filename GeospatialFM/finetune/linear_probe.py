@@ -19,7 +19,7 @@ from functools import partial
 
 from GeospatialFM.finetune.args import parse_args
 from GeospatialFM.datasets.GFMBench.utils import get_dataset, get_metadata
-from GeospatialFM.data_process.tramsforms import get_transform
+from GeospatialFM.data_process.transforms import get_transform
 from GeospatialFM.data_process.collate_func import single_modal_collate_fn, apply_normalization
 from GeospatialFM.finetune.utils import get_loss_fn, get_metric, get_task_model
 

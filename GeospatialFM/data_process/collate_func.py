@@ -29,17 +29,20 @@ def apply_normalization(example, optical_mean, optical_std, radar_mean, radar_st
     
     if optical is not None:
         # to tensor
-        optical = torch.tensor(optical)
-        # center crop
-        optical = TF.center_crop(optical, [256, 256])
+        if not isinstance(optical, torch.Tensor):
+            optical = torch.tensor(optical)
+        # # center crop
+        # optical = TF.center_crop(optical, [256, 256])
         # normalize
         optical = normalize(optical, optical_mean, optical_std)
         example['optical'] = optical.numpy()
         
     if radar is not None:
-        radar = torch.tensor(radar)
-        # center crop
-        radar = TF.center_crop(radar, [256, 256])
+        # to tensor
+        if not isinstance(radar, torch.Tensor):
+            radar = torch.tensor(radar)
+        # # center crop
+        # radar = TF.center_crop(radar, [256, 256])
         # normalize
         radar = normalize(radar, radar_mean, radar_std)
         example['radar'] = radar.numpy()
@@ -75,6 +78,7 @@ def multimodal_collate_fn(batch, transform=None, random_crop=True, normalization
             # ensure the same optical and radar channel wv across the batch
             assert (example['optical_channel_wv'] == optical_channel_wv).all() 
             assert (example['radar_channel_wv'] == radar_channel_wv).all()
+
         if spatial_resolution is None:
             spatial_resolution = example['spatial_resolution']
         else:
@@ -94,64 +98,48 @@ def multimodal_collate_fn(batch, transform=None, random_crop=True, normalization
         'spatial_resolution': spatial_resolution
     }
 
-def single_modal_collate_fn(batch, transform=None, random_crop=True, normalization=None):
-    optical_list, radar_list = [], []
-    optical_channel_wv, radar_channel_wv = None, None
-    spatial_resolution = None
+def modal_specific_collate_fn(batch, normalization=None, modal='optical'):
+    data_list = {'optical': [], 'radar': []}
+    channel_wv = {'optical': [], 'radar': []}
+    spatial_resolution = []
+    labels = []
     
-    # crop_size = np.random.choice([128, 224, 256]) if random_crop else None
-    crop_size = 128
+    modal_list = ['optical', 'radar'] if modal == 'multi' else [modal]
 
-    for example in batch:
+    for example in batch:        
         if normalization:
             example = normalization(example)
-        # to tensor
-        if example['optical'] is not None:
-            example['optical'] = torch.tensor(example['optical'])
-            example['optical_channel_wv'] = torch.tensor(example['optical_channel_wv']).unsqueeze(0)
-            if channel_wv is None:
-                channel_wv = example['optical_channel_wv']
-            else:
-                assert (example['optical_channel_wv'] == channel_wv).all()
-
-        if example['radar'] is not None:
-            example['radar'] = torch.tensor(example['radar'])
-            example['radar_channel_wv'] = torch.tensor(example['radar_channel_wv']).unsqueeze(0)
-            if channel_wv is None:
-                channel_wv = example['radar_channel_wv']
-            else:
-                assert (example['radar_channel_wv'] == channel_wv).all()
-        example['spatial_resolution'] = example['spatial_resolution']
-        
-        if transform:
-            example = transform(example, crop_size, scale=2)
+        for m in modal_list:
+            assert m in example, f"{m} is not available in the example"
+            example[m] = torch.tensor(example[m])
+            data_list[m].append(example[m])
             
-        if spatial_resolution is None:
-            spatial_resolution = example['spatial_resolution']
-        else:
-            assert example['spatial_resolution'] == spatial_resolution
-        
-        if example['optical'] is not None:
-            optical_list.append(example['optical'])
-        if example['radar'] is not None:
-            radar_list.append(example['radar'])
+            example[f'{m}_channel_wv'] = torch.tensor(example[f'{m}_channel_wv']).unsqueeze(0)
+            channel_wv[m].append(example[f'{m}_channel_wv'])
+
+        spatial_resolution.append(example['spatial_resolution'])
+        labels.append(example['label'])
+
+    # at least one of the two is not None
+    assert data_list['optical'] or data_list['radar']
     
-    # assert only one of the two is not None
-    assert spatial_resolution is not None
-    assert (not optical_list) != (not radar_list), "Only one of the two is not None"
-    if not optical_list:
-        optical_list = None
-        optical_channel_wv = None
-        radar_list = torch.stack(radar_list)
-    if not radar_list:
-        radar_list = None
-        radar_channel_wv = None
-        optical_list = torch.stack(optical_list)
+    assert np.mean(spatial_resolution) == spatial_resolution[0]
+    spatial_resolution = spatial_resolution[0]
     
-    return {
-        'optical': optical_list,
-        'radar': radar_list,
-        'optical_channel_wv': optical_channel_wv,
-        'radar_channel_wv': radar_channel_wv,
-        'spatial_resolution': spatial_resolution
+    return_dict = {
+        'spatial_resolution': np.array(spatial_resolution),
+        'labels': torch.tensor(labels)
     }
+    
+    if data_list['optical']:
+        return_dict['optical'] = torch.stack(data_list['optical'])
+        # assert the same channel wv across the batch
+        assert (torch.stack(channel_wv['optical']) == channel_wv['optical'][0]).all()
+        return_dict['optical_channel_wv'] = channel_wv['optical'][0]
+    if data_list['radar']:
+        return_dict['radar'] = torch.stack(data_list['radar'])
+        # assert the same channel wv across the batch
+        assert (torch.stack(channel_wv['radar']) == channel_wv['radar'][0]).all()
+        return_dict['radar_channel_wv'] = channel_wv['radar'][0]
+        
+    return return_dict  

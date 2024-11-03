@@ -233,7 +233,7 @@ class So2SatConfig(datasets.BuilderConfig):
     def __str__(self):
         return f"So2SatConfig: data_dir={self.data_dir}, pad_s2={self.pad_s2}, so2sat_version={self.so2sat_version}, bands={self.bands}, output_s1_any: {self.output_s1_any}, output_s2_any: {self.output_s2_any} \n"
 
-class So2Sat(datasets.GeneratorBasedBuilder):
+class So2SatDataset(datasets.GeneratorBasedBuilder):
     """
     Config Args:
         - bands

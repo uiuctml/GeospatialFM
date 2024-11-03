@@ -30,7 +30,7 @@ class MARIDAConfig(datasets.BuilderConfig):
     def __str__(self):
         return f"SegMunichConfig: data_dir={self.data_dir} \n"
 
-class MARIDA(datasets.GeneratorBasedBuilder):
+class MARIDADataset(datasets.GeneratorBasedBuilder):
     spatial_resolution = 10 
     metadata = {
         "s2c": {
@@ -190,16 +190,16 @@ class MARIDA(datasets.GeneratorBasedBuilder):
             assert img_cropped.shape[0] == 96 and img_cropped.shape[1] == 96, f"dim0 is now having shape {img_cropped.shape[0]}, and dim1 is now having shape {img_cropped.shape[1]} instead of 96"
             return img_cropped.astype(np.float32)
 
-class MARIDADataset(Dataset):
-    """
-    Wrapper class
-    """
-    def __init__(self, root, split="train", config=None):
-        super().__init__()
-        self.data = load_dataset(root, split=split, config=config, trust_remote_code=True)
+# class MARIDADataset(Dataset):
+#     """
+#     Wrapper class
+#     """
+#     def __init__(self, root, split="train", config=None):
+#         super().__init__()
+#         self.data = load_dataset(root, split=split, config=config, trust_remote_code=True)
 
-    def __len__(self):
-        return len(self.data)
+#     def __len__(self):
+#         return len(self.data)
 
-    def __getitem__(self, idx):
-        return self.data[idx]
+#     def __getitem__(self, idx):
+#         return self.data[idx]

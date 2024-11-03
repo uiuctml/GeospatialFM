@@ -63,14 +63,14 @@ class LESSViTEncoderConfig(PretrainedConfig):
 class LESSWithProjectionConfig(LESSViTEncoderConfig):
     model_type = "less_with_projection"
     
-    def __init__(self, num_labels: int, **kwargs):
+    def __init__(self, num_labels=2, **kwargs):
         super().__init__(**kwargs)
         self.num_labels = num_labels
         
 class LESSWithUPerNetConfig(LESSViTEncoderConfig):
     model_type = "less_with_uper_net"
     
-    def __init__(self, num_labels: int, image_size: int, **kwargs):
+    def __init__(self, num_labels=2, image_size=256, **kwargs):
         super().__init__(**kwargs)
         self.num_labels = num_labels
         self.image_size = image_size
@@ -80,10 +80,19 @@ class LESSWithProjection(PreTrainedModel):
         super().__init__(config)
         self.num_labels = config.num_labels
         self.encoder = SpatialSpectralLowRankViTEncoder(config)
-        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+        self.classifier = nn.Linear(config.embed_dim, config.num_labels)
+        
+        # Initialize weights
+        self.apply(self._init_weights)
+        
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            nn.init.xavier_uniform_(module.weight)
+            if module.bias is not None:
+                nn.init.zeros_(module.bias)
 
     def forward(
-        self, optical=None, radar=None, optical_channel_wv=None, radar_channel_wv=None, spatial_resolution=10,
+        self, optical=None, radar=None, optical_channel_wv=None, radar_channel_wv=None, spatial_resolution=10, labels=None,
     ) -> Union[Tuple, dict]:
         
         # Get encoder outputsp
@@ -112,10 +121,19 @@ class LESSWithUPerNet(PreTrainedModel):
             image_size=config.image_size,
             debug=False
         )
+        
+        # Initialize weights
+        self.apply(self._init_weights)
+        
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            nn.init.xavier_uniform_(module.weight)
+            if module.bias is not None:
+                nn.init.zeros_(module.bias)
 
     def forward(
         self, 
-        optical=None, radar=None, optical_channel_wv=None, radar_channel_wv=None, spatial_resolution=10,
+        optical=None, radar=None, optical_channel_wv=None, radar_channel_wv=None, spatial_resolution=10, labels=None,
     ) -> Union[Tuple, dict]:
         # Get encoder outputs
         outputs = self.encoder(optical, radar, optical_channel_wv, radar_channel_wv, spatial_resolution)

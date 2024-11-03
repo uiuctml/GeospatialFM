@@ -7,20 +7,20 @@ import numpy as np
 from transformers import EvalPrediction
 from sklearn.metrics import accuracy_score, average_precision_score, jaccard_score
 
-def get_task_model(task_type, num_classes=None, image_size=None):
-    if task_type == "classification" or task_type == "multilabel":
+def get_task_model(args, num_classes=None, image_size=None):
+    if args.task_type == "classification" or args.task_type == "multilabel":
         assert num_classes is not None
-        config = LESSWithProjectionConfig(num_labels=num_classes)
+        config = LESSWithProjectionConfig(num_labels=num_classes, **vars(args))
         model = LESSWithProjection(config)
-    elif task_type == "segmentation":
+    elif args.task_type == "segmentation":
         assert num_classes is not None and image_size is not None
-        config = LESSWithUPerNetConfig(num_labels=num_classes, image_size=image_size)
+        config = LESSWithUPerNetConfig(num_labels=num_classes, image_size=image_size, **vars(args))
         model = LESSWithUPerNet(config)
     else:
         raise NotImplementedError
     return model
 
-def custom_loss_function(outputs, labels, loss_fct):
+def custom_loss_function(outputs, labels, num_items_in_batch, loss_fct):
     """
     Custom loss function.
     Modify this function based on your specific task.

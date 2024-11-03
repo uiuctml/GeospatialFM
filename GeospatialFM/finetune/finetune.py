@@ -13,31 +13,18 @@ from transformers import is_wandb_available
 from transformers import TrainingArguments, Trainer
 from typing import Dict
 import numpy as np
-from transformers import EvalPrediction
 
 from functools import partial
 
 from GeospatialFM.finetune.args import parse_args
 from GeospatialFM.datasets.GFMBench.utils import get_dataset, get_metadata
-from GeospatialFM.data_process.tramsforms import get_transform
-from GeospatialFM.data_process.collate_func import single_modal_collate_fn, apply_normalization
+from GeospatialFM.data_process.transforms import get_transform
+from GeospatialFM.data_process.collate_func import modal_specific_collate_fn, apply_normalization
 from GeospatialFM.finetune.utils import get_loss_fn, get_metric, get_task_model
 
 logger = get_logger(__name__)
 
 def main(args):    
-    # Set up wandb first if using it
-    if args.report_to == "wandb":
-        if not is_wandb_available():
-            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
-        import wandb
-        wandb.init(
-            project=f"gfm-{args.dataset_name}",
-            name=args.run_name,
-            dir=args.wandb_dir,
-            config=vars(args)
-        )
-
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -51,18 +38,19 @@ def main(args):
 
     # Load dataset
     metadata = get_metadata(args.dataset_name)
+    args.crop_size = metadata["size"] if args.crop_size is None else args.crop_size
     
     optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"]
     radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"]
     
     standard_transform = partial(apply_normalization, optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, use_8bit=args.use_8bit)
-    collate_fn = partial(single_modal_collate_fn, normalization=standard_transform)
+    collate_fn = partial(modal_specific_collate_fn, normalization=standard_transform, modal=args.modal)
     
-    train_transform, eval_transform = get_transform(args.task_type)
+    train_transform, eval_transform = get_transform(args.task_type, args.crop_size, args.scale, args.random_rotation)
     dataset = get_dataset(args, train_transform, eval_transform)
     
     # Initialize model
-    model = get_task_model(args.task_type, metadata["num_classes"], metadata["image_size"])
+    model = get_task_model(args, metadata["num_classes"], metadata["size"])
     # load from checkpoint if provided
     if args.pretrained_model_path:
         from safetensors import safe_open
@@ -97,7 +85,23 @@ def main(args):
         load_best_model_at_end=True,  
         greater_is_better=True,
         # logging_strategy="no"
+        skip_memory_metrics=True,
+        disable_tqdm=False,
+        logging_first_step=True,
     )
+    
+    # Set up wandb first if using it
+    if args.report_to == "wandb" :
+        if not is_wandb_available():
+            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
+        import wandb
+        if training_args.local_rank == 0:
+            wandb.init(
+                project=f"gfm-{args.dataset_name}",
+                name=args.run_name,
+                dir=args.wandb_dir,
+                config=vars(args)
+            )
     
     trainer = Trainer(
         model=model,

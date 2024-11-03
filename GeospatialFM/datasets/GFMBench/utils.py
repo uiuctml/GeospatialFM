@@ -4,60 +4,66 @@ from datasets import load_dataset
 
 import os
 
+GFMBENCH_SCRIPTS_PATH = os.path.dirname(__file__)
+
 DATASET_PATH = {
-    "EuroSAT": "eurosat",
-    "BigEarthNet": "bigearthnet",
-    "So2Sat": "so2sat",
-    "FMoW": "fmow",
-    "SegMunich": "segmunich",
-    "DFC2020": "dfc2020",
-    "MARIDA": "marida",
+    "eurosat": "EuroSAT",
+    "bigearthnet": "BigEarthNet",
+    "so2sat": "So2Sat",
+    "fmow": "FMoW",
+    "segmunich": "SegMunich",
+    "dfc2020": "DFC2020",
+    "marida": "MARIDA",
 }
 
 DATASET = {
-    "EuroSAT": EuroSATDataset,
-    "BigEarthNet": BigEarthNetDataset,
-    "So2Sat": So2SatDataset,
-    "FMoW": FMoWDataset,
-    "SegMunich": SegMunichDataset,
-    "DFC2020": DFC2020Dataset,
-    "MARIDA": MARIDADataset,
+    "eurosat": EuroSATDataset,
+    "bigearthnet": BigEarthNetDataset,
+    "so2sat": So2SatDataset,
+    "fmow": FMoWDataset,
+    "segmunich": SegMunichDataset,
+    "dfc2020": DFC2020Dataset,
+    "marida": MARIDADataset,
 }
 
 CONFIG = {
-    "EuroSAT": EuroSATConfig,
-    "BigEarthNet": BigEarthNetConfig,
-    "So2Sat": So2SatConfig,
-    "FMoW": FMoWConfig,
-    "SegMunich": SegMunichConfig,
-    "DFC2020": DFC2020Config,
-    "MARIDA": MARIDAConfig,
+    "eurosat": EuroSATConfig,
+    "bigearthnet": BigEarthNetConfig,
+    "so2sat": So2SatConfig,
+    "fmow": FMoWConfig,
+    "segmunich": SegMunichConfig,
+    "dfc2020": DFC2020Config,
+    "marida": MARIDAConfig,
 }
 
 DATASET_CLASS_PATH = {
-    "EuroSAT": "classification/eurosat.py",
-    "BigEarthNet": "classification/bigearthnet.py",
-    "So2Sat": "classification/so2sat.py",
-    "FMoW": "classification/fmow.py",
-    "SegMunich": "segmentation/segmunich.py",
-    "DFC2020": "segmentation/dfc2020.py",
-    "MARIDA": "segmentation/marida.py",
+    "eurosat": "classification/eurosat.py",
+    "bigearthnet": "classification/bigearthnet.py",
+    "so2sat": "classification/so2sat.py",
+    "fmow": "classification/fmow.py",
+    "segmunich": "segmentation/segmunich.py",
+    "dfc2020": "segmentation/dfc2020.py",
+    "marida": "segmentation/marida.py",
 }
 
 def get_metadata(dataset_name):
-    return DATASET[dataset_name].metadata
+    metadata = DATASET[dataset_name.lower()].metadata
+    metadata['size'] = min(DATASET[dataset_name.lower()].HEIGHT, DATASET[dataset_name.lower()].WIDTH)
+    metadata['num_classes'] = DATASET[dataset_name.lower()].NUM_CLASSES
+    return metadata
 
 def get_dataset(args, train_transform, eval_transform):
-    dataset_path = DATASET_PATH[args.dataset_name]
+    dataset_path = DATASET_PATH[args.dataset_name.lower()]
     dataset_path = os.path.join(args.data_dir, dataset_path)
-    # dataset_class = DATASET[args.dataset_name]
-    data_class_path = DATASET_CLASS_PATH[args.dataset_name]
-    config = CONFIG[args.dataset_name](data_dir=dataset_path) # TODO: what to pass in?
+    data_class_path = DATASET_CLASS_PATH[args.dataset_name.lower()]
+    data_class_path = os.path.join(GFMBENCH_SCRIPTS_PATH, data_class_path)
+    os.makedirs(dataset_path, exist_ok=True)
+    config = CONFIG[args.dataset_name.lower()]() # TODO: what to pass in?
     
     dataset_dict = {}
     for split in ["train", "val", "test"]:
         transform = train_transform if split == "train" else eval_transform
-        dataset = load_dataset(data_class_path, split=split, config=config)
+        dataset = load_dataset(path=data_class_path, split=split, config=config, cache_dir=dataset_path)
         dataset_dict[split] = dataset.with_transform(transform)
         
     return dataset_dict

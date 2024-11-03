@@ -11,6 +11,10 @@ def parse_args():
     parser.add_argument("--dataloader_num_workers", type=int, default=4, help="Number of subprocesses to use for data loading")
     parser.add_argument("--dataloader_pin_memory", action="store_true", help="Whether to pin memory for data loading")
     parser.add_argument("--use_8bit", action="store_true", help="Whether to use 8-bit data loading")
+    parser.add_argument("--modal", type=str, default="optical", choices=["optical", "radar", "multi"], help="Modal to finetune on")
+    parser.add_argument("--crop_size", type=int, default=None, help="Crop size for training")
+    parser.add_argument("--scale", type=float, default=None, help="Scale for training")
+    parser.add_argument("--random_rotation", action="store_true", help="Whether to use random rotation for training")
 
     # Model arguments
     parser.add_argument("--patch_size", type=int, default=16, help="Size of patches for hyperspectral patch embedding")
@@ -28,7 +32,7 @@ def parse_args():
     parser.add_argument("--proj_drop", type=float, default=0.0, help="Projection dropout rate")
 
     # extra model arguments
-    parser.add_argument("--return_dict", type=bool, default=False, help="Return a dictionary instead of a tuple")
+    parser.add_argument("--return_dict", action="store_true", help="Return a dictionary instead of a tuple")
     parser.add_argument("--use_perception_field_mask", action="store_true", help="Use perception field mask")
     parser.add_argument("--attention_radius", type=int, default=640, help="Attention radius for perception field mask")
 
@@ -53,7 +57,7 @@ def parse_args():
     # Evaluation arguments
     parser.add_argument("--eval_batch_size", type=int, default=32, help="Batch size for evaluation")
     parser.add_argument("--eval_steps", type=int, default=500, help="Evaluate every X updates steps")
-    parser.add_argument("--eval_strategy", type=str, choices=["epoch", "steps", "no"], default="no", help="Evaluation strategy")
+    parser.add_argument("--eval_strategy", type=str, choices=["epoch", "steps", "no"], default="epoch", help="Evaluation strategy")
     
     # Logging and saving arguments
     parser.add_argument("--output_dir", type=str, default="output", help="Directory to save model checkpoints and logs")
@@ -68,6 +72,7 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training")
     parser.add_argument("--mixed_precision", type=str, default=None, choices=[None, "fp16", "bf16"], help="Whether to use mixed precision. Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >= 1.10 and an Nvidia Ampere GPU")
     parser.add_argument("--resume_from_checkpoint", type=str, default=None, help="If the training should continue from a checkpoint folder")
+    parser.add_argument("--pretrained_model_path", type=str, default=None, help="Path to the pretrained model")
     
     # Append run name to directories
     args = parser.parse_args()

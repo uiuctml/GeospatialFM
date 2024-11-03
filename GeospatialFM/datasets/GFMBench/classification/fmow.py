@@ -4,7 +4,7 @@ import datasets
 
 import pandas as pd
 import numpy as np
-import skimage.io as io
+import skimage as io
 
 from typing import ClassVar
 from typing import Optional
@@ -47,7 +47,7 @@ class FMoWConfig(datasets.BuilderConfig):
     def __str__(self):
         return f"FMoWConfig: data_dir={self.data_dir}, img_size={self.img_size}, dropped_bands={self.dropped_bands}, dropped_bands_indices={self.dropped_bands_indices} \n"
 
-class FMoW(datasets.GeneratorBasedBuilder):
+class FMoWDataset(datasets.GeneratorBasedBuilder):
     CATEGORIES = ["airport", "airport_hangar", "airport_terminal", "amusement_park",
               "aquaculture", "archaeological_site", "barn", "border_checkpoint",
               "burial_site", "car_dealership", "construction_site", "crop_field",

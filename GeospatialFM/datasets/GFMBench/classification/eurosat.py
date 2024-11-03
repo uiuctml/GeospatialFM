@@ -59,19 +59,16 @@ class EuroSATDataset(datasets.GeneratorBasedBuilder):
     
     DEFAULT_CONFIG_NAME = "default"
 
-    HEIGHT = WIDTH = 64
+    SIZE = HEIGHT = WIDTH = 64
+    NUM_CLASSES = 10
 
     def __init__(self, *args, **kwargs):
         config = kwargs.pop('config', None)
-        if config:
-            if isinstance(config, dict):
-                bands = config.get('bands')
-            elif isinstance(config, EuroSATConfig):
-                bands = config.get_config().get('bands')
+        assert config is not None, "config is required"
+        bands = config.get_config().get('bands')
             
-            if bands:
-                kwargs['bands'] = bands
-                kwargs['band_indices'] = [all_band_names.index(b) for b in bands if b in all_band_names]
+        kwargs['bands'] = bands
+        kwargs['band_indices'] = [all_band_names.index(b) for b in bands if b in all_band_names]
 
             
         self.height, self.width = self.HEIGHT, self.WIDTH
@@ -90,17 +87,15 @@ class EuroSATDataset(datasets.GeneratorBasedBuilder):
             for key, value in self.metadata["s2c"].items()
         }   
 
-        print(self.config)
+        # print(self.config)
 
     def _info(self):
         return datasets.DatasetInfo(
             features=datasets.Features({
-                "radar": datasets.Array3D(shape=(2, self.height, self.width), dtype="float32"),  # Assuming radar has 2 channels (VV, VH)
                 "optical": datasets.Array3D(shape=(len(self.config.band_indices), self.height, self.width), dtype="float32"),
                 "label": datasets.ClassLabel(names=self.labels),
                 "optical_channel_wv": datasets.Sequence(datasets.Value("float32")),
-                "radar_channel_wv": datasets.Sequence(datasets.Value("float32")),
-                "spatial_resolution": datasets.Value("int32"),
+                "spatial_resolution": datasets.Value("float32"),
             }),
         )
 
@@ -169,11 +164,9 @@ class EuroSATDataset(datasets.GeneratorBasedBuilder):
                 optical_channel_wv = np.array(self.metadata["s2c"]["channel_wv"])
 
                 sample = {
-                    "radar": None,
                     "optical": img.astype(np.float32),
                     "label": self.info.features['label'].str2int(label),
                     "optical_channel_wv": np.array(optical_channel_wv),
-                    "radar_channel_wv": None,
                     "spatial_resolution": self.spatial_resolution,
                 }
 
