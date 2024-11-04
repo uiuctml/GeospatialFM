@@ -3,7 +3,7 @@ export PYTHONPATH=$PYTHONPATH:$ROOT_DIR
 export TORCH_NCCL_BLOCKING_WAIT=1
 export CUDA_VISIBLE_DEVICES=1
 
-for lr in 1e-2; do
+for lr in 3e-2 5e-2 1e-1; do
     for adam_wd in 0.05; do
         echo "lr: $lr, adam_wd: $adam_wd"
         accelerate launch --config_file ~/.cache/huggingface/accelerate/lp_config.yaml \
@@ -20,7 +20,7 @@ for lr in 1e-2; do
             --num_train_epochs 100 \
             --learning_rate $lr \
             --adam_weight_decay $adam_wd \
-            --warmup_ratio 0.2 \
+            --warmup_ratio 0.04 \
             --warmup_steps 0 \
             --report_to wandb \
             --save_strategy no \
