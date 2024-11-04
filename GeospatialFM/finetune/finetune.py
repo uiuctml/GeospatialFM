@@ -43,10 +43,10 @@ def main(args):
     optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"]
     radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"]
     
-    standard_transform = partial(apply_normalization, optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, use_8bit=args.use_8bit)
-    collate_fn = partial(modal_specific_collate_fn, normalization=standard_transform, modal=args.modal)
+    collate_fn = partial(modal_specific_collate_fn, modal=args.modal)
     
-    train_transform, eval_transform = get_transform(args.task_type, args.crop_size, args.scale, args.random_rotation)
+    train_transform, eval_transform = get_transform(args.task_type, args.crop_size, args.scale, args.random_rotation, 
+                                                    optical_mean, optical_std, radar_mean, radar_std)
     dataset = get_dataset(args, train_transform, eval_transform)
     
     # Initialize model

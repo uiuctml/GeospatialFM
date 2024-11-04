@@ -74,13 +74,21 @@ class LESSWithUPerNetConfig(LESSViTEncoderConfig):
         super().__init__(**kwargs)
         self.num_labels = num_labels
         self.image_size = image_size
+        
+class LinearHead(nn.Module):
+    def __init__(self, embed_dim, num_labels):
+        super().__init__()
+        self.classifier = nn.Linear(embed_dim, num_labels)
+        
+    def forward(self, features, labels=None):
+        return {'logits': self.classifier(features)}
 
 class LESSWithProjection(PreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
         self.num_labels = config.num_labels
         self.encoder = SpatialSpectralLowRankViTEncoder(config)
-        self.classifier = nn.Linear(config.embed_dim, config.num_labels)
+        self.classifier = LinearHead(config.embed_dim, config.num_labels)
         
         # Initialize weights
         self.apply(self._init_weights)
@@ -107,7 +115,7 @@ class LESSWithProjection(PreTrainedModel):
         pooled_output = outputs[:, 0, 0]
         
         # Get logits
-        logits = self.classifier(pooled_output)
+        logits = self.classifier(pooled_output)['logits']
 
         return {"logits": logits} if self.config.return_dict else logits
 

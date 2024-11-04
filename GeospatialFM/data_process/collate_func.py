@@ -5,8 +5,8 @@ import numpy as np
 # data normalization applied to datasets directly
 def apply_normalization(example, optical_mean, optical_std, radar_mean, radar_std, use_8bit=False):
     # Apply your transforms here
-    optical = example.get('optical')
-    radar = example.get('radar')
+    optical = example.get('optical', None)
+    radar = example.get('radar', None)
         
     # normalize
     def normalize(x, mean, std):
@@ -98,7 +98,7 @@ def multimodal_collate_fn(batch, transform=None, random_crop=True, normalization
         'spatial_resolution': spatial_resolution
     }
 
-def modal_specific_collate_fn(batch, normalization=None, modal='optical'):
+def modal_specific_collate_fn(batch, modal='optical'):
     data_list = {'optical': [], 'radar': []}
     channel_wv = {'optical': [], 'radar': []}
     spatial_resolution = []
@@ -107,11 +107,9 @@ def modal_specific_collate_fn(batch, normalization=None, modal='optical'):
     modal_list = ['optical', 'radar'] if modal == 'multi' else [modal]
 
     for example in batch:        
-        if normalization:
-            example = normalization(example)
         for m in modal_list:
             assert m in example, f"{m} is not available in the example"
-            example[m] = torch.tensor(example[m])
+            example[m] = torch.tensor(example[m]) if not isinstance(example[m], torch.Tensor) else example[m]
             data_list[m].append(example[m])
             
             example[f'{m}_channel_wv'] = torch.tensor(example[f'{m}_channel_wv']).unsqueeze(0)
@@ -143,3 +141,13 @@ def modal_specific_collate_fn(batch, normalization=None, modal='optical'):
         return_dict['radar_channel_wv'] = channel_wv['radar'][0]
         
     return return_dict  
+
+def linear_probe_collate_fn(batch):
+    features = []
+    labels = []
+    
+    for example in batch:
+        features.append(example['features'])
+        labels.append(example['label'])
+        
+    return {'features': torch.stack(features), 'labels': torch.tensor(labels)}

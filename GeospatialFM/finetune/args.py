@@ -48,6 +48,7 @@ def parse_args():
     parser.add_argument("--num_train_epochs", type=int, default=100, help="Total number of training epochs")
     parser.add_argument("--lr_scheduler_type", type=str, default="cosine", help="Type of learning rate scheduler")
     parser.add_argument("--warmup_steps", type=int, default=500, help="Number of warmup steps for learning rate scheduler")
+    parser.add_argument("--warmup_ratio", type=float, default=0.2, help="Warmup ratio for learning rate scheduler")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help="Number of updates steps to accumulate before performing a backward/update pass")
     parser.add_argument("--gradient_checkpointing", action="store_true", help="Whether to use gradient checkpointing to save memory at the expense of slower backward pass")
     parser.add_argument("--max_grad_norm", type=float, default=None, help="Max gradient norm for gradient clipping")

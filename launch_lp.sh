@@ -1,27 +1,28 @@
 ROOT_DIR="/home/haozhesi/Dropbox/GeospatialFM"
 export PYTHONPATH=$PYTHONPATH:$ROOT_DIR
 export TORCH_NCCL_BLOCKING_WAIT=1
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+export CUDA_VISIBLE_DEVICES=1
 
-for lr in 1e-5 3e-4 5e-4 1e-3; do
-    for adam_wd in 0.005 0.05; do
+for lr in 1e-2; do
+    for adam_wd in 0.05; do
         echo "lr: $lr, adam_wd: $adam_wd"
-        accelerate launch GeospatialFM/finetune/finetune.py \
+        accelerate launch --config_file ~/.cache/huggingface/accelerate/lp_config.yaml \
+        GeospatialFM/finetune/linear_probe.py \
             --data_dir $ROOT_DIR/data/geospatial \
             --dataset_name eurosat \
             --task_type classification \
             --scale 2 \
             --modal optical \
             --return_dict \
-            --per_device_train_batch_size 512 \
-            --per_device_eval_batch_size 1024 \
+            --per_device_train_batch_size 128 \
             --gradient_accumulation_steps 4 \
-            --num_train_epochs 20 \
+            --num_train_epochs 100 \
             --learning_rate $lr \
             --adam_weight_decay $adam_wd \
-            --warmup_steps 30 \
+            --warmup_ratio 0.2 \
+            --warmup_steps 0 \
             --report_to wandb \
-            --save_total_limit 5 \
+            --save_strategy no \
             --seed 42 \
             --mixed_precision bf16 \
             --dataloader_num_workers 32 \
@@ -29,7 +30,7 @@ for lr in 1e-5 3e-4 5e-4 1e-3; do
             --output_dir $ROOT_DIR/results/models \
             --logging_dir $ROOT_DIR/results/logs \
             --wandb_dir $ROOT_DIR/results/ \
-            --run_name LESSVIT_b2_d6_eurosat_s2_lr${lr}_wd${adam_wd} \
+            --run_name LESSVIT_b2_d6_eurosat_lp_lr${lr}_wd${adam_wd} \
             --lr_scheduler_type cosine \
             --channel_embed_dims_per_head 2 \
             --use_perception_field_mask \

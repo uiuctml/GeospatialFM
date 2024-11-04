@@ -180,7 +180,8 @@ class UPerNet(nn.Module):
             nn.Conv2d(256, self.num_classes, kernel_size=3, padding=1),
         )
 
-    def forward(self, x):
+    def forward(self, features):
+        x = features
         assert len(x.shape) == 3, 'Input shape must be (B, N, D)'
         # Convert patch embeddings back to feature map
         B, N, D = x.shape
