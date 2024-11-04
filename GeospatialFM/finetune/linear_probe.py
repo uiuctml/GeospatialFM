@@ -165,7 +165,7 @@ def main(args):
     train_result = trainer.train()
     
     # Save the best model first
-    trainer.save_model(os.path.join(args.output_dir, "best_model"))
+    trainer.save_model(os.path.join(args.output_dir, "last_model"))
     
     # Final evaluation
     metrics = trainer.evaluate(eval_dataset=dataset['test'])

@@ -14,7 +14,8 @@ for lr in 1e-2; do
             --scale 2 \
             --modal optical \
             --return_dict \
-            --per_device_train_batch_size 128 \
+            --per_device_train_batch_size 512 \
+            --per_device_eval_batch_size 1024 \
             --gradient_accumulation_steps 4 \
             --num_train_epochs 100 \
             --learning_rate $lr \
