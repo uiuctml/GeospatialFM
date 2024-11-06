@@ -1,10 +1,10 @@
 ROOT_DIR="/home/haozhesi/Dropbox/GeospatialFM"
 export PYTHONPATH=$PYTHONPATH:$ROOT_DIR
 export TORCH_NCCL_BLOCKING_WAIT=1
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=3
 
-for lr in 3e-2 5e-2 1e-1; do
-    for adam_wd in 0.05; do
+for lr in 1e-2 2e-2 3e-2 5e-2 7e-2; do
+    for adam_wd in 0.01; do
         echo "lr: $lr, adam_wd: $adam_wd"
         accelerate launch --config_file ~/.cache/huggingface/accelerate/lp_config.yaml \
         GeospatialFM/finetune/linear_probe.py \
@@ -35,6 +35,6 @@ for lr in 3e-2 5e-2 1e-1; do
             --lr_scheduler_type cosine \
             --channel_embed_dims_per_head 2 \
             --use_perception_field_mask \
-            --pretrained_model_path $ROOT_DIR/results/models/LESSVIT_b2_d6/checkpoint-44000/model.safetensors
+            --pretrained_model_path $ROOT_DIR/results/models/LESSVIT_b2_d6/checkpoint-50000/model.safetensors
     done
 done

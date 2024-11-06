@@ -3,10 +3,11 @@ export PYTHONPATH=$PYTHONPATH:$ROOT_DIR
 export TORCH_NCCL_BLOCKING_WAIT=1
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 
-for lr in 1e-5 3e-4 5e-4 1e-3; do
-    for adam_wd in 0.005 0.05; do
-        echo "lr: $lr, adam_wd: $adam_wd"
-        accelerate launch GeospatialFM/finetune/finetune.py \
+for lr in 3e-4; do
+    for adam_wd in 0.01; do
+        for checkpoint in 30000 40000 50000 60000; do
+            echo "lr: $lr, adam_wd: $adam_wd"
+            accelerate launch GeospatialFM/finetune/finetune.py \
             --data_dir $ROOT_DIR/data/geospatial \
             --dataset_name eurosat \
             --task_type classification \
@@ -18,7 +19,8 @@ for lr in 1e-5 3e-4 5e-4 1e-3; do
             --num_train_epochs 20 \
             --learning_rate $lr \
             --adam_weight_decay $adam_wd \
-            --warmup_steps 30 \
+            --warmup_steps 0 \
+            --warmup_ratio 0.2 \
             --report_to wandb \
             --save_total_limit 5 \
             --seed 42 \
@@ -28,10 +30,12 @@ for lr in 1e-5 3e-4 5e-4 1e-3; do
             --output_dir $ROOT_DIR/results/models \
             --logging_dir $ROOT_DIR/results/logs \
             --wandb_dir $ROOT_DIR/results/ \
-            --run_name LESSVIT_b2_d6_eurosat_s2_lr${lr}_wd${adam_wd} \
+            --run_name LESSVIT_b2_d6_eurosat_s2_lr${lr}_wd${adam_wd}_ckpt${checkpoint}_moe5 \
             --lr_scheduler_type cosine \
             --channel_embed_dims_per_head 2 \
             --use_perception_field_mask \
-            --pretrained_model_path $ROOT_DIR/results/models/LESSVIT_b2_d6/checkpoint-44000/model.safetensors
+            --pretrained_model_path $ROOT_DIR/results/models/LESSVIT_b2_d6/checkpoint-${checkpoint}/model.safetensors \
+            --num_experts 5
+        done
     done
 done

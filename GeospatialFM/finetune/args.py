@@ -30,6 +30,7 @@ def parse_args():
     parser.add_argument("--init_values", type=float, default=None, help="Init values for LayerScale")
     parser.add_argument("--attn_drop", type=float, default=0.0, help="Attention dropout rate")
     parser.add_argument("--proj_drop", type=float, default=0.0, help="Projection dropout rate")
+    parser.add_argument("--num_experts", type=int, default=None, help="Number of experts, -1 for all channels, None for CLS token only")
 
     # extra model arguments
     parser.add_argument("--return_dict", action="store_true", help="Return a dictionary instead of a tuple")

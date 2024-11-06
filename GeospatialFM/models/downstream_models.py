@@ -5,7 +5,7 @@ from transformers import PreTrainedModel
 from .UPerNet import UPerNet
 from transformers import PretrainedConfig
 from .spatial_spectral_low_rank_vit import SpatialSpectralLowRankViTEncoder
-
+import torch.nn.functional as F
 class LESSViTEncoderConfig(PretrainedConfig):
     model_type = "less_vit_encoder"
 
@@ -24,12 +24,11 @@ class LESSViTEncoderConfig(PretrainedConfig):
         init_values: Optional[float] = None,
         attn_drop: float = 0.0,
         proj_drop: float = 0.0,
-        mask_ratio: float = 0.75,
-        channel_mask_ratio: float = 0.5,
         pos_chan_embed_residual: bool = True,
         return_dict: bool = False,
         use_perception_field_mask: bool = False,
         attention_radius: int = 640,
+        num_experts: int = None,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -49,9 +48,10 @@ class LESSViTEncoderConfig(PretrainedConfig):
         self.proj_drop = proj_drop
         self.num_tokens = 1
         self.return_dict = return_dict
-        self.mask_ratio = mask_ratio
-        self.channel_mask_ratio = channel_mask_ratio
+        self.mask_ratio = 0
+        self.channel_mask_ratio = 0
         self.pretrain = False
+        self.num_experts = num_experts
         
         # Perception field mask
         self.use_perception_field_mask = use_perception_field_mask
@@ -75,20 +75,40 @@ class LESSWithUPerNetConfig(LESSViTEncoderConfig):
         self.num_labels = num_labels
         self.image_size = image_size
         
-class LinearHead(nn.Module):
-    def __init__(self, embed_dim, num_labels):
+class MoELinearHead(nn.Module):
+    def __init__(self, embed_dim, num_labels, num_experts=None):
         super().__init__()
         self.classifier = nn.Linear(embed_dim, num_labels)
-        
+        self.gate = nn.Linear(embed_dim, 1)
+        self.num_experts = num_experts
+
     def forward(self, features, labels=None):
-        return {'logits': self.classifier(features)}
+        # features: [batch_size, embed_dim] or [batch_size, n_channels, embed_dim]
+        if len(features.shape) == 2:
+            logits = self.classifier(features)
+        elif self.num_experts is None:
+            logits = self.classifier(features[:, 0, :])
+        else:
+            if self.num_experts == -1:
+                self.num_experts = features.shape[1]
+            gate_score = self.gate(features).squeeze(-1) # [batch_size, n_channels]
+            gate_prob = F.softmax(gate_score, dim=-1) # [batch_size, n_channels]
+            
+            topk_values, topk_indices = torch.topk(gate_prob, self.num_experts, dim=-1) # [batch_size, topk]
+            topk_features = features.gather(dim=1, index=topk_indices.unsqueeze(-1).expand(-1, -1, features.shape[-1])) # [batch_size, topk, embed_dim]
+            topk_values = F.softmax(topk_values, dim=-1).unsqueeze(-1) # [batch_size, topk, 1]
+        
+            logits = self.classifier(topk_features) # [batch_size, topk, num_labels]
+            logits = (logits * topk_values).sum(dim=1) # [batch_size, num_labels]
+        
+        return {'logits': logits}
 
 class LESSWithProjection(PreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
         self.num_labels = config.num_labels
         self.encoder = SpatialSpectralLowRankViTEncoder(config)
-        self.classifier = LinearHead(config.embed_dim, config.num_labels)
+        self.classifier = MoELinearHead(config.embed_dim, config.num_labels)
         
         # Initialize weights
         self.apply(self._init_weights)
@@ -112,7 +132,7 @@ class LESSWithProjection(PreTrainedModel):
             outputs = outputs.last_hidden_state
             
         # Use the [CLS] token
-        pooled_output = outputs[:, 0, 0]
+        pooled_output = outputs[:, :, 0]
         
         # Get logits
         logits = self.classifier(pooled_output)['logits']
