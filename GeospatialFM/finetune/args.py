@@ -31,7 +31,9 @@ def parse_args():
     parser.add_argument("--attn_drop", type=float, default=0.0, help="Attention dropout rate")
     parser.add_argument("--proj_drop", type=float, default=0.0, help="Projection dropout rate")
     parser.add_argument("--num_experts", type=int, default=None, help="Number of experts, -1 for all channels, None for CLS token only")
-
+    parser.add_argument("--topk", type=int, default=3, help="Top-k for MoE, -1 for all channels,")
+    parser.add_argument("--use_moe", action="store_true", help="Use MoE")
+    
     # extra model arguments
     parser.add_argument("--return_dict", action="store_true", help="Return a dictionary instead of a tuple")
     parser.add_argument("--use_perception_field_mask", action="store_true", help="Use perception field mask")
