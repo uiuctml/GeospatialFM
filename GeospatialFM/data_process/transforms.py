@@ -165,7 +165,8 @@ def segmentation_transform(example, crop_size=None, scale=None, is_train=True, r
         
         optical_i, radar_i, label_i, spatial_resolution_i = segmentation_transform_one_sample(
             optical_i, radar_i, label_i, spatial_resolution_i, 
-            crop_size, scale, is_train, random_rotation
+            crop_size, scale, is_train, random_rotation, optical_mean,
+            optical_std, radar_mean, radar_std
         )
         
         if optical_i is not None:
@@ -178,17 +179,17 @@ def segmentation_transform(example, crop_size=None, scale=None, is_train=True, r
     
     if optical_list:
         example['optical'] = optical_list
-        example['optical_channel_wv'] = torch.tensor(example['optical_channel_wv'])
+        # example['optical_channel_wv'] = torch.tensor(example['optical_channel_wv'])
     if radar_list:
         example['radar'] = radar_list
-        example['radar_channel_wv'] = torch.tensor(example['radar_channel_wv'])
+        # example['radar_channel_wv'] = torch.tensor(example['radar_channel_wv'])
     example['label'] = label_list
     if spatial_resolution_list:
         example['spatial_resolution'] = spatial_resolution_list
     
     for key, value in example.items():
         if not isinstance(value, torch.Tensor):
-            example[key] = torch.tensor(value)
+            example[key] = torch.tensor(np.array(value))
     
     return example
 

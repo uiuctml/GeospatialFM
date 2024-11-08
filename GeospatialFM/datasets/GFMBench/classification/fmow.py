@@ -1,13 +1,14 @@
 import os
 import torch
+import random
 import datasets
 
 import pandas as pd
 import numpy as np
-import skimage as io
+import skimage.io as io
 
+from PIL import Image
 from typing import ClassVar
-from typing import Optional
 from torchvision import transforms
 
 all_band_names = ('B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'B12')
@@ -28,24 +29,20 @@ class FMoWConfig(datasets.BuilderConfig):
         'rgb': rgb_bands,
     }
     """BuilderConfig for EuroSAT"""
-    def __init__(self, data_dir=None, img_size=384, dropped_bands: Optional[list[str]] = None, dropped_bands_indices: Optional[list[int]] = None, **kwargs):
+    def __init__(self, data_dir=None, img_size=64, **kwargs):
         super(FMoWConfig, self).__init__(**kwargs)
         self.data_dir = data_dir
         self.img_size = img_size
-        self.dropped_bands = dropped_bands
-        self.dropped_bands_indices = dropped_bands_indices
 
     def get_config(self):
         config = {
             "data_dir": self.data_dir,
             "img_size": self.img_size,
-            "dropped_bands": self.dropped_bands,
-            "dropped_bands_indices": self.dropped_bands_indices,
         }
         return config
 
     def __str__(self):
-        return f"FMoWConfig: data_dir={self.data_dir}, img_size={self.img_size}, dropped_bands={self.dropped_bands}, dropped_bands_indices={self.dropped_bands_indices} \n"
+        return f"FMoWConfig: data_dir={self.data_dir}, img_size={self.img_size}\n"
 
 class FMoWDataset(datasets.GeneratorBasedBuilder):
     CATEGORIES = ["airport", "airport_hangar", "airport_terminal", "amusement_park",
@@ -92,46 +89,29 @@ class FMoWDataset(datasets.GeneratorBasedBuilder):
     
     DEFAULT_CONFIG_NAME = "default"
 
+    NUM_CLASSES = 62
+
+    WIDTH = HEIGHT = 64
+
     def __init__(self, *args, **kwargs):
         config = kwargs.pop('config', None)
-        config_keywords = ['img_size', 'dropped_bands']
-    
-        self.height = 384
-        self.width = 384
-        if config:
-            if isinstance(config, dict):
-                for key, value in config.items():
-                    if key in config_keywords:
-                        kwargs[key] = value
-                        if key == 'img_size':
-                            self.height = value
-                            self.width = value
-                        elif key == 'dropped_bands':
-                            kwargs['dropped_bands_indices'] = [int(all_band_names.index(b)) for b in kwargs['dropped_bands'] if b in all_band_names]
-            elif isinstance(config, FMoWConfig):
-                configure = config.get_config()
-                for key, value in configure.items():
-                    if key in config_keywords:
-                        kwargs[key] = value
-                        if key == 'img_size':
-                            self.height = value
-                            self.width = value
-                        elif key == 'dropped_bands':
-                            kwargs['dropped_bands_indices'] = [int(all_band_names.index(b)) for b in kwargs['dropped_bands'] if b in all_band_names]
+
+        assert config is not None, "config is required"
+        data_dir = config.get_config().get('data_dir')
+        img_size = config.get_config().get('img_size')
+        kwargs['data_dir'] = data_dir
+        kwargs['img_size'] = img_size
+
+        self.WIDTH, self.HEIGHT = img_size, img_size
 
         super().__init__(*args, **kwargs)
-
-        # process self.metadata according to self.config.dropped_bands
-        if self.config.dropped_bands is not None:
-            for key in self.metadata["s2c"].keys():
-                self.metadata["s2c"][key] = [elem for i, elem in enumerate(self.metadata["s2c"][key]) if i not in self.config.dropped_bands_indices]
 
         print(self.config)
 
     def _info(self):
         return datasets.DatasetInfo(
             features=datasets.Features({
-                "optical": datasets.Array3D(shape=(len(all_band_names) - len(self.config.dropped_bands), self.height, self.width), dtype="float32"),
+                "optical": datasets.Array3D(shape=(len(all_band_names), self.HEIGHT, self.WIDTH), dtype="float32"),
                 "label": datasets.Value("float32"),
                 "optical_channel_wv": datasets.Sequence(datasets.Value("float32")),
                 "spatial_resolution": datasets.Value("int32"),
@@ -173,34 +153,36 @@ class FMoWDataset(datasets.GeneratorBasedBuilder):
             img = io.imread(img_path)
             return img.astype(np.float32)
         
+        random_crop = transforms.RandomCrop((self.config.img_size, self.config.img_size))
         data = pd.read_csv(split_file).sort_values(['category', 'location_id', 'timestamp'])
-        for row in data.itertuples(index=True, name='Pandas'):
+        # for row in data.itertuples(index=True, name='Pandas'):
+        for index, row in data.iterrows():
             img_path = row.image_path
             image = open_image(os.path.join(data_dir, img_path)).transpose(2, 0, 1) # c, h, w
 
-            label = self.CATEGORIES.index(row.category).float()
-            
-            if self.config.dropped_bands:
-                keep_idxs = [i for i in range(image.shape[0]) if all_band_names[i] not in self.config.dropped_bands]
-                image = image[keep_idxs, :, :] 
-            
+            label = float(self.CATEGORIES.index(row.category))
+
+            # pil_image = Image.fromarray(image.transpose(1, 2, 0))  # Convert (C, H, W) -> (H, W, C)
+
+            # # Resize the image
+            # resized_pil_image = pil_image.resize((self.config.img_size, self.config.img_size), resample=Image.Resampling.BICUBIC) 
+            # image = np.array(resized_pil_image).transpose(2, 0, 1).astype(np.float32)
+        
             # Resize image 
             image_tensor = torch.from_numpy(image)
 
-            h, w = image.shape[1:]
-            if h > w:
-                w = self.config.img_size
-            else:
-                h = self.config.img_size
+            # h, w = image.shape[1:]
+            # if h > w:
+            #     w = self.config.img_size
+            # else:
+            #     h = self.config.img_size
             
-            # Resize the shorter side of image to 384
-            image_tensor = transforms.Resize((h, w), interpolation=transforms.InterpolationMode.BICUBIC)
+            resize = transforms.Resize((self.config.img_size, self.config.img_size), interpolation=transforms.InterpolationMode.BICUBIC)
 
             # Random crop to 384 x 384
-            image_tensor = transforms.RandomCrop((h, w))
-            image = image_tensor.numpy()
-
-            print(image.shape)
+            # random_crop = transforms.RandomCrop((self.config.img_size, self.config.img_size))
+            image_tensor = resize(image_tensor)
+            image = image_tensor.numpy().astype(np.float32)
 
             sample = {
                 "optical": image,
@@ -209,5 +191,4 @@ class FMoWDataset(datasets.GeneratorBasedBuilder):
                 "spatial_resolution": self.spatial_resolution,
             }
 
-            yield f"{label}_{row.index}", sample
-
+            yield f"{label}_{index}", sample

@@ -26,12 +26,13 @@ def custom_loss_function(outputs, labels, num_items_in_batch, loss_fct):
     Modify this function based on your specific task.
     """
     logits = outputs.get("logits")
-    loss = loss_fct(logits.view(-1, logits.size(-1)), labels.view(-1))
+    # loss = loss_fct(logits.view(-1, logits.size(-1)), labels.view(-1))
+    loss = loss_fct(logits.to(torch.float32), labels.to(torch.long))
     return loss
 
 def get_loss_fn(task_type):
     if task_type == "classification" or task_type == "segmentation":
-        loss_fct = torch.nn.CrossEntropyLoss()
+        loss_fct = torch.nn.CrossEntropyLoss(ignore_index=255)
     elif task_type == "multilabel":
         loss_fct = torch.nn.MultiLabelSoftMarginLoss()
     else:

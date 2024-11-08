@@ -10,8 +10,8 @@ import numpy as np
 
 from typing import Union
 from rasterio.enums import Resampling
-from datasets import load_dataset
-from torch.utils.data import Dataset
+# from datasets import load_dataset
+# from torch.utils.data import Dataset
 
 Path = Union[str, pathlib.Path]
 
@@ -136,13 +136,12 @@ def sort_sentinel2_bands(x: Path) -> str:
 
 class BigEarthNetConfig(datasets.BuilderConfig):
     """BuilderConfig for BigEarthNet"""
-    def __init__(self, data_dir=None, pad_s2=False, bands='all', num_classes=19, **kwargs):
-        assert bands in ['s1', 's2', 'all'], f"bands should be chosen from 's1', 's2', 'all', but got {bands}"
+    def __init__(self, data_dir=None, pad_s2=False, num_classes=19, **kwargs):
         assert num_classes in [43, 19], f"num_classes should be chosen from 43, 19, but got {num_classes}"
         super(BigEarthNetConfig, self).__init__(**kwargs)
         self.data_dir = data_dir
         self.pad_s2 = pad_s2
-        self.bands = bands
+        self.bands = "all"
         self.num_classes = num_classes
 
     def get_config(self):
@@ -157,7 +156,7 @@ class BigEarthNetConfig(datasets.BuilderConfig):
     def __str__(self):
         return f"BigEarthNetConfig: data_dir={self.data_dir}, pad_s2={self.pad_s2}, bands={self.bands}, num_classes={self.num_classes} \n"
 
-class BigEarthNet(datasets.GeneratorBasedBuilder):
+class BigEarthNetDataset(datasets.GeneratorBasedBuilder):
     spatial_resolution = 10 # TODO: not sure, make sure this is correct.
     metadata = {
         "s2c": {
@@ -187,63 +186,30 @@ class BigEarthNet(datasets.GeneratorBasedBuilder):
 
     HEIGHT = WIDTH = 120
 
-    s1_channels_lookup = {
-        's1': 2,
-        's2': 0,
-        'all': 2
-    }
-
-    s2_channels_lookup = {
-        's1': 0,
-        's2': 12,
-        'all': 12,
-    }
+    NUM_CLASSES = 19
 
     def __init__(self, *args, **kwargs):
         self.height = self.HEIGHT
         self.width = self.WIDTH
         self.image_size = (self.height, self.width)
-        self.image_channels = 0
-        self.radar_channels = 0
+        self.optical_channels = 12
+        self.radar_channels = 2
         self.class2idx = {c: i for i, c in enumerate(class_sets[43])}
 
         config = kwargs.pop('config', None)
-        config_keywords = ['pad_s2', 'bands', 'num_classes', 'data_dir']
 
-        bands_exist = False
-        pad_s2_exist = False
-        num_classes_exist = False
-        if config:
-            if isinstance(config, dict):
-                for key, value in config.items():
-                    if key in config_keywords:
-                        kwargs[key] = value
-                        if key == 'bands':
-                            bands_exist = True 
-                        elif key == 'pad_s2':
-                            pad_s2_exist = True
-                        elif key == 'num_classes':
-                            num_classes_exist = True
-            elif isinstance(config, BigEarthNetConfig):
-                configure = config.get_config()
-                for key, value in configure.items():
-                    if key in config_keywords:
-                        kwargs[key] = value
-                        if key == 'bands':
-                            bands_exist = True 
-                        elif key == 'pad_s2':
-                            pad_s2_exist = True
-                        elif key == 'num_classes':
-                            num_classes_exist = True
-        
-        if bands_exist:
-            self.image_channels = self.s2_channels_lookup[kwargs['bands']]
-            self.radar_channels = self.s1_channels_lookup[kwargs['bands']]
-            if pad_s2_exist and bands_exist and kwargs['bands'] in ['s2', 'all']:
-                self.image_channels += 1 # will pad B10 channel
-            assert self.image_channels == 13, "check code above again"
+        assert config is not None, "config is required"
+        data_dir = config.get_config().get('data_dir')
+        pad_s2 = config.get_config().get('pad_s2')
+        num_classes = config.get_config().get('num_classes')
+        kwargs['data_dir'] = data_dir
+        kwargs['pad_s2'] = pad_s2
+        kwargs['num_classes'] = num_classes
+        self.NUM_CLASSES = num_classes
 
-        self.labels = class_sets[kwargs['num_classes']] if num_classes_exist else class_sets[19]
+        if pad_s2:
+            self.optical_channels += 1 # will pad B10 channel
+            assert self.optical_channels == 13, "check code above again"
 
         super().__init__(*args, **kwargs)
         if self.config.pad_s2:
@@ -255,19 +221,13 @@ class BigEarthNet(datasets.GeneratorBasedBuilder):
 
     def _info(self):
         features = {
+            "optical": datasets.Array3D(shape=(self.optical_channels, self.height, self.width), dtype="float32"),
+            "radar": datasets.Array3D(shape=(self.radar_channels, self.height, self.width), dtype="float32"),
+            "optical_channel_wv": datasets.Sequence(datasets.Value("float32")),
+            "radar_channel_wv": datasets.Sequence(datasets.Value("float32")),
             "label": datasets.Sequence(datasets.Value("float32"), length=self.config.num_classes),
             "spatial_resolution": datasets.Value("int32"),
         }
-        if self.config.bands in ['s1', 'all']:
-            features.update({
-                "radar": datasets.Array3D(shape=(self.radar_channels, self.height, self.width), dtype="float32"),
-                "radar_channel_wv": datasets.Sequence(datasets.Value("float32")),
-            })
-        if self.config.bands in ['s2', 'all']:
-            features.update({
-                "optical": datasets.Array3D(shape=(self.image_channels, self.height, self.width), dtype="float32"),
-                "optical_channel_wv": datasets.Sequence(datasets.Value("float32")),
-            })
 
         return datasets.DatasetInfo(features=datasets.Features(features))
 
@@ -282,7 +242,7 @@ class BigEarthNet(datasets.GeneratorBasedBuilder):
             datasets.SplitGenerator(
                 name="train",
                 gen_kwargs={
-                    "split_file": os.path.join(data_dir, "bigearthnet-train-350k.csv"),
+                    "split_file": os.path.join(data_dir, "bigearthnet-train.csv"),
                     "radar_dir": radar_dir,
                     "image_dir": image_dir, 
                 },
@@ -290,7 +250,7 @@ class BigEarthNet(datasets.GeneratorBasedBuilder):
             datasets.SplitGenerator(
                 name="val",
                 gen_kwargs={
-                    "split_file": os.path.join(data_dir, "bigearthnet-val-350k.csv"),
+                    "split_file": os.path.join(data_dir, "bigearthnet-val.csv"),
                     "radar_dir": radar_dir,
                     "image_dir": image_dir, 
                 },
@@ -298,7 +258,7 @@ class BigEarthNet(datasets.GeneratorBasedBuilder):
             datasets.SplitGenerator(
                 name="test",
                 gen_kwargs={
-                    "split_file": os.path.join(data_dir, "bigearthnet-test-350k.csv"),
+                    "split_file": os.path.join(data_dir, "bigearthnet-test.csv"),
                     "radar_dir": radar_dir,
                     "image_dir": image_dir,  
                 },
@@ -313,64 +273,33 @@ class BigEarthNet(datasets.GeneratorBasedBuilder):
         for files_folder in self.folders:
             image = self._load_image(files_folder)
             label = self._load_target(files_folder)
-            if self.config.bands == 's1':
-                sample = {
-                    'radar': image,
-                    'label': label,
-                    'radar_channel_wv': np.array(radar_channel_wv),
-                    "spatial_resolution": self.spatial_resolution,
-                }
-            
-            if self.config.bands == 's2':
-                if self.config.pad_s2:
-                    assert image.shape[0] == 12 
-                    image = np.insert(image, 10, np.zeros((self.height, self.width)), axis=0)
-                sample = {
-                    'optical': image,
-                    'label': label,
-                    'optical_channel_wv': np.array(optical_channel_wv),
-                    "spatial_resoultion": self.spatial_resolution,
-                }
 
-            if self.config.bands == 'all':
-                radar, optical = image[:2], image[2:]
-                if self.config.pad_s2:
-                    assert optical.shape[0] == 12
-                    optical = np.insert(optical, 10, np.zeros((self.height, self.width)), axis=0)                
+            radar, optical = image[:2], image[2:]
+            if self.config.pad_s2:
+                assert optical.shape[0] == 12
+                optical = np.insert(optical, 10, np.zeros((self.height, self.width)), axis=0)                
 
-                sample = {
-                    "optical": optical,
-                    "radar": radar,
-                    "label": label,
-                    "optical_channel_wv": np.array(optical_channel_wv),
-                    "radar_channel_wv": np.array(radar_channel_wv),
-                    "spatial_resolution": self.spatial_resolution,
-                }
+            sample = {
+                "optical": optical,
+                "radar": radar,
+                "label": label,
+                "optical_channel_wv": np.array(optical_channel_wv),
+                "radar_channel_wv": np.array(radar_channel_wv),
+                "spatial_resolution": self.spatial_resolution,
+            }
 
             yield f"{files_folder['s1']}/{files_folder['s2']}", sample
 
         
 
     def _load_paths(self, files_folder):
-        if self.config.bands == 'all':
-            folder_s1 = files_folder['s1'] if files_folder['s1'] is not None else None
-            folder_s2 = files_folder['s2']
-            paths_s1 = glob.glob(os.path.join(folder_s1, '*.tif')) if folder_s1 is not None else None
-            paths_s2 = glob.glob(os.path.join(folder_s2, '*.tif'))
-            paths_s1 = sorted(paths_s1) if paths_s1 is not None else None
-            paths_s2 = sorted(paths_s2, key=sort_sentinel2_bands)
-            paths = paths_s1 + paths_s2 if paths_s1 is not None else paths_s2
-        elif self.config.bands == 's1':
-            if files_folder['s1'] is None:
-                paths = None
-            else:
-                folder = files_folder['s1']
-                paths = glob.glob(os.path.join(folder, '*.tif')) 
-                paths = sorted(paths)
-        else:
-            folder = files_folder['s2']
-            paths = glob.glob(os.path.join(folder, '*.tif'))
-            paths = sorted(paths, key=sort_sentinel2_bands)
+        folder_s1 = files_folder['s1'] 
+        folder_s2 = files_folder['s2']
+        paths_s1 = glob.glob(os.path.join(folder_s1, '*.tif')) 
+        paths_s2 = glob.glob(os.path.join(folder_s2, '*.tif'))
+        paths_s1 = sorted(paths_s1)
+        paths_s2 = sorted(paths_s2, key=sort_sentinel2_bands)
+        paths = paths_s1 + paths_s2 
 
         return paths
     
@@ -388,13 +317,6 @@ class BigEarthNet(datasets.GeneratorBasedBuilder):
                     )
                     images.append(array)
             arrays: np.typing.NDArray[np.int_] = np.stack(images, axis=0)
-
-        # pad_s1: same as pad_s2, zero padding
-        if self.config.bands == "s1" and paths is None:
-            arrays = np.zeros((2, *self.image_size))
-        elif self.config.bands == "all" and len(paths) == 12:
-            pad_s1 = np.zeros((2, *self.image_size))
-            arrays = np.insert(arrays, 0, pad_s1, axis=0)
 
         return arrays
     
@@ -425,16 +347,16 @@ class BigEarthNet(datasets.GeneratorBasedBuilder):
         ]
         return folders
     
-class BigEarthNetDataset(Dataset):
-    """
-    Wrapper class
-    """
-    def __init__(self, root, split="train", config=None):
-        super().__init__()
-        self.data = load_dataset(root, split=split, config=config, trust_remote_code=True)
+# class BigEarthNetDataset(Dataset):
+#     """
+#     Wrapper class
+#     """
+#     def __init__(self, root, split="train", config=None):
+#         super().__init__()
+#         self.data = load_dataset(root, split=split, config=config, trust_remote_code=True)
 
-    def __len__(self):
-        return len(self.data)
+#     def __len__(self):
+#         return len(self.data)
 
-    def __getitem__(self, idx):
-        return self.data[idx]
+#     def __getitem__(self, idx):
+#         return self.data[idx]

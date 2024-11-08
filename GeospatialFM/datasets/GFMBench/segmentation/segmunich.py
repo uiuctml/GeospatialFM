@@ -78,27 +78,21 @@ class SegMunichDataset(datasets.GeneratorBasedBuilder):
 
     HEIGHT = WIDTH = 128
 
+    NUM_CLASSES = 13
+
     def __init__(self, *args, **kwargs):
         config = kwargs.pop('config', None)
         config_keywords = ['data_dir', 'pad_s2']
         self.num_channels = 10
-     
-        if config:
-            if isinstance(config, dict):
-                for key, value in config.items():
-                    if key in config_keywords:
-                        kwargs[key] = value
-                        if key == "pad_s2":
-                            if value:
-                                self.num_channels += 3
-            elif isinstance(config, SegMunichConfig):
-                configure = config.get_config()
-                for key, value in configure.items():
-                    if key in config_keywords:
-                        kwargs[key] = value
-                        if key == "pad_s2":
-                            if value:
-                                self.num_channels += 3
+
+        assert config is not None, "config is required"
+        data_dir = config.get_config().get('data_dir')
+        pad_s2 = config.get_config().get('pad_s2')
+        kwargs['data_dir'] = data_dir
+        kwargs['pad_s2'] = pad_s2
+
+        if pad_s2:
+            self.num_channels += 3
 
         super().__init__(*args, **kwargs)
 
@@ -125,7 +119,7 @@ class SegMunichDataset(datasets.GeneratorBasedBuilder):
         return datasets.DatasetInfo(
             features=datasets.Features({
                 "optical": datasets.Array3D(shape=(self.num_channels, self.HEIGHT, self.WIDTH), dtype="float32"),
-                "label": datasets.Array2D(shape=(self.HEIGHT, self.WIDTH), dtype="long"),
+                "label": datasets.Array2D(shape=(self.HEIGHT, self.WIDTH), dtype="float32"),
                 "optical_channel_wv": datasets.Sequence(datasets.Value("float32")),
                 "spatial_resolution": datasets.Value("int32"),
             }),
@@ -188,8 +182,8 @@ class SegMunichDataset(datasets.GeneratorBasedBuilder):
 
         for index, row in metadata.iterrows():
             file_name = row.id
-            image_path = os.path.join(data_dir, "img", file_name + ".tif")
-            mask_path = os.path.join(data_dir, "label", file_name + ".tif")
+            image_path = os.path.join(data_dir, "img", str(file_name) + ".tif")
+            mask_path = os.path.join(data_dir, "label", str(file_name) + ".tif")
 
             img = tifffile.imread(image_path) # [128, 128, 10]
             img = np.transpose(img, (2, 0, 1)) #[10, 128, 128]

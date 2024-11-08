@@ -234,12 +234,22 @@ class So2SatConfig(datasets.BuilderConfig):
         return f"So2SatConfig: data_dir={self.data_dir}, pad_s2={self.pad_s2}, so2sat_version={self.so2sat_version}, bands={self.bands}, output_s1_any: {self.output_s1_any}, output_s2_any: {self.output_s2_any} \n"
 
 class So2SatDataset(datasets.GeneratorBasedBuilder):
-    """
-    Config Args:
-        - bands
-        - band_indices: auto updated with bands, no need to manually entered to config
-    """
-    spatial_resolution = 10 # TODO: not sure, make sure this is correct.
+    spatial_resolution = 10 
+
+    metadata = { # only support 3_culture_10 version
+        "s2c": {
+            "bands": [band for band in all_s2_band_names],
+            "channel_wv": all_s2_band_wv,
+            "mean": means_per_version["3_culture_10"][8:],
+            "std": stds_per_version["3_culture_10"][8:], 
+        },
+        "s1": {
+            "bands": None,
+            "channel_wv": None,
+            "mean": None,
+            "std": None,
+        }
+    }
 
     filenames_by_version = {
         '2': {
@@ -266,48 +276,40 @@ class So2SatDataset(datasets.GeneratorBasedBuilder):
 
     HEIGHT = WIDTH = 32
 
+    NUM_CLASSES = 17
+
     def __init__(self, *args, **kwargs):
         config = kwargs.pop('config', None)
         config_keywords = ['data_dir', 'so2sat_version', 'bands', 'pad_s2']
         self.num_s1_channels = 0 # by default, bands = BAND_SETS['s2]
         self.num_s2_channels = 10 
-    
-        if config and isinstance(config, dict):
-            print("hi")
-            for key, value in config.items():
-                print(key)
-                if key in config_keywords:
-                    kwargs[key] = value
-                    if key == 'bands':
-                        self.num_s1_channels = sum(1 for elem in value if elem in all_s1_band_names)
-                        self.num_s2_channels = sum(1 for elem in value if elem in all_s2_band_names)
-        elif config and isinstance(config, So2SatConfig):
-            configure = config.get_config()
-            for key, value in configure.items():
-                if key in config_keywords:
-                    kwargs[key] = value
-                    if key == 'bands':
-                        self.num_s1_channels = sum(1 for elem in value if elem in all_s1_band_names)
-                        self.num_s2_channels = sum(1 for elem in value if elem in all_s2_band_names)
 
-        self.height = self.HEIGHT
-        self.width = self.WIDTH
+        assert config is not None, "config is required"
+        data_dir = config.get_config().get('data_dir')
+        so2sat_version = config.get_config().get('so2sat_version')
+        bands = config.get_config().get('bands')
+        pad_s2 = config.get_config().get('pad_s2')
+        kwargs['data_dir'] = data_dir
+        kwargs['so2sat_version'] = so2sat_version
+        kwargs['bands'] = bands
+        kwargs['pad_s2'] = pad_s2
+        self.num_s1_channels = sum(1 for elem in bands if elem in all_s1_band_names)
+        self.num_s2_channels = sum(1 for elem in bands if elem in all_s2_band_names)
 
         super().__init__(*args, **kwargs)
 
-        self.metadata = {}
-        self.metadata["s2c"] = {
-            "bands": self.config.s2_band_names,
-            "channel_wv": [all_s2_band_wv[i] for i in self.config.s2_band_indices],
-            "mean": [means_per_version[self.config.so2sat_version][i+8] for i in self.config.s2_band_indices], # add 8 to offset s1 mean and std
-            "std": [stds_per_version[self.config.so2sat_version][i+8] for i in self.config.s2_band_indices],
-        }
-        self.metadata["s1"] = {
-            "bands": self.config.s1_band_names,
-            "channel_wv": [all_s1_band_wv[i] for i in self.config.s1_band_indices],
-            "mean": [means_per_version[self.config.so2sat_version][i] for i in self.config.s1_band_indices],
-            "std": [stds_per_version[self.config.so2sat_version][i] for i in self.config.s1_band_indices],
-        }
+        # self.metadata["s2c"] = {
+        #     "bands": self.config.s2_band_names,
+        #     "channel_wv": [all_s2_band_wv[i] for i in self.config.s2_band_indices],
+        #     "mean": [means_per_version[self.config.so2sat_version][i+8] for i in self.config.s2_band_indices], # add 8 to offset s1 mean and std
+        #     "std": [stds_per_version[self.config.so2sat_version][i+8] for i in self.config.s2_band_indices],
+        # }
+        # self.metadata["s1"] = {
+        #     "bands": self.config.s1_band_names,
+        #     "channel_wv": [all_s1_band_wv[i] for i in self.config.s1_band_indices],
+        #     "mean": [means_per_version[self.config.so2sat_version][i] for i in self.config.s1_band_indices],
+        #     "std": [stds_per_version[self.config.so2sat_version][i] for i in self.config.s1_band_indices],
+        # }
 
         if self.config.pad_s2:
             self.metadata["s2c"]["bands"].insert(0, "S2_B01")
@@ -332,13 +334,13 @@ class So2SatDataset(datasets.GeneratorBasedBuilder):
         }
         if self.config.output_s1_any:
             features.update({
-                "radar": datasets.Array3D(shape=(self.num_s1_channels, self.height, self.width), dtype="float32"),
+                "radar": datasets.Array3D(shape=(self.num_s1_channels, self.HEIGHT, self.WIDTH), dtype="float32"),
                 "radar_channel_wv": datasets.Sequence(datasets.Value("float32")),
             })
             
         if self.config.output_s2_any:
             features.update({
-                "optical": datasets.Array3D(shape=(self.num_s2_channels, self.height, self.width), dtype="float32"),
+                "optical": datasets.Array3D(shape=(self.num_s2_channels, self.HEIGHT, self.WIDTH), dtype="float32"),
                 "optical_channel_wv": datasets.Sequence(datasets.Value("float32")),
             })
 
@@ -421,7 +423,7 @@ class So2SatDataset(datasets.GeneratorBasedBuilder):
                     ), axis=0)
 
                 sample = {
-                    'label': label,
+                    'label': float(label),
                     'spatial_resolution': self.spatial_resolution,
                 }
                 if s1.shape[0] > 0:

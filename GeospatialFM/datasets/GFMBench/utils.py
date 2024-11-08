@@ -7,13 +7,13 @@ import os
 GFMBENCH_SCRIPTS_PATH = os.path.dirname(__file__)
 
 DATASET_PATH = {
-    "eurosat": "EuroSAT",
-    "bigearthnet": "BigEarthNet",
-    "so2sat": "So2Sat",
-    "fmow": "FMoW",
-    "segmunich": "SegMunich",
-    "dfc2020": "DFC2020",
-    "marida": "MARIDA",
+    "eurosat": "EuroSAT_hf",
+    "bigearthnet": "BigEarthNet_hf",
+    "so2sat": "So2Sat_hf",
+    "fmow": "FMoW_hf",
+    "segmunich": "SegMunich_hf",
+    "dfc2020": "DFC2020_hf",
+    "marida": "MARIDA_hf",
 }
 
 DATASET = {
@@ -58,7 +58,7 @@ def get_dataset(args, train_transform, eval_transform):
     data_class_path = DATASET_CLASS_PATH[args.dataset_name.lower()]
     data_class_path = os.path.join(GFMBENCH_SCRIPTS_PATH, data_class_path)
     os.makedirs(dataset_path, exist_ok=True)
-    config = CONFIG[args.dataset_name.lower()]() # TODO: what to pass in?
+    config = CONFIG[args.dataset_name.lower()](data_dir=args.data_dir) # TODO: what to pass in?
     
     dataset_dict = {}
     for split in ["train", "val", "test"]:

@@ -112,7 +112,10 @@ def modal_specific_collate_fn(batch, modal='optical'):
             example[m] = torch.tensor(example[m]) if not isinstance(example[m], torch.Tensor) else example[m]
             data_list[m].append(example[m])
             
-            example[f'{m}_channel_wv'] = torch.tensor(example[f'{m}_channel_wv']).unsqueeze(0)
+            # example[f'{m}_channel_wv'] = torch.tensor(example[f'{m}_channel_wv']).unsqueeze(0)
+            example[f'{m}_channel_wv'] = torch.tensor(example[f'{m}_channel_wv']).unsqueeze(0) \
+                if not isinstance(example[f'{m}_channel_wv'], torch.Tensor) \
+                else example[f'{m}_channel_wv'].clone().detach().unsqueeze(0)
             channel_wv[m].append(example[f'{m}_channel_wv'])
 
         spatial_resolution.append(example['spatial_resolution'])
@@ -126,7 +129,7 @@ def modal_specific_collate_fn(batch, modal='optical'):
     
     return_dict = {
         'spatial_resolution': np.array(spatial_resolution),
-        'labels': torch.tensor(labels)
+        'labels': torch.tensor(labels) if not isinstance(labels, list) else torch.tensor(np.array(labels))
     }
     
     if data_list['optical']:

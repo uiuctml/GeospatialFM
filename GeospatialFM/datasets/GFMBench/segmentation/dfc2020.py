@@ -86,22 +86,16 @@ class DFC2020Dataset(datasets.GeneratorBasedBuilder):
         10
     ]
 
+    NUM_CLASSES = 8
+
     def __init__(self, *args, **kwargs):
         config = kwargs.pop('config', None)
-        config_keywords = ['data_dir']
         self.optical_num_channels = 13
         self.radar_num_channels = 2
      
-        if config:
-            if isinstance(config, dict):
-                for key, value in config.items():
-                    if key in config_keywords:
-                        kwargs[key] = value
-            elif isinstance(config, DFC2020Config):
-                configure = config.get_config()
-                for key, value in configure.items():
-                    if key in config_keywords:
-                        kwargs[key] = value
+        assert config is not None, "config is required"
+        data_dir = config.get_config().get('data_dir')
+        kwargs['data_dir'] = data_dir
 
         super().__init__(*args, **kwargs)
 
@@ -113,7 +107,7 @@ class DFC2020Dataset(datasets.GeneratorBasedBuilder):
             features=datasets.Features({
                 "optical": datasets.Array3D(shape=(self.optical_num_channels, self.HEIGHT, self.WIDTH), dtype="float32"),
                 "radar": datasets.Array3D(shape=(self.radar_num_channels, self.HEIGHT, self.WIDTH), dtype="float32"),
-                "label": datasets.Array2D(shape=(self.HEIGHT, self.WIDTH), dtype="long"),
+                "label": datasets.Array2D(shape=(self.HEIGHT, self.WIDTH), dtype="int32"),
                 "optical_channel_wv": datasets.Sequence(datasets.Value("float32")),
                 "radar_channel_wv": datasets.Sequence(datasets.Value("float32")),
                 "spatial_resolution": datasets.Value("int32"),
@@ -180,7 +174,8 @@ class DFC2020Dataset(datasets.GeneratorBasedBuilder):
 
         for index, row in metadata.iterrows():
             # 'lc_path', 's1_path', 's2_path', 'split'
-            img = rasterio.open(row.s2_path)
+            # img = rasterio.open(row.s2_path)
+            img = rasterio.open(os.path.join(data_dir, row.s2_path))
             img_width, img_height = img.width, img.height
             assert img_width == 256 and img_height == 256
 
@@ -196,7 +191,10 @@ class DFC2020Dataset(datasets.GeneratorBasedBuilder):
 
             for i, file in enumerate(files):
                 limit = file['limit']
-                optical, radar, target = self.open_image(row.s2_path, limit), self.open_image(row.s1_path, limit), self.open(row.lc_path, limit).astype(np.int32)
+                lc_path = os.path.join(data_dir, row.lc_path)
+                s1_path = os.path.join(data_dir, row.s1_path)
+                s2_path = os.path.join(data_dir, row.s2_path)
+                optical, radar, target = self.open_image(img_path=s2_path, limit=limit), self.open_image(img_path=s1_path, limit=limit), self.open_image(img_path=lc_path, limit=limit).astype(np.int32)
 
                 target = target[:, :, 0]
                 target = np.take(self.DFC2020_CLASSES, target.astype(np.int64)) 
@@ -217,11 +215,12 @@ class DFC2020Dataset(datasets.GeneratorBasedBuilder):
                     "label": target,
                     "optical_channel_wv": optical_channel_wv,
                     "radar_channel_wv": radar_channel_wv,
+                    "spatial_resolution": self.spatial_resolution,
                 }
 
                 yield f"{index}_{i}", sample
 
-    def open_image(img_path, limit=None):
+    def open_image(self, img_path, limit=None):
         img = io.imread(img_path)
         img_cropped = img[limit[0]:limit[2], limit[1]:limit[3]]
         assert img_cropped.shape[0] == 96 and img_cropped.shape[1] == 96, f"dim0 is now having shape {img_cropped.shape[0]}, and dim1 is now having shape {img_cropped.shape[1]} instead of 96"

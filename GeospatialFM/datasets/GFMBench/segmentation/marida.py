@@ -1,6 +1,5 @@
 import os
 import datasets
-import tifffile
 import rasterio
 
 import pandas as pd
@@ -8,12 +7,11 @@ import numpy as np
 
 from PIL import Image
 from itertools import product
-from datasets import load_dataset
-from torch.utils.data import Dataset
+from skimage import io
 
-S2_MEAN = []
+S2_MEAN = [0.05197577, 0.04783991, 0.04056812, 0.03163572, 0.02972606, 0.03457443, 0.03875053, 0.03436435, 0.0392113,  0.02358126, 0.01588816]
 
-S2_STD = []
+S2_STD = [0.04725893, 0.04743808, 0.04699043, 0.04967381, 0.04946782, 0.06458357, 0.07594915, 0.07120246, 0.08251058, 0.05111466, 0.03524419]
 
 class MARIDAConfig(datasets.BuilderConfig):
     """BuilderConfig for MARIDA"""
@@ -28,14 +26,14 @@ class MARIDAConfig(datasets.BuilderConfig):
         return config
     
     def __str__(self):
-        return f"SegMunichConfig: data_dir={self.data_dir} \n"
+        return f"MARIDAConfig: data_dir={self.data_dir} \n"
 
 class MARIDADataset(datasets.GeneratorBasedBuilder):
     spatial_resolution = 10 
     metadata = {
         "s2c": {
             "bands": ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8A", "B11", "B12"],
-            "channel_wv": [442.7, 492.4, 559.8, 664.6, 704.1, 740.5, 782.8, 864.7, 1613.7, 2202.4],
+            "channel_wv": [442.7, 492.4, 559.8, 664.6, 704.1, 740.5, 782.8, 832.8, 864.7, 1613.7, 2202.4],
             "mean": S2_MEAN,
             "std": S2_STD,
         },
@@ -64,22 +62,17 @@ class MARIDADataset(datasets.GeneratorBasedBuilder):
 
     overlap = 16
 
+    NUM_CLASSES = 11
+
     def __init__(self, *args, **kwargs):
         config = kwargs.pop('config', None)
-        config_keywords = ['data_dir']
-        self.num_channels = 13
-     
-        if config:
-            if isinstance(config, dict):
-                for key, value in config.items():
-                    if key in config_keywords:
-                        kwargs[key] = value
+        self.num_channels = 11
+        mean = np.array(S2_MEAN).astype(np.float32)
+        self.impute_nan = np.tile(mean, (self.patch_size, self.patch_size, 1))
 
-            elif isinstance(config, SegMunichConfig):
-                configure = config.get_config()
-                for key, value in configure.items():
-                    if key in config_keywords:
-                        kwargs[key] = value
+        assert config is not None, "config is required"
+        data_dir = config.get_config().get('data_dir')
+        kwargs['data_dir'] = data_dir
 
         super().__init__(*args, **kwargs)
 
@@ -89,7 +82,7 @@ class MARIDADataset(datasets.GeneratorBasedBuilder):
         return datasets.DatasetInfo(
             features=datasets.Features({
                 "optical": datasets.Array3D(shape=(self.num_channels, self.HEIGHT, self.WIDTH), dtype="float32"),
-                "label": datasets.Array2D(shape=(self.HEIGHT, self.WIDTH), dtype="long"),
+                "label": datasets.Array2D(shape=(self.HEIGHT, self.WIDTH), dtype="int32"),
                 "optical_channel_wv": datasets.Sequence(datasets.Value("float32")),
                 "spatial_resolution": datasets.Value("int32"),
             }),
@@ -101,7 +94,7 @@ class MARIDADataset(datasets.GeneratorBasedBuilder):
         else:
             data_dir = os.path.join(self.config.data_dir, "MARIDA")
 
-        split_file = os.path.join(data_dir, "dataset", "metadata.csv")
+        split_file = os.path.join(data_dir, "metadata.csv")
 
 
         return [
@@ -138,8 +131,8 @@ class MARIDADataset(datasets.GeneratorBasedBuilder):
         metadata = metadata[metadata["split"] == split].reset_index(drop=True)
 
         for index, row in metadata.iterrows():
-            roi_folder = '_'.join(['S2'] + row.file_name.split('_')[:-1])
-            roi_name = '_'.join(['S2'] + row.file_name.split('_'))
+            roi_folder = '_'.join(['S2'] + row.filename.split('_')[:-1])
+            roi_name = '_'.join(['S2'] + row.filename.split('_'))
 
             image_path = os.path.join(data_dir, roi_folder, roi_name + '.tif')
             target_path = os.path.join(data_dir, roi_folder, roi_name + '_cl.tif')
@@ -184,11 +177,11 @@ class MARIDADataset(datasets.GeneratorBasedBuilder):
                 }
                 yield f"{index}_{i}", sample
 
-        def open_image(self, img_path, limit=None):
-            img = io.imread(img_path)
-            img_cropped = img[limit[0]:limit[2], limit[1]:limit[3]]
-            assert img_cropped.shape[0] == 96 and img_cropped.shape[1] == 96, f"dim0 is now having shape {img_cropped.shape[0]}, and dim1 is now having shape {img_cropped.shape[1]} instead of 96"
-            return img_cropped.astype(np.float32)
+    def open_image(self, img_path, limit=None):
+        img = io.imread(img_path)
+        img_cropped = img[limit[0]:limit[2], limit[1]:limit[3]]
+        assert img_cropped.shape[0] == 96 and img_cropped.shape[1] == 96, f"dim0 is now having shape {img_cropped.shape[0]}, and dim1 is now having shape {img_cropped.shape[1]} instead of 96"
+        return img_cropped.astype(np.float32)
 
 # class MARIDADataset(Dataset):
 #     """
