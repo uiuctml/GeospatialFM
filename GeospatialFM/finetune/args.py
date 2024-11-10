@@ -1,7 +1,7 @@
 import argparse
 import os
 
-def parse_args():
+def parse_args(sys_args=None):
     parser = argparse.ArgumentParser(description="GeospatialFM Finetune Arguments")
 
     # Dataset arguments
@@ -79,7 +79,7 @@ def parse_args():
     parser.add_argument("--pretrained_model_path", type=str, default=None, help="Path to the pretrained model")
     
     # Append run name to directories
-    args = parser.parse_args()
+    args = parser.parse_args(sys_args)
     args.output_dir = os.path.join(args.output_dir, args.run_name)
     args.logging_dir = os.path.join(args.logging_dir, args.run_name)
     return args
