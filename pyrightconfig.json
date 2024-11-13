@@ -6,6 +6,5 @@
     "exclude": [
       "results",
       "data",
-      "save_fig",
     ],
 }

@@ -77,6 +77,7 @@ def parse_args(sys_args=None):
     parser.add_argument("--mixed_precision", type=str, default=None, choices=[None, "fp16", "bf16"], help="Whether to use mixed precision. Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >= 1.10 and an Nvidia Ampere GPU")
     parser.add_argument("--resume_from_checkpoint", type=str, default=None, help="If the training should continue from a checkpoint folder")
     parser.add_argument("--pretrained_model_path", type=str, default=None, help="Path to the pretrained model")
+    parser.add_argument("--regenerate_embeddings", action="store_true", help="Regenerate embeddings for Linear Probe")
     
     # Append run name to directories
     args = parser.parse_args(sys_args)

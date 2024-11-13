@@ -75,8 +75,6 @@ def main(args):
     optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"]
     radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"]
     
-    collate_fn = partial(modal_specific_collate_fn, modal=args.modal)
-    
     train_transform, eval_transform = get_transform(args.task_type, args.crop_size, args.scale, args.random_rotation, 
                                                     optical_mean, optical_std, radar_mean, radar_std)
     dataset = get_dataset(args, train_transform, eval_transform)
@@ -109,7 +107,8 @@ def main(args):
     compute_encoding_fn = partial(compute_encoding, model=encoder, task_type=args.task_type, modal=args.modal)
     
     for split, dataset_split in dataset.items():
-        # dataset_split.cleanup_cache_files() 
+        if args.regenerate_embeddings:
+            dataset_split.cleanup_cache_files() 
         new_fingerprint_for_encoder = Hasher.hash((args.pretrained_model_path, args.modal, args.dataset_name, split))
         feature_dataset = dataset_split.map(compute_encoding_fn, batched=True, batch_size=args.per_device_train_batch_size, new_fingerprint=new_fingerprint_for_encoder)
         feature_dataset.remove_columns(['spatial_resolution'])
@@ -117,7 +116,6 @@ def main(args):
         if 'radar' in feature_dataset.column_names: feature_dataset.remove_columns(['radar', 'radar_channel_wv'])
         feature_dataset.set_format(type='torch')
         dataset[split] = feature_dataset
-    # exit()
         
     del encoder
     del model.encoder
