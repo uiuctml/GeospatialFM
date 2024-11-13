@@ -53,8 +53,8 @@ class LESSViTEncoderConfig(PretrainedConfig):
         self.mask_ratio = 0
         self.channel_mask_ratio = 0
         self.pretrain = False
-        self.num_experts = num_experts
-        self.use_moe = use_moe if num_experts > 0 else False
+        self.num_experts = num_experts if num_experts is not None else 0
+        self.use_moe = use_moe if self.num_experts > 0 else False
         self.topk = topk
         
         # Perception field mask

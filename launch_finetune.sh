@@ -10,7 +10,7 @@ DEPTH=4
 for lr in 3e-4; do
     for adam_wd in 0.01; do
         for checkpoint in 40000; do
-            for num_experts in 1 3 5; do
+            for num_experts in 0 5; do
                 echo "lr: $lr, adam_wd: $adam_wd"
                 accelerate launch GeospatialFM/finetune/finetune.py \
                 --data_dir $ROOT_DIR/data/geospatial \
