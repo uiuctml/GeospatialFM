@@ -37,7 +37,7 @@ def parse_args():
     parser.add_argument("--return_dict", type=bool, default=False, help="Return a dictionary instead of a tuple")
     parser.add_argument("--norm_pix_loss", action="store_true", help="Whether to normalize pixel loss")
     parser.add_argument("--use_perception_field_mask", action="store_true", help="Use perception field mask")
-    parser.add_argument("--attention_radius", type=int, default=320, help="Attention radius for perception field mask")
+    parser.add_argument("--attention_radius", type=int, default=640, help="Attention radius for perception field mask")
 
     # Training arguments
     parser.add_argument("--run_name", type=str, required=True, help="Name of the run")

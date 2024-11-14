@@ -106,7 +106,7 @@ def main(args):
     for split, dataset_split in dataset.items():
         if args.regenerate_embeddings:
             dataset_split.cleanup_cache_files() 
-        new_fingerprint_for_encoder = Hasher.hash((args.pretrained_model_path, args.modal, args.dataset_name, split))
+        new_fingerprint_for_encoder = Hasher.hash((args.pretrained_model_path, args.modal, args.dataset_name, split, args.scale))
         feature_dataset = dataset_split.map(compute_encoding_fn, batched=True, batch_size=64, new_fingerprint=new_fingerprint_for_encoder)
         feature_dataset.remove_columns(['spatial_resolution'])
         if 'optical' in feature_dataset.column_names: feature_dataset.remove_columns(['optical', 'optical_channel_wv'])

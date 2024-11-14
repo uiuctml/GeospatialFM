@@ -69,7 +69,7 @@ def multimodal_collate_fn(batch, transform=None, random_crop=True, normalization
         example['spatial_resolution'] = example['spatial_resolution']
         
         if transform:
-            example = transform(example, crop_size, scale=2)
+            example = transform(example, crop_size, scale=1)
             
         if optical_channel_wv is None and radar_channel_wv is None:
             optical_channel_wv = example['optical_channel_wv']

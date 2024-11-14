@@ -3,25 +3,26 @@ export PYTHONPATH=$PYTHONPATH:$ROOT_DIR
 export TORCH_NCCL_BLOCKING_WAIT=1
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 
-DATASET="eurosat"
-EMBED_DIMS=2
-DEPTH=4
+DATASET="bigearthnet"
+EMBED_DIMS=1
+DEPTH=8
+ATTENTION_RADIUS=320
 
-for lr in 3e-4; do
+for lr in 3e-4 5e-4; do
     for adam_wd in 0.01; do
-        for checkpoint in 40000; do
-            for num_experts in 0 5; do
+        for checkpoint in 80000; do
+            for num_experts in 0; do
                 echo "lr: $lr, adam_wd: $adam_wd"
                 accelerate launch GeospatialFM/finetune/finetune.py \
-                --data_dir $ROOT_DIR/data/geospatial \
+                --data_dir /data-4/common/geospatial \
                 --dataset_name $DATASET \
-                --task_type classification \
-                --scale 2 \
+                --task_type multilabel \
+                --scale 1 \
                 --modal optical \
                 --return_dict \
-                --per_device_train_batch_size 64 \
-                --gradient_accumulation_steps 4 \
-                --num_train_epochs 20 \
+                --per_device_train_batch_size 32 \
+                --gradient_accumulation_steps 8 \
+                --num_train_epochs 10 \
                 --learning_rate $lr \
                 --adam_weight_decay $adam_wd \
                 --warmup_steps 0 \
@@ -41,7 +42,11 @@ for lr in 3e-4; do
                 --use_perception_field_mask \
                 --pretrained_model_path $ROOT_DIR/results/models/LESSVIT_b${EMBED_DIMS}_d${DEPTH}/checkpoint-${checkpoint}/model.safetensors \
                 --use_moe \
-                --num_experts $num_experts 
+                --num_experts $num_experts \
+                --attention_radius $ATTENTION_RADIUS \
+                --crop_size 112 \
+                --train_frac 0.1 \
+                --val_frac 0.1
             done
         done
     done
