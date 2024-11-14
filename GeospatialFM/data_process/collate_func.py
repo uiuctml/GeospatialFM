@@ -129,8 +129,15 @@ def modal_specific_collate_fn(batch, modal='optical'):
     
     return_dict = {
         'spatial_resolution': np.array(spatial_resolution),
-        'labels': torch.tensor(labels) if not isinstance(labels, list) else torch.tensor(np.array(labels))
     }
+
+    if not isinstance(labels, list):
+        return_dict['labels'] = torch.tensor(labels)
+    elif isinstance(labels[0], torch.Tensor):
+        return_dict['labels'] = torch.stack(labels)
+    else:
+        return_dict['labels'] = torch.tensor(np.array(labels))
+    print(return_dict['labels'].shape)
     
     if data_list['optical']:
         return_dict['optical'] = torch.stack(data_list['optical'])

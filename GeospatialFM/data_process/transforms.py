@@ -112,7 +112,7 @@ def segmentation_transform_one_sample(optical, radar, label, spatial_resolution,
     
     # normalize
     optical, radar = NormalizeAll(optical, radar, optical_mean, optical_std, radar_mean, radar_std)
-    
+
     # random crop
     if crop_size is not None and is_train:
         optical, radar, label = RandomCropAll(optical, radar, label, crop_size)
