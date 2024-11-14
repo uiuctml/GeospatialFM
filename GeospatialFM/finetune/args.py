@@ -15,6 +15,9 @@ def parse_args(sys_args=None):
     parser.add_argument("--crop_size", type=int, default=None, help="Crop size for training")
     parser.add_argument("--scale", type=float, default=None, help="Scale for training")
     parser.add_argument("--random_rotation", action="store_true", help="Whether to use random rotation for training")
+    parser.add_argument("--train_frac", type=float, default=1.0, help="Fraction of train set to be used in training")
+    parser.add_argument("--val_frac", type=float, default=1.0, help="Fraction of val set to be used in evaluation")
+    parser.add_argument("--test_frac", type=float, default=1.0, help="Fraction of test set to be used in testing")
 
     # Model arguments
     parser.add_argument("--patch_size", type=int, default=16, help="Size of patches for hyperspectral patch embedding")

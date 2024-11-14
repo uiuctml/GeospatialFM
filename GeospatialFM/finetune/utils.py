@@ -59,21 +59,36 @@ def compute_metrics_mAP(eval_pred: EvalPrediction) -> Dict:
 
     return {"macro_mAP": macro_mAP, "micro_mAP": micro_mAP}
 
-def compute_metrics_IoU(eval_pred: EvalPrediction) -> Dict:
+def compute_metrics_IoU(eval_pred: EvalPrediction, num_classes=11) -> Dict:
+    # predictions = eval_pred.predictions
+    # labels = eval_pred.label_ids
+
+    # predictions = np.argmax(predictions, axis=1)
+    # IoU = jaccard_score(labels.flatten(), predictions.flatten(), average="macro")
     predictions = eval_pred.predictions
     labels = eval_pred.label_ids
-
     predictions = np.argmax(predictions, axis=1)
-    IoU = jaccard_score(labels.flatten(), predictions.flatten(), average="macro")
+    predictions = predictions.flatten()
+    labels = labels.flatten()
+
+    n = num_classes
+    mat = np.zeros((n, n), dtype=np.int64)
+    with torch.no_grad():
+        k = (labels >= 0) & (labels < n)
+        inds = n * labels[k].astype(np.int64) + predictions[k]
+        mat += np.bincount(inds, minlength=n**2).reshape(n, n)
+    mat_to_float = mat.astype(np.float32)
+    iu = np.diag(mat_to_float) / (mat_to_float.sum(axis=1) + mat_to_float.sum(axis=0) - np.diag(mat_to_float))
+    IoU = np.mean(iu).item()
 
     return {"IoU": IoU}
 
-def get_metric(task_type):
+def get_metric(task_type, num_classes=None):
     if task_type == "classification":
         return compute_metrics_acc, "accuracy"
     elif task_type == "multilabel":
         return compute_metrics_mAP, "micro_mAP"
     elif task_type == "segmentation":
-        return compute_metrics_IoU, "IoU"
+        return partial(compute_metrics_IoU, num_classes=num_classes), "IoU"
     else:
         raise NotImplementedError

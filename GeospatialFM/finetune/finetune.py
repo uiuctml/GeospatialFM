@@ -71,7 +71,7 @@ def main(args):
     
     # get loss function and metric
     custom_loss_function = get_loss_fn(args.task_type)
-    compute_metrics, metric_name = get_metric(args.task_type)
+    compute_metrics, metric_name = get_metric(args.task_type, metadata["num_classes"])
 
     # Create TrainingArguments with evaluation settings
     training_args = TrainingArguments(
