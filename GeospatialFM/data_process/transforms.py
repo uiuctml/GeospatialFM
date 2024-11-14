@@ -145,7 +145,7 @@ def segmentation_transform(example, crop_size=None, scale=None, is_train=True, r
     label = example.get('label', None)
     spatial_resolution = example.get('spatial_resolution', None)
     assert label is not None
-    
+            
     optical_list = []
     radar_list = []
     label_list = []
