@@ -108,7 +108,7 @@ def segmentation_transform_one_sample(optical, radar, label, spatial_resolution,
     # Convert lists directly to tensors
     optical = None if optical is None else torch.tensor(optical, dtype=torch.float32)
     radar = None if radar is None else torch.tensor(radar, dtype=torch.float32)
-    label = torch.tensor(label, dtype=torch.int64)
+    label = torch.tensor(label, dtype=torch.int64).unsqueeze(0)
     
     # normalize
     optical, radar = NormalizeAll(optical, radar, optical_mean, optical_std, radar_mean, radar_std)
@@ -134,7 +134,8 @@ def segmentation_transform_one_sample(optical, radar, label, spatial_resolution,
     if scale is not None:
         optical, radar = ResizeAll(optical, radar, scale, crop_size)
         spatial_resolution = spatial_resolution / scale
-        
+    label = label.squeeze(0)
+    
     return optical, radar, label, spatial_resolution
 
 def segmentation_transform(example, crop_size=None, scale=None, is_train=True, random_rotation=True, 
@@ -168,7 +169,7 @@ def segmentation_transform(example, crop_size=None, scale=None, is_train=True, r
             crop_size, scale, is_train, random_rotation, optical_mean,
             optical_std, radar_mean, radar_std
         )
-        
+
         if optical_i is not None:
             optical_list.append(optical_i)
         if radar_i is not None:
@@ -186,10 +187,6 @@ def segmentation_transform(example, crop_size=None, scale=None, is_train=True, r
     example['label'] = label_list
     if spatial_resolution_list:
         example['spatial_resolution'] = spatial_resolution_list
-    
-    for key, value in example.items():
-        if not isinstance(value, torch.Tensor):
-            example[key] = torch.tensor(np.array(value))
     
     return example
 

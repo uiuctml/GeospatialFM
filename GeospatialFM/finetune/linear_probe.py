@@ -48,12 +48,9 @@ def compute_encoding(batch, model, task_type, modal='optical'):
         outputs = outputs[0]
     else:
         outputs = outputs.last_hidden_state
-            
-    if task_type == "classification" or task_type == "multilabel":
-        features = outputs[:, :, 0].cpu()
-    else:
-        features = outputs.cpu()
-        
+    
+    features = outputs[:, :, 0].cpu()
+
     return {"features": features, "labels": labels}
 
 def main(args):    
@@ -110,7 +107,7 @@ def main(args):
         if args.regenerate_embeddings:
             dataset_split.cleanup_cache_files() 
         new_fingerprint_for_encoder = Hasher.hash((args.pretrained_model_path, args.modal, args.dataset_name, split))
-        feature_dataset = dataset_split.map(compute_encoding_fn, batched=True, batch_size=args.per_device_train_batch_size, new_fingerprint=new_fingerprint_for_encoder)
+        feature_dataset = dataset_split.map(compute_encoding_fn, batched=True, batch_size=64, new_fingerprint=new_fingerprint_for_encoder)
         feature_dataset.remove_columns(['spatial_resolution'])
         if 'optical' in feature_dataset.column_names: feature_dataset.remove_columns(['optical', 'optical_channel_wv'])
         if 'radar' in feature_dataset.column_names: feature_dataset.remove_columns(['radar', 'radar_channel_wv'])
