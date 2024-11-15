@@ -35,21 +35,6 @@ class SSL4EODataset(Dataset):
     def __init__(self, root, metadata_url=_METADATA_URL):
         self.root = root
         self.size = 264
-        # self.spatial_resolution = 10
-        # self.metadata = {
-        #     "s2c": {
-        #         "bands": ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B10", "B11", "B12"],
-        #         "channel_wv": [442.7, 492.4, 559.8, 664.6, 704.1, 740.5, 782.8, 832.8, 864.7, 945.1, 1373.5, 1613.7, 2202.4],
-        #         "mean": S2C_MEAN,
-        #         "std": S2C_STD
-        #     },
-        #     "s1": {
-        #         "bands": ["VV", "VH"],
-        #         "channel_wv": [5500., 5700.],
-        #         "mean": S1_MEAN,
-        #         "std": S1_STD
-        #     }
-        # }
         
         metadata_path = os.path.join(root, metadata_url)
         self.metadata_df = pd.read_csv(metadata_path)

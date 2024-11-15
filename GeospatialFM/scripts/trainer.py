@@ -1,38 +1,11 @@
-import os
-import torch
-import math
-from transformers import Trainer, get_scheduler
-from typing import Dict
-from tqdm import tqdm
-from accelerate import Accelerator
-from accelerate.utils import DistributedType
-import logging
-from collections import defaultdict
-import shutil
-from torch.utils.data import DataLoader
+from transformers import Trainer
 import numpy as np
-logger = logging.getLogger(__name__)
+from typing import Dict
 
 class MAETrainer(Trainer):
-    def __init__(self, model, args, train_dataset, optimizers, data_collator, accelerator, weight_dtype, train_dataloader=None, modal_mode=None, early_stop_steps=None, loss_type=None):
-        super().__init__(
-            model=model,
-            args=args,
-            train_dataset=train_dataset,
-            optimizers=optimizers,
-            data_collator=data_collator
-        )
-        self.accelerator = accelerator
-        self.args = args
-        self.global_step = 0
-        self.initial_global_step = 0
-        self.first_epoch = 0
-        self.weight_dtype = weight_dtype
+    def __init__(self, modal_mode=None, **kwargs):
+        super().__init__(**kwargs)
         self.modal_mode = modal_mode
-        self.max_grad_norm = args.max_grad_norm  # Add this line
-        self.early_stop_steps = early_stop_steps
-        self.loss_type = loss_type
-        self.train_dataloader = train_dataloader
 
     def compute_loss(self, model, inputs, return_outputs=False, mask_ratio=None, channel_mask_ratio=None):
         optical = inputs.get("optical").to(self.accelerator.device, dtype=self.weight_dtype)
@@ -61,234 +34,34 @@ class MAETrainer(Trainer):
 
         return (loss, outputs) if return_outputs else loss
 
-    def calculate_dimension_loss(self, outputs: Dict[str, torch.Tensor]) -> torch.Tensor:
-        loss = {}
-        total_loss = 0.
-        target = outputs['target']
-        for modal in ['optical', 'radar', 'multi']:
-            if f'{modal}_recon' in outputs:
-                recon = outputs[f'{modal}_recon']
-                channel_mask = outputs[f'{modal}_channel_mask']
-                pos_mask = outputs[f'{modal}_pos_mask']
-                # positional MSE
-                if pos_mask.sum() > 0:
-                    pos_loss = (torch.mean((recon - target) ** 2, dim=[1, 3]) * pos_mask).sum() / pos_mask.sum()
-                else:
-                    pos_loss = torch.mean((recon - target) ** 2, dim=[1, 3]).mean()
-                if channel_mask.sum() > 0:
-                    pos_loss = (pos_loss * (1 - channel_mask).unsqueeze(-1)).sum(dim=1) / (1 - channel_mask).sum(dim=1, keepdim=True) # B, HW
-                else:
-                    pos_loss = pos_loss.mean(dim=1)  # Average over channels if no channel masking
-                # channel MSE
-                if channel_mask.sum() > 0:
-                    channel_loss = (torch.mean((recon - target) ** 2, dim=[2, 3]) * channel_mask).sum() / channel_mask.sum()
-                else:
-                    channel_loss = torch.mean((recon - target) ** 2, dim=[2, 3]).mean()
-                loss[f"{modal}_pos_loss"] = pos_loss
-                loss[f"{modal}_channel_loss"] = channel_loss
-                loss[f"{modal}_loss"] = pos_loss + channel_loss
-                total_loss += loss[f"{modal}_loss"]
-        loss['total_loss'] = total_loss
-        return loss
-    
-    def calculate_modal_loss(self, outputs: Dict[str, torch.Tensor], loss_type: str = 'mse') -> torch.Tensor:
-        loss = {}
-        total_loss = 0.
-        target = outputs['target']
-        optical_target = target[:, :-2]
-        radar_target = target[:, -2:]
-        for modal in ['optical', 'radar', 'multi']:
-            if f'{modal}_recon' in outputs:
-                recon = outputs[f'{modal}_recon']
-                optical_recon = recon[:, :-2]
-                radar_recon = recon[:, -2:]
-                
-                channel_mask = outputs[f'{modal}_channel_mask'] # B, C
-                optical_channel_mask = channel_mask[:, :-2]
-                radar_channel_mask = channel_mask[:, -2:]
-                
-                pos_mask = outputs[f'{modal}_pos_mask'] # B, HW
-                
-                pos_loss = 0.
-                channel_loss = 0.
-                modal_cnt = 2
-                
-                # for each modal
-                for modal_target, modal_recon, modal_channel_mask in zip([optical_target, radar_target], [optical_recon, radar_recon], [optical_channel_mask, radar_channel_mask]):
-                    # positional MSE
-                    if loss_type == 'mse':
-                        modal_pos_loss = torch.mean((modal_recon - modal_target) ** 2, dim=[1, 3]) # B, HW
-                    else:
-                        modal_pos_loss = torch.mean((modal_recon - modal_target).abs(), dim=[1, 3]) # B, HW
-                        
-                    if pos_mask.sum() == 0:
-                        # pos_loss += modal_pos_loss.mean()
-                        pos_loss += torch.zeros_like(modal_pos_loss.mean())
-                    else:
-                        pos_loss += (modal_pos_loss * pos_mask).sum() / pos_mask.sum()
-                        
-                    # channel MSE
-                    if loss_type == 'mse':
-                        modal_channel_loss = torch.mean((modal_recon - modal_target) ** 2, dim=[2, 3])
-                    else:
-                        modal_channel_loss = torch.mean((modal_recon - modal_target).abs(), dim=[2, 3])
-                        
-                    if modal_channel_mask.sum() == 0:
-                        # channel_loss = modal_channel_loss.mean()
-                        channel_loss += torch.zeros_like(modal_channel_loss.mean())
-                        modal_cnt -= 1
-                    else:
-                        channel_loss += (modal_channel_loss * modal_channel_mask).sum() / modal_channel_mask.sum()
-
-                pos_loss /= 2
-                channel_loss /= modal_cnt
-                loss[f"{modal}_pos_loss"] = pos_loss
-                loss[f"{modal}_channel_loss"] = channel_loss
-                loss[f"{modal}_loss"] = pos_loss + channel_loss
-                total_loss += loss[f"{modal}_loss"]
-        loss['total_loss'] = total_loss
-        return loss
-    
-    def get_train_dataloader(self):
-        if self.train_dataloader is not None:
-            return self.train_dataloader
-        
-        if self.train_dataset is None:
-            raise ValueError("Trainer: training requires a train_dataset.")
-        
-        data_collator = self.data_collator
-        train_dataset = self.train_dataset
-        
-        return DataLoader(
-            train_dataset,
-            batch_size=self.args.train_batch_size,
-            collate_fn=data_collator,
-            num_workers=self.args.dataloader_num_workers,
-            pin_memory=self.args.dataloader_pin_memory,
-            shuffle=True
-        )
-
-    def train(self):
-        # Prepare everything
-        model, optimizer, self.train_dataloader, lr_scheduler = self.accelerator.prepare(
-            self.model, self.optimizer, self.get_train_dataloader(), self.lr_scheduler
-        )
-
-        # Recalculate training steps
-        self.num_update_steps_per_epoch = math.ceil(len(self.train_dataloader) / self.args.gradient_accumulation_steps)
-        self.args.max_train_steps = self.args.num_train_epochs * self.num_update_steps_per_epoch
-        self.args.num_train_epochs = math.ceil(self.args.max_train_steps / self.num_update_steps_per_epoch)
-
-        total_batch_size = self.args.train_batch_size * self.accelerator.num_processes * self.args.gradient_accumulation_steps
-
-        logger.info("***** Running training *****")
-        logger.info(f"  Num examples = {len(self.train_dataset)}")
-        logger.info(f"  Num Epochs = {self.args.num_train_epochs}")
-        logger.info(f"  Instantaneous batch size per device = {self.args.train_batch_size}")
-        logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
-        logger.info(f"  Gradient Accumulation steps = {self.args.gradient_accumulation_steps}")
-        logger.info(f"  Total optimization steps = {self.args.max_train_steps}")
-        
-        if self.args.resume_from_checkpoint:
-            self.load_checkpoint()
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        if self.modal_mode == "random":
+            modal = np.random.choice(['multi', 'optical', 'radar'])
         else:
-            self.initial_global_step = 0
+            modal = self.modal_mode
             
-        if self.early_stop_steps is not None:
-            self.args.max_train_steps = self.early_stop_steps
-
-        progress_bar = tqdm(
-            range(0, self.args.max_train_steps),
-            initial=self.initial_global_step,
-            desc="Steps",
-            # Only show the progress bar once on each machine.
-            disable=not self.accelerator.is_local_main_process,
-        )
+        outputs = model(**inputs, modal = modal)
         
-        for epoch in range(self.first_epoch, self.args.num_train_epochs):
-            train_losses = defaultdict(float)
-            for step, batch in enumerate(self.train_dataloader):
-                with self.accelerator.accumulate(model):
-                    loss = self.compute_loss(model, batch)
-                    
-                    for key, value in loss.items():
-                        avg_loss = self.accelerator.gather(value.repeat(self.args.train_batch_size)).mean()
-                        train_losses[key] += avg_loss.item() / self.args.gradient_accumulation_steps
-                    
-                    self.accelerator.backward(loss['total_loss'])
+        assert self.compute_loss_func is not None, "compute_loss_func is not set"
+        loss = self.compute_loss_func(outputs)
 
-                    # Add gradient clipping here
-                    if self.max_grad_norm is not None:
-                        self.accelerator.clip_grad_norm_(model.parameters(), self.max_grad_norm)
+        return (loss, outputs) if return_outputs else loss
+    
+    def log(self, logs: Dict[str, float]) -> None:
+        """
+        Log `logs` on the various objects watching training.
 
-                    optimizer.step()
-                    lr_scheduler.step()
-                    optimizer.zero_grad()
+        Subclass and override this method to inject custom behavior.
 
-                if self.accelerator.sync_gradients:
-                    progress_bar.update(1)
-                    self.global_step += 1
-                    self.accelerator.log(train_losses | dict(epoch=epoch, lr=lr_scheduler.get_last_lr()[0]), step=self.global_step)
-                    train_losses = defaultdict(float)
+        Args:
+            logs (`Dict[str, float]`):
+                The values to log.
+        """
+        if self.state.epoch is not None:
+            logs["epoch"] = self.state.epoch
+        if self.args.include_num_input_tokens_seen:
+            logs["num_input_tokens_seen"] = self.state.num_input_tokens_seen
 
-                    if self.global_step % self.args.save_steps == 0:
-                        self.save_checkpoint()
-
-                logs = {"step_loss": loss['total_loss'].detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
-                progress_bar.set_postfix(**logs)
-
-                if self.global_step >= self.args.max_train_steps:
-                    break
-
-        self.accelerator.wait_for_everyone()
-        self.save_checkpoint()
-        self.accelerator.end_training()
-
-    def save_checkpoint(self):
-        if self.accelerator.is_main_process or self.accelerator.distributed_type == DistributedType.DEEPSPEED:
-            save_path = os.path.join(self.args.output_dir, f"checkpoint-{self.global_step}")
-            self.accelerator.save_state(save_path)
-            logger.info(f"Saved state to {save_path}")
-
-            if self.args.save_total_limit is not None:
-                self.rotate_checkpoints()
-
-    def rotate_checkpoints(self):
-        checkpoints = [f for f in os.listdir(self.args.output_dir) if f.startswith("checkpoint")]
-        checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
-        
-        # If we exceed the limit, remove the oldest checkpoints
-        if len(checkpoints) > self.args.save_total_limit:
-            num_to_remove = len(checkpoints) - self.args.save_total_limit
-            removing_checkpoints = checkpoints[:num_to_remove]
-            logger.info(
-                f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
-            )
-            logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
-
-            for removing_checkpoint in removing_checkpoints:
-                removing_checkpoint = os.path.join(self.args.output_dir, removing_checkpoint)
-                shutil.rmtree(removing_checkpoint)
-
-    def load_checkpoint(self):
-        if self.args.resume_from_checkpoint != "latest":
-            path = os.path.basename(self.args.resume_from_checkpoint)
-        else:
-            # Get the most recent checkpoint
-            dirs = os.listdir(self.args.output_dir)
-            dirs = [d for d in dirs if d.startswith("checkpoint")]
-            dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
-            path = dirs[-1] if len(dirs) > 0 else None
-
-        if path is None:
-            self.accelerator.print(
-                f"Checkpoint '{self.args.resume_from_checkpoint}' does not exist. Starting a new training run."
-            )
-            self.args.resume_from_checkpoint = None
-            self.initial_global_step = 0
-        else:
-            self.accelerator.print(f"Resuming from checkpoint {path}")
-            self.accelerator.load_state(os.path.join(self.args.output_dir, path))
-            self.global_step = int(path.split("-")[1])
-            self.initial_global_step = self.global_step
-            self.first_epoch = self.global_step // self.num_update_steps_per_epoch
+        output = {**logs, **{"step": self.state.global_step}}
+        self.state.log_history.append(output)
+        self.control = self.callback_handler.on_log(self.args, self.state, self.control, logs)

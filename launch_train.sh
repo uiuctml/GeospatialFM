@@ -7,14 +7,14 @@ EMBED_DIMS=1
 
 accelerate launch GeospatialFM/scripts/train.py \
     --data_dir $ROOT_DIR/data/geospatial/SSL4EO \
-    --train_batch_size 32 \
+    --per_device_train_batch_size 32 \
     --gradient_accumulation_steps 2 \
-    --num_train_epochs 100 \
+    --num_train_epochs 1 \
     --learning_rate 1.5e-4 \
     --adam_weight_decay 0.05 \
     --mask_ratio 0.75 \
     --channel_mask_ratio 0.5 \
-    --lr_warmup_steps 40000 \
+    --warmup_ratio 0.1 \
     --report_to wandb \
     --save_steps 5000 \
     --save_total_limit 5 \
@@ -38,4 +38,6 @@ accelerate launch GeospatialFM/scripts/train.py \
     --attn_drop 0.1 \
     --loss_type mse \
     --modal_mode multi \
+    --scale 1 \
+    --crop_size 128 \
     

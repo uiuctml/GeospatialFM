@@ -3,9 +3,13 @@ import numpy as np
 import torch
 from transformers import PreTrainedModel
 from .spatial_spectral_low_rank_vit import SpatialSpectralLowRankViTEncoder, SpatialSpectralLowRankViTDecoder, SpatialSpectralLowRankViTConfig, SpatialViTDecoder
+from typing import Dict, Union, Any
+import logging
+logger = logging.getLogger(__name__)
 
 class SpatialSpectralMAEViT(PreTrainedModel):
     config_class = SpatialSpectralLowRankViTConfig
+    main_input_name = ['optical', 'radar']
     def __init__(self, config):
         super().__init__(config)
         self.encoder = SpatialSpectralLowRankViTEncoder(config)
@@ -49,3 +53,30 @@ class SpatialSpectralMAEViT(PreTrainedModel):
             multi_dict = self._forward(optical, radar, optical_channel_wv, radar_channel_wv, mask_ratio, channel_mask_ratio, spatial_resolution, prefix='multi')
             return_dict.update(multi_dict)
         return return_dict
+
+    def estimate_tokens(self, input_dict: Dict[str, Union[torch.Tensor, Any]]) -> int:
+        """
+        Helper function to estimate the total number of tokens from the model inputs.
+
+        Args:
+            inputs (`dict`): The model inputs.
+
+        Returns:
+            `int`: The total number of tokens.
+        """
+        if not hasattr(self, "warnings_issued"):
+            self.warnings_issued = {}
+        if isinstance(self.main_input_name, list):
+            tokens = 0
+            for main_input_name in self.main_input_name:
+                if main_input_name in input_dict:
+                    tokens += input_dict[main_input_name].numel()
+            return tokens
+        elif self.main_input_name in input_dict:
+            return input_dict[self.main_input_name].numel()
+        elif "estimate_tokens" not in self.warnings_issued:
+            logger.warning(
+                "Could not estimate the number of tokens of the input, floating-point operations will not be computed"
+            )
+            self.warnings_issued["estimate_tokens"] = True
+        return 0
