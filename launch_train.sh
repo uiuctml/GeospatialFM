@@ -1,4 +1,4 @@
-ROOT_DIR="/home/haozhesi/Dropbox/GeospatialFM"
+ROOT_DIR="/home/haozhesi/GeospatialFM"
 export PYTHONPATH=$PYTHONPATH:$ROOT_DIR
 export TORCH_NCCL_BLOCKING_WAIT=1
 
@@ -9,7 +9,7 @@ accelerate launch GeospatialFM/scripts/train.py \
     --data_dir $ROOT_DIR/data/geospatial/SSL4EO \
     --per_device_train_batch_size 32 \
     --gradient_accumulation_steps 2 \
-    --num_train_epochs 1 \
+    --num_train_epochs 100 \
     --learning_rate 1.5e-4 \
     --adam_weight_decay 0.05 \
     --mask_ratio 0.75 \
@@ -36,6 +36,7 @@ accelerate launch GeospatialFM/scripts/train.py \
     --max_grad_norm 1.0 \
     --proj_drop 0.1 \
     --attn_drop 0.1 \
+    --drop_path_rate 0.1 \
     --loss_type mse \
     --modal_mode multi \
     --scale 1 \
