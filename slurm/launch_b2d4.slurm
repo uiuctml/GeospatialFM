@@ -12,7 +12,7 @@
 #SBATCH --account=bdmr-delta-gpu    # <- match to a "Project" returned by the "accounts" command
 #SBATCH --exclusive  # dedicated node for this job
 #SBATCH --no-requeue
-#SBATCH -t 04:00:00
+#SBATCH -t 48:00:00
 #SBATCH -e slurm_logs/slurm-%j.err
 #SBATCH -o slurm_logs/slurm-%j.out
 
