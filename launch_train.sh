@@ -14,9 +14,9 @@ accelerate launch GeospatialFM/scripts/train.py \
     --adam_weight_decay 0.05 \
     --mask_ratio 0.75 \
     --channel_mask_ratio 0.5 \
-    --warmup_steps 2500 \
+    --warmup_ratio 0.1 \
     --report_to wandb \
-    --save_steps 5000 \
+    --save_steps 0.1 \
     --save_total_limit 5 \
     --seed 42 \
     --mixed_precision bf16 \
