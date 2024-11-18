@@ -62,7 +62,7 @@ def main(args):
         import wandb
         if training_args.local_rank == 0:
             wandb.init(
-                project=f"less-pretraining",
+                project=f"less-pretrain",
                 name=args.run_name,
                 dir=args.wandb_dir,
                 config=vars(args)
