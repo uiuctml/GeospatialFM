@@ -73,7 +73,7 @@ def parse_args():
     parser.add_argument("--logging_dir", type=str, default="logs", help="Directory to save logs")
     parser.add_argument("--report_to", type=str, default="wandb", help="Where to report results to (tensorboard, wandb, etc.)")
     parser.add_argument("--save_strategy", type=str, default="epoch", help="Save strategy")
-    parser.add_argument("--save_steps", type=int, default=500, help="Save checkpoint every X updates steps")
+    parser.add_argument("--save_steps", type=float, default=500, help="Save checkpoint every X updates steps")
     parser.add_argument("--save_total_limit", type=int, default=None, help="If set, deletes the older checkpoints in output_dir")
     parser.add_argument("--wandb_dir", type=str, default="wandb", help="Directory to save wandb logs")
     
