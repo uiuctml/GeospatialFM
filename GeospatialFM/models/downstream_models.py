@@ -6,6 +6,11 @@ from .UPerNet import UPerNet
 from transformers import PretrainedConfig
 from .spatial_spectral_low_rank_vit import SpatialSpectralLowRankViTEncoder
 import torch.nn.functional as F
+from typing import Dict, Any
+import logging
+
+logger = logging.getLogger(__name__)
+
 class LESSViTEncoderConfig(PretrainedConfig):
     model_type = "less_vit_encoder"
 
@@ -121,7 +126,39 @@ class LinearHead(nn.Module):
             
         return {'logits': logits}
 
-class LESSWithProjection(PreTrainedModel):
+class LESSWithTaskHead(PreTrainedModel):
+    main_input_name = ['optical', 'radar']
+    def __init__(self, config):
+        super().__init__(config)
+    
+    def estimate_tokens(self, input_dict: Dict[str, Union[torch.Tensor, Any]]) -> int:
+        """
+        Helper function to estimate the total number of tokens from the model inputs.
+
+        Args:
+            inputs (`dict`): The model inputs.
+
+        Returns:
+            `int`: The total number of tokens.
+        """
+        if not hasattr(self, "warnings_issued"):
+            self.warnings_issued = {}
+        if isinstance(self.main_input_name, list):
+            tokens = 0
+            for main_input_name in self.main_input_name:
+                if main_input_name in input_dict:
+                    tokens += input_dict[main_input_name].numel()
+            return tokens
+        elif self.main_input_name in input_dict:
+            return input_dict[self.main_input_name].numel()
+        elif "estimate_tokens" not in self.warnings_issued:
+            logger.warning(
+                "Could not estimate the number of tokens of the input, floating-point operations will not be computed"
+            )
+            self.warnings_issued["estimate_tokens"] = True
+        return 0
+
+class LESSWithProjection(LESSWithTaskHead):
     def __init__(self, config):
         super().__init__(config)
         self.num_labels = config.num_labels
@@ -157,7 +194,7 @@ class LESSWithProjection(PreTrainedModel):
 
         return {"logits": logits} if self.config.return_dict else logits
 
-class LESSWithUPerNet(PreTrainedModel):
+class LESSWithUPerNet(LESSWithTaskHead):
     def __init__(self, config):
         super().__init__(config)
         self.num_labels = config.num_labels
