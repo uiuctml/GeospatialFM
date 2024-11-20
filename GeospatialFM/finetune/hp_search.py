@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from datetime import timedelta
 import math
+import optuna
 
 import torch
 from accelerate.logging import get_logger
@@ -127,7 +128,9 @@ def main(args):
         hp_space=optuna_hp_space,
         n_trials=10,
         storage=f"sqlite:///{args.logging_dir}/hparam_search.db",
-        study_name=args.run_name
+        study_name=args.run_name,
+        load_if_exists=True,
+        pruner=optuna.pruners.SuccessiveHalvingPruner()
     )
     
     # Print the best hyperparameters and their performance
@@ -137,8 +140,20 @@ def main(args):
     for key, value in best_trial.hyperparameters.items():
         logger.info(f"\t{key}: {value}")
     
-    # Train a new model with the best hyperparameters
-    trainer.hyperparameters = best_trial.hyperparameters
+    # Create a new trainer with the best hyperparameters
+    for key, value in best_trial.hyperparameters.items():
+        setattr(training_args, key, value)
+    
+    del trainer
+    trainer = Trainer(
+        model=model_init(None),  # Initialize model with best hyperparameters
+        args=training_args,
+        train_dataset=dataset['train'],
+        eval_dataset=dataset['val'],
+        data_collator=collate_fn,
+        compute_metrics=compute_metrics,
+        compute_loss_func=custom_loss_function
+    )
     
     # Train the model with best hyperparameters
     train_result = trainer.train()

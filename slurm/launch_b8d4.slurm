@@ -16,9 +16,7 @@
 #SBATCH -e slurm_logs/slurm-%j.err
 #SBATCH -o slurm_logs/slurm-%j.out
 
-conda activate sat
-
-ROOT_DIR="/home/haozhesi/GeospatialFM"
+ROOT_DIR="/u/ehzoahis/GeospatialFM"
 export PYTHONPATH=$PYTHONPATH:$ROOT_DIR
 export TORCH_NCCL_BLOCKING_WAIT=1
 
