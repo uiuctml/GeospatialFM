@@ -130,11 +130,6 @@ def main(args):
         storage=f"sqlite:///{args.logging_dir}/hparam_search.db",
         study_name=args.run_name,
         load_if_exists=True,
-        pruner=optuna.pruners.MedianPruner(
-            n_startup_trials=1,       
-            n_warmup_steps=0,         
-            interval_steps=1  
-        )
     )
     
     # Print the best hyperparameters and their performance

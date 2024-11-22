@@ -19,7 +19,7 @@ accelerate launch GeospatialFM/finetune/hp_search.py \
     --modal optical \
     --return_dict \
     --per_device_train_batch_size 32 \
-    --gradient_accumulation_steps 8 \
+    --gradient_accumulation_steps 4 \
     --num_train_epochs 20 \
     --learning_rate 1e-4 \
     --weight_decay 0.01 \
@@ -41,4 +41,4 @@ accelerate launch GeospatialFM/finetune/hp_search.py \
     --pretrained_model_path $ROOT_DIR/results/models/LESSVIT_b${EMBED_DIMS}_d${DEPTH}/checkpoint-${CHECKPOINT}/model.safetensors \
     --use_moe \
     --num_experts $MOE \
-    --attention_radius $ATTENTION_RADIUS
+    --attention_radius $ATTENTION_RADIUS 
