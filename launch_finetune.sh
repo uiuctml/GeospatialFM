@@ -9,7 +9,7 @@ DEPTH=4
 ATTENTION_RADIUS=640
 CHECKPOINT=24600
 MOE=0
-SCALE=2
+SCALE=1
 
 accelerate launch GeospatialFM/finetune/hp_search.py \
     --data_dir $ROOT_DIR/data/geospatial/ \
@@ -22,7 +22,7 @@ accelerate launch GeospatialFM/finetune/hp_search.py \
     --gradient_accumulation_steps 8 \
     --num_train_epochs 20 \
     --learning_rate 1e-4 \
-    --adam_weight_decay 0.01 \
+    --weight_decay 0.01 \
     --warmup_steps 0 \
     --warmup_ratio 0.2 \
     --report_to none \
