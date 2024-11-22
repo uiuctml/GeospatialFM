@@ -46,7 +46,7 @@ def model_init(trial):
 def optuna_hp_space(trial):
     return {
         "learning_rate": trial.suggest_float("learning_rate", 1e-4, 1e-2, log=True),
-        "adam_weight_decay": trial.suggest_float("adam_weight_decay", 0.01, 0.1, log=True),
+        "weight_decay": trial.suggest_float("weight_decay", 0.01, 0.1, log=True),
     }
 
 def main(args):    
@@ -130,7 +130,11 @@ def main(args):
         storage=f"sqlite:///{args.logging_dir}/hparam_search.db",
         study_name=args.run_name,
         load_if_exists=True,
-        pruner=optuna.pruners.SuccessiveHalvingPruner()
+        pruner=optuna.pruners.MedianPruner(
+            n_startup_trials=1,       
+            n_warmup_steps=0,         
+            interval_steps=1  
+        )
     )
     
     # Print the best hyperparameters and their performance

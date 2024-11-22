@@ -48,7 +48,7 @@ def parse_args(sys_args=None):
     parser.add_argument("--learning_rate", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="Adam optimizer beta1")
     parser.add_argument("--adam_beta2", type=float, default=0.95, help="Adam optimizer beta2")
-    parser.add_argument("--adam_weight_decay", type=float, default=0.05, help="Adam optimizer weight decay")
+    parser.add_argument("--weight_decay", type=float, default=0.05, help="Adam optimizer weight decay")
     parser.add_argument("--adam_epsilon", type=float, default=1e-8, help="Adam optimizer epsilon")
     parser.add_argument("--max_train_steps", type=int, default=None, help="Total number of training steps")
     parser.add_argument("--num_train_epochs", type=int, default=100, help="Total number of training epochs")
