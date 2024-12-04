@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from datetime import timedelta
 import math
+import optuna
 
 import torch
 from accelerate.logging import get_logger
@@ -19,35 +20,14 @@ from functools import partial
 from GeospatialFM.finetune.args import parse_args
 from GeospatialFM.datasets.GFMBench.utils import get_dataset, get_metadata
 from GeospatialFM.data_process.transforms import get_transform
-from GeospatialFM.data_process.collate_func import modal_specific_collate_fn, apply_normalization
+from GeospatialFM.data_process.collate_func import modal_specific_collate_fn
 from GeospatialFM.finetune.utils import get_loss_fn, get_metric, get_task_model
 
 logger = get_logger(__name__)
 
-def main(args):    
-    # Make one log on every process with the configuration for debugging.
-    logging.basicConfig(
-        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-        datefmt="%m/%d/%Y %H:%M:%S",
-        level=logging.INFO,
-    )
-
-    # Handle the repository creation
-    if args.output_dir is not None:
-        os.makedirs(args.output_dir, exist_ok=True)
-
-    # Load dataset
+def model_init(trial):
+    args = parse_args()
     metadata = get_metadata(args.dataset_name)
-    args.crop_size = metadata["size"] if args.crop_size is None else args.crop_size
-    
-    optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"]
-    radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"]
-    
-    collate_fn = partial(modal_specific_collate_fn, modal=args.modal)
-    
-    train_transform, eval_transform = get_transform(args.task_type, args.crop_size, args.scale, args.random_rotation, 
-                                                    optical_mean, optical_std, radar_mean, radar_std)
-    dataset = get_dataset(args, train_transform, eval_transform)
     
     # Initialize model
     model = get_task_model(args, metadata["num_classes"], metadata["size"])
@@ -61,13 +41,41 @@ def main(args):
                     # Get the corresponding key in target model
                     param = f.get_tensor(key)
                     model.state_dict()[key].copy_(param)
+    return model
+
+def optuna_hp_space(trial):
+    return {
+        "learning_rate": trial.suggest_float("learning_rate", 1e-4, 1e-2, log=True),
+        "weight_decay": trial.suggest_float("weight_decay", 0.01, 0.1, log=True),
+    }
+
+def main(args):    
+    # Make one log on every process with the configuration for debugging.
+    logging.basicConfig(
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        datefmt="%m/%d/%Y %H:%M:%S",
+        level=logging.INFO,
+    )
+
+    # Handle the repository creation
+    if args.output_dir is not None:
+        os.makedirs(args.output_dir, exist_ok=True)
+        
+    if args.logging_dir is not None:
+        os.makedirs(args.logging_dir, exist_ok=True)
+
+    # Load dataset
+    metadata = get_metadata(args.dataset_name)
+    args.crop_size = metadata["size"] if args.crop_size is None else args.crop_size
     
-    if args.freeze_encoder:
-        for param in model.encoder.parameters():
-            param.requires_grad = False
+    optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"]
+    radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"]
     
-    if args.gradient_checkpointing:
-        model.gradient_checkpointing_enable()
+    collate_fn = partial(modal_specific_collate_fn, modal=args.modal)
+    
+    train_transform, eval_transform = get_transform(args.task_type, args.crop_size, args.scale, args.random_rotation, 
+                                                    optical_mean, optical_std, radar_mean, radar_std)
+    dataset = get_dataset(args, train_transform, eval_transform)
     
     # get loss function and metric
     custom_loss_function = get_loss_fn(args.task_type)
@@ -102,7 +110,9 @@ def main(args):
             )
     
     trainer = Trainer(
-        model=model,
+        # model=model,
+        model = None,
+        model_init=model_init,
         args=training_args,
         train_dataset=dataset['train'],
         eval_dataset=dataset['val'],
@@ -112,10 +122,40 @@ def main(args):
     )
     
     # Train and evaluate
-    train_result = trainer.train()
+    best_trial = trainer.hyperparameter_search(
+        direction="maximize",
+        backend="optuna",
+        hp_space=optuna_hp_space,
+        n_trials=10,
+        storage=f"sqlite:///{args.logging_dir}/hparam_search.db",
+        study_name=args.run_name,
+        load_if_exists=True,
+    )
     
-    # Save the best model first
-    trainer.save_model(os.path.join(args.output_dir, "best_model"))
+    # Print the best hyperparameters and their performance
+    logger.info(f"\n\nBest trial:")
+    logger.info(f"Value (objective): {best_trial.objective}")
+    logger.info("Parameters:")
+    for key, value in best_trial.hyperparameters.items():
+        logger.info(f"\t{key}: {value}")
+    
+    # Create a new trainer with the best hyperparameters
+    for key, value in best_trial.hyperparameters.items():
+        setattr(training_args, key, value)
+    
+    del trainer
+    trainer = Trainer(
+        model=model_init(None),  # Initialize model with best hyperparameters
+        args=training_args,
+        train_dataset=dataset['train'],
+        eval_dataset=dataset['val'],
+        data_collator=collate_fn,
+        compute_metrics=compute_metrics,
+        compute_loss_func=custom_loss_function
+    )
+    
+    # Train the model with best hyperparameters
+    train_result = trainer.train()
     
     # Final evaluation
     metrics = trainer.evaluate(eval_dataset=dataset['test'])

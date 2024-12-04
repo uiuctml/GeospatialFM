@@ -11,7 +11,7 @@ CHECKPOINT=24600
 MOE=0
 SCALE=1
 
-accelerate launch GeospatialFM/finetune/finetune.py \
+accelerate launch GeospatialFM/finetune/linear_probe.py \
     --data_dir $ROOT_DIR/data/geospatial/ \
     --dataset_name $DATASET \
     --task_type classification \

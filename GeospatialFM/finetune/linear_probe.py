@@ -24,6 +24,8 @@ from GeospatialFM.finetune.utils import get_loss_fn, get_metric, get_task_model
 
 from datasets.fingerprint import Hasher
 
+import optuna
+
 logger = get_logger(__name__)
 
 def compute_encoding(batch, model, task_type, modal='optical'):
@@ -52,6 +54,34 @@ def compute_encoding(batch, model, task_type, modal='optical'):
     features = outputs[:, :, 0].cpu()
 
     return {"features": features, "labels": labels}
+
+def model_init(trial):
+    args = parse_args()
+    metadata = get_metadata(args.dataset_name)
+    
+    # Initialize model
+    model = get_task_model(args, metadata["num_classes"], metadata["size"])
+    # load from checkpoint if provided
+    if args.pretrained_model_path:
+        from safetensors import safe_open
+        with safe_open(args.pretrained_model_path, framework="pt", device="cpu") as f:
+            # Load only encoder weights
+            for key in f.keys():
+                if key.startswith("encoder."):
+                    param = f.get_tensor(key)
+                    model.state_dict()[key].copy_(param)
+    
+    if args.freeze_encoder:
+        for param in model.encoder.parameters():
+            param.requires_grad = False
+            
+    return model.classifier  # Return only the classifier part for linear probe
+
+def optuna_hp_space(trial):
+    return {
+        "learning_rate": trial.suggest_float("learning_rate", 1e-4, 1e-2, log=True),
+        "weight_decay": trial.suggest_float("weight_decay", 0.01, 0.1, log=True),
+    }
 
 def main(args):    
     # Make one log on every process with the configuration for debugging.
@@ -85,7 +115,6 @@ def main(args):
             # Load only encoder weights
             for key in f.keys():
                 if key.startswith("encoder."):
-                    # Get the corresponding key in target model
                     param = f.get_tensor(key)
                     model.state_dict()[key].copy_(param)
     
@@ -116,7 +145,7 @@ def main(args):
         
     del encoder
     del model.encoder
-    model = task_head
+    # model = task_head
 
     # get loss function and metric
     custom_loss_function = get_loss_fn(args.task_type)
@@ -149,13 +178,48 @@ def main(args):
             )
     
     trainer = Trainer(
-        model=model,
+        model=None,
+        model_init=model_init,
         args=training_args,
         train_dataset=dataset['train'],
         eval_dataset=dataset['val'],
         data_collator=linear_probe_collate_fn,
-        compute_metrics=compute_metrics,  # Add the metrics computation function
-        compute_loss_func=custom_loss_function  # Pass the custom loss function
+        compute_metrics=compute_metrics,
+        compute_loss_func=custom_loss_function
+    )
+    
+    # Hyperparameter search
+    best_trial = trainer.hyperparameter_search(
+        direction="maximize",
+        backend="optuna",
+        hp_space=optuna_hp_space,
+        n_trials=10,
+        storage=f"sqlite:///{args.logging_dir}/hparam_search.db",
+        study_name=args.run_name,
+        load_if_exists=True,
+    )
+    
+    # Print the best hyperparameters
+    logger.info(f"\n\nBest trial:")
+    logger.info(f"Value (objective): {best_trial.objective}")
+    logger.info("Parameters:")
+    for key, value in best_trial.hyperparameters.items():
+        logger.info(f"\t{key}: {value}")
+    
+    # Update training args with best hyperparameters
+    for key, value in best_trial.hyperparameters.items():
+        setattr(training_args, key, value)
+    
+    # Create new trainer with best hyperparameters
+    del trainer
+    trainer = Trainer(
+        model=model_init(None),
+        args=training_args,
+        train_dataset=dataset['train'],
+        eval_dataset=dataset['val'],
+        data_collator=linear_probe_collate_fn,
+        compute_metrics=compute_metrics,
+        compute_loss_func=custom_loss_function
     )
     
     # Train and evaluate
