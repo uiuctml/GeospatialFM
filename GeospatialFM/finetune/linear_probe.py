@@ -79,7 +79,7 @@ def model_init(trial):
 
 def optuna_hp_space(trial):
     return {
-        "learning_rate": trial.suggest_float("learning_rate", 1e-4, 1e-2, log=True),
+        "learning_rate": trial.suggest_float("learning_rate", 1e-3, 1e-1, log=True),
         "weight_decay": trial.suggest_float("weight_decay", 0.01, 0.1, log=True),
     }
 
@@ -193,10 +193,11 @@ def main(args):
         direction="maximize",
         backend="optuna",
         hp_space=optuna_hp_space,
-        n_trials=10,
-        storage=f"sqlite:///{args.logging_dir}/hparam_search.db",
+        n_trials=args.n_trials,
+        storage=f"sqlite:///{args.logging_dir}/linear_probe.db",
         study_name=args.run_name,
         load_if_exists=True,
+        pruner=optuna.pruners.NopPruner()  # FIXME: Pruner is not compatible with our server now, fix it later
     )
     
     # Print the best hyperparameters

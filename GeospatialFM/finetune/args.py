@@ -81,9 +81,15 @@ def parse_args(sys_args=None):
     parser.add_argument("--resume_from_checkpoint", type=str, default=None, help="If the training should continue from a checkpoint folder")
     parser.add_argument("--pretrained_model_path", type=str, default=None, help="Path to the pretrained model")
     parser.add_argument("--regenerate_embeddings", action="store_true", help="Regenerate embeddings for Linear Probe")
+    parser.add_argument("--use_early_stopping", action="store_true", help="Use early stopping")
+    parser.add_argument("--early_stopping_patience", type=int, default=1, help="Early stopping patience")
+    parser.add_argument("--early_stopping_threshold", type=float, default=0.0, help="Early stopping threshold")
+    
+    # Optuna arguments
+    parser.add_argument("--n_trials", type=int, default=10, help="Number of trials")
     
     # Append run name to directories
     args = parser.parse_args(sys_args)
     args.output_dir = os.path.join(args.output_dir, args.run_name)
-    args.logging_dir = os.path.join(args.logging_dir, args.run_name)
+    args.logging_dir = os.path.join(args.logging_dir, args.dataset_name)
     return args

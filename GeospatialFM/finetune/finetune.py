@@ -12,6 +12,7 @@ from accelerate.logging import get_logger
 import transformers
 from transformers import is_wandb_available
 from transformers import TrainingArguments, Trainer
+from transformers import EarlyStoppingCallback
 from typing import Dict
 import numpy as np
 
@@ -45,8 +46,8 @@ def model_init(trial):
 
 def optuna_hp_space(trial):
     return {
-        "learning_rate": trial.suggest_float("learning_rate", 1e-4, 1e-2, log=True),
-        "weight_decay": trial.suggest_float("weight_decay", 0.01, 0.1, log=True),
+        "learning_rate": trial.suggest_float("learning_rate", 1e-4, 5e-4, step=1e-4),
+        "warmup_ratio": trial.suggest_float("warmup_ratio", 0.0, 0.2, step=0.05),
     }
 
 def main(args):    
@@ -96,6 +97,10 @@ def main(args):
         metric_for_best_model=metric_name
     )
     
+    callbacks = []
+    if args.use_early_stopping:
+        callbacks.append(EarlyStoppingCallback(early_stopping_patience=args.early_stopping_patience, early_stopping_threshold=args.early_stopping_threshold))
+    
     # Set up wandb first if using it
     if args.report_to == "wandb" :
         if not is_wandb_available():
@@ -110,7 +115,6 @@ def main(args):
             )
     
     trainer = Trainer(
-        # model=model,
         model = None,
         model_init=model_init,
         args=training_args,
@@ -118,7 +122,8 @@ def main(args):
         eval_dataset=dataset['val'],
         data_collator=collate_fn,
         compute_metrics=compute_metrics,  # Add the metrics computation function
-        compute_loss_func=custom_loss_function  # Pass the custom loss function
+        compute_loss_func=custom_loss_function,  # Pass the custom loss function
+        callbacks=callbacks
     )
     
     # Train and evaluate
@@ -126,10 +131,11 @@ def main(args):
         direction="maximize",
         backend="optuna",
         hp_space=optuna_hp_space,
-        n_trials=10,
-        storage=f"sqlite:///{args.logging_dir}/hparam_search.db",
+        n_trials=args.n_trials,
+        storage=f"sqlite:///{args.logging_dir}/finetune.db",
         study_name=args.run_name,
         load_if_exists=True,
+        pruner=optuna.pruners.NopPruner()  # FIXME: Pruner is not compatible with our server now, fix it later
     )
     
     # Print the best hyperparameters and their performance
@@ -144,6 +150,7 @@ def main(args):
         setattr(training_args, key, value)
     
     del trainer
+    
     trainer = Trainer(
         model=model_init(None),  # Initialize model with best hyperparameters
         args=training_args,

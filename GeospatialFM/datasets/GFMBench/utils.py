@@ -7,10 +7,12 @@ GFMBENCH_SCRIPTS_PATH = os.path.dirname(__file__)
 
 DATASET_PATH = {
     "eurosat": "EuroSAT",
+    "bigearthnet": "BigEarthNet",
 }
 
 DATASET = {
     "eurosat": 'GFM-Bench/EuroSAT',
+    "bigearthnet": "GFM-Bench/BigEarthNet",
 }
 
 def get_metadata(dataset_name):
@@ -32,7 +34,7 @@ def get_dataset(args, train_transform, eval_transform):
     dataset_dict = {}
     for split in ["train", "val", "test"]:
         transform = train_transform if split == "train" else eval_transform
-        dataset = load_dataset(dataset_name, split=split, cache_dir=dataset_path)
+        dataset = load_dataset(dataset_name, split=split, cache_dir=dataset_path, trust_remote_code=True)
         split_frac = dataset_frac.get(f"{split}_frac")
         if split_frac != 1.0:
             dataset = dataset.train_test_split(train_size=split_frac, seed=args.seed)['train'] 
