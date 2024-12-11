@@ -47,7 +47,6 @@ def model_init(trial):
 def optuna_hp_space(trial):
     return {
         "learning_rate": trial.suggest_float("learning_rate", 1e-4, 5e-4, step=1e-4),
-        "warmup_ratio": trial.suggest_float("warmup_ratio", 0.0, 0.2, step=0.05),
     }
 
 def main(args):    
@@ -114,44 +113,42 @@ def main(args):
                 config=vars(args)
             )
     
-    trainer = Trainer(
-        model = None,
-        model_init=model_init,
-        args=training_args,
-        train_dataset=dataset['train'],
-        eval_dataset=dataset['val'],
-        data_collator=collate_fn,
-        compute_metrics=compute_metrics,  # Add the metrics computation function
-        compute_loss_func=custom_loss_function,  # Pass the custom loss function
-        callbacks=callbacks
-    )
+    # if args.use_optuna:
+    if args.use_optuna:
+        trainer = Trainer(
+            model = None,
+            model_init=model_init,
+            args=training_args,
+            train_dataset=dataset['train'],
+            eval_dataset=dataset['val'],
+            data_collator=collate_fn,
+            compute_metrics=compute_metrics,  # Add the metrics computation function
+            compute_loss_func=custom_loss_function,  # Pass the custom loss function
+            callbacks=callbacks
+        )
     
-    # Train and evaluate
-    best_trial = trainer.hyperparameter_search(
-        direction="maximize",
-        backend="optuna",
-        hp_space=optuna_hp_space,
-        n_trials=args.n_trials,
-        storage=f"sqlite:///{args.logging_dir}/finetune.db",
-        study_name=args.run_name,
-        load_if_exists=True,
-        pruner=optuna.pruners.NopPruner()  # FIXME: Pruner is not compatible with our server now, fix it later
-    )
+        # Train and evaluate
+        best_trial = trainer.hyperparameter_search(
+            direction="maximize",
+            backend="optuna",
+            hp_space=optuna_hp_space,
+            n_trials=args.n_trials,
+            storage=f"sqlite:///{args.logging_dir}/finetune.db",
+            study_name=args.run_name,
+            load_if_exists=True,
+            pruner=optuna.pruners.NopPruner()  # FIXME: Pruner is not compatible with our server now, fix it later
+        )
     
-    # Print the best hyperparameters and their performance
-    logger.info(f"\n\nBest trial:")
-    logger.info(f"Value (objective): {best_trial.objective}")
-    logger.info("Parameters:")
-    for key, value in best_trial.hyperparameters.items():
-        logger.info(f"\t{key}: {value}")
+        if training_args.local_rank == 0:
+            # Print the best hyperparameters and their performance
+            logger.info(f"\n\nBest trial:")
+            logger.info(f"Value (objective): {best_trial.objective}")
+            logger.info("Parameters:")
+            for key, value in best_trial.hyperparameters.items():
+                logger.info(f"\t{key}: {value}")
     
-    # Create a new trainer with the best hyperparameters
-    for key, value in best_trial.hyperparameters.items():
-        setattr(training_args, key, value)
-    
-    del trainer
-    
-    trainer = Trainer(
+    else:
+        trainer = Trainer(
         model=model_init(None),  # Initialize model with best hyperparameters
         args=training_args,
         train_dataset=dataset['train'],
@@ -161,28 +158,28 @@ def main(args):
         compute_loss_func=custom_loss_function
     )
     
-    # Train the model with best hyperparameters
-    train_result = trainer.train()
-    
-    # Final evaluation
-    metrics = trainer.evaluate(eval_dataset=dataset['test'])
-    
-    # Log the metrics
-    trainer.log_metrics("test", metrics)
-    trainer.save_metrics("test", metrics)
-    
-    # Final evaluation
-    metrics = trainer.evaluate(eval_dataset=dataset['val'])
-    
-    # Log the metrics
-    trainer.log_metrics("val", metrics)
-    trainer.save_metrics("val", metrics)
-    
-    # # Save the final model
-    # trainer.save_model(os.path.join(args.output_dir, "final_model"))
-    
-    # Save training state
-    trainer.save_state()
+        # Train the model with best hyperparameters
+        train_result = trainer.train()
+        
+        # Final evaluation
+        metrics = trainer.evaluate(eval_dataset=dataset['test'])
+        
+        # Log the metrics
+        trainer.log_metrics("test", metrics)
+        trainer.save_metrics("test", metrics)
+        
+        # Final evaluation
+        metrics = trainer.evaluate(eval_dataset=dataset['val'])
+        
+        # Log the metrics
+        trainer.log_metrics("val", metrics)
+        trainer.save_metrics("val", metrics)
+        
+        # # Save the final model
+        # trainer.save_model(os.path.join(args.output_dir, "final_model"))
+        
+        # Save training state
+        trainer.save_state()
     
 if __name__ == "__main__":
     args = parse_args()

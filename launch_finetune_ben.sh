@@ -12,18 +12,18 @@ MOE=0
 SCALE=1
 PORT=10086
 
-for EMBED_DIMS in 1 2 4 8; do
-    for DEPTH in 4 8; do
+for EMBED_DIMS in 1; do
+    for DEPTH in 8; do
         accelerate launch --main_process_port $PORT GeospatialFM/finetune/finetune.py \
-            --data_dir $ROOT_DIR/data/geospatial/ \
+            --data_dir $ROOT_DIR/data/geospatial-2/ \
             --dataset_name $DATASET \
             --task_type multilabel \
             --scale $SCALE \
             --modal optical \
             --return_dict \
-            --per_device_train_batch_size 32 \
-            --gradient_accumulation_steps 4 \
-            --num_train_epochs 20 \
+            --per_device_train_batch_size 64 \
+            --gradient_accumulation_steps 2 \
+            --num_train_epochs 10 \
             --learning_rate 1e-4 \
             --weight_decay 0.01 \
             --warmup_steps 0 \
@@ -45,7 +45,7 @@ for EMBED_DIMS in 1 2 4 8; do
             --use_moe \
             --num_experts $MOE \
             --attention_radius $ATTENTION_RADIUS \
-            --n_trials 10 \
+            --n_trials 5 \
             --use_early_stopping \
             --early_stopping_patience 5 \
             --train_frac 0.1 \

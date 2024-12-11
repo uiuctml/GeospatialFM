@@ -57,7 +57,8 @@ def compute_metrics_mAP(eval_pred: EvalPrediction) -> Dict:
     macro_mAP = average_precision_score(labels, predictions, average="macro")
     micro_mAP = average_precision_score(labels, predictions, average="micro")
 
-    return {"macro_mAP": macro_mAP, "micro_mAP": micro_mAP}
+    # return {"macro_mAP": macro_mAP, "micro_mAP": micro_mAP}
+    return {"micro_mAP": micro_mAP}
 
 def compute_metrics_IoU(eval_pred: EvalPrediction, num_classes=11) -> Dict:
     # predictions = eval_pred.predictions
@@ -65,21 +66,21 @@ def compute_metrics_IoU(eval_pred: EvalPrediction, num_classes=11) -> Dict:
 
     # predictions = np.argmax(predictions, axis=1)
     # IoU = jaccard_score(labels.flatten(), predictions.flatten(), average="macro")
-    predictions = eval_pred.predictions
-    labels = eval_pred.label_ids
-    predictions = np.argmax(predictions, axis=1)
+    predictions = torch.tensor(eval_pred.predictions)
+    labels = torch.tensor(eval_pred.label_ids)
+    predictions = torch.argmax(predictions, dim=1)
     predictions = predictions.flatten()
     labels = labels.flatten()
 
     n = num_classes
-    mat = np.zeros((n, n), dtype=np.int64)
+    mat = torch.zeros((n, n), dtype=torch.int64)
     with torch.no_grad():
         k = (labels >= 0) & (labels < n)
-        inds = n * labels[k].astype(np.int64) + predictions[k]
-        mat += np.bincount(inds, minlength=n**2).reshape(n, n)
-    mat_to_float = mat.astype(np.float32)
-    iu = np.diag(mat_to_float) / (mat_to_float.sum(axis=1) + mat_to_float.sum(axis=0) - np.diag(mat_to_float))
-    IoU = np.mean(iu).item()
+        inds = n * labels[k].to(torch.int64) + predictions[k]
+        mat += torch.bincount(inds, minlength=n**2).reshape(n, n)
+    mat_to_float = mat.to(torch.float32)
+    iu = torch.diag(mat_to_float) / (mat_to_float.sum(dim=1) + mat_to_float.sum(dim=0) - torch.diag(mat_to_float))
+    IoU = torch.mean(iu).item()
 
     return {"IoU": IoU}
 

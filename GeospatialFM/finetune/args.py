@@ -85,7 +85,8 @@ def parse_args(sys_args=None):
     parser.add_argument("--early_stopping_patience", type=int, default=1, help="Early stopping patience")
     parser.add_argument("--early_stopping_threshold", type=float, default=0.0, help="Early stopping threshold")
     
-    # Optuna arguments
+    # Optuna arguments\
+    parser.add_argument("--use_optuna", action="store_true", help="Use optuna")
     parser.add_argument("--n_trials", type=int, default=10, help="Number of trials")
     
     # Append run name to directories
