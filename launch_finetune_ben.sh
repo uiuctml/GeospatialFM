@@ -12,7 +12,7 @@ MOE=0
 SCALE=1
 PORT=10086
 
-for EMBED_DIMS in 1; do
+for EMBED_DIMS in 8; do
     for DEPTH in 8; do
         accelerate launch --main_process_port $PORT GeospatialFM/finetune/finetune.py \
             --data_dir $ROOT_DIR/data/geospatial-2/ \
@@ -37,7 +37,7 @@ for EMBED_DIMS in 1; do
             --output_dir $ROOT_DIR/results/models \
             --logging_dir $ROOT_DIR/results/logs \
             --wandb_dir $ROOT_DIR/results/ \
-            --run_name LESSVIT_b${EMBED_DIMS}_d${DEPTH}_${DATASET}_moe${MOE}_scale${SCALE} \
+            --run_name LESSVIT_b${EMBED_DIMS}_d${DEPTH}_ckpt${CHECKPOINT}_${DATASET}_moe${MOE}_scale${SCALE} \
             --lr_scheduler_type cosine \
             --channel_embed_dims_per_head $EMBED_DIMS \
             --use_perception_field_mask \
@@ -52,6 +52,6 @@ for EMBED_DIMS in 1; do
             --val_frac 0.1 \
             --crop_size 112 
 
-        rm -rf $ROOT_DIR/results/models/LESSVIT_b${EMBED_DIMS}_d${DEPTH}_${DATASET}_moe${MOE}_scale${SCALE}
+        # rm -rf $ROOT_DIR/results/models/LESSVIT_b${EMBED_DIMS}_d${DEPTH}_${DATASET}_moe${MOE}_scale${SCALE}
     done
 done

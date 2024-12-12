@@ -21,7 +21,7 @@ DATASET = {
 
 def get_metadata(dataset_name):
     dataset = DATASET[dataset_name.lower()]
-    infos = get_dataset_infos(dataset, download_mode="force_redownload", trust_remote_code=True)
+    infos = get_dataset_infos(dataset, trust_remote_code=True)
     return json.loads(infos['default'].description)
 
 def get_dataset(args, train_transform, eval_transform):
@@ -38,10 +38,10 @@ def get_dataset(args, train_transform, eval_transform):
     dataset_dict = {}
     for split in ["train", "val", "test"]:
         transform = train_transform if split == "train" else eval_transform
-        dataset = load_dataset(dataset_name, split=split, cache_dir=dataset_path, trust_remote_code=True, download_mode="force_redownload")
+        dataset = load_dataset(dataset_name, split=split, cache_dir=dataset_path, trust_remote_code=True)
         split_frac = dataset_frac.get(f"{split}_frac")
         if split_frac != 1.0:
-            dataset = dataset.train_test_split(train_size=split_frac, seed=args.seed)['train'] 
+            dataset = dataset.train_test_split(train_size=split_frac, seed=42)['train'] 
         dataset_dict[split] = dataset.with_transform(transform)
         
     return dataset_dict

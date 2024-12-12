@@ -12,8 +12,8 @@ MOE=0
 SCALE=1
 PORT=10085
 
-for EMBED_DIMS in 2 4 8; do
-    for DEPTH in 4 8; do
+for EMBED_DIMS in 2; do
+    for DEPTH in 8; do
         accelerate launch --main_process_port $PORT GeospatialFM/finetune/finetune.py \
             --data_dir $ROOT_DIR/data/geospatial-2/ \
             --dataset_name $DATASET \
@@ -24,8 +24,8 @@ for EMBED_DIMS in 2 4 8; do
             --per_device_train_batch_size 32 \
             --gradient_accumulation_steps 4 \
             --num_train_epochs 10 \
-            --learning_rate 1e-4 \
-            --weight_decay 0.01 \
+            --learning_rate 8e-5 \
+            --weight_decay 0.05 \
             --warmup_steps 0 \
             --warmup_ratio 0.2 \
             --report_to none \
@@ -50,6 +50,6 @@ for EMBED_DIMS in 2 4 8; do
             --early_stopping_patience 3 \
             --crop_size 96 \
 
-        rm -rf $ROOT_DIR/results/models/LESSVIT_b${EMBED_DIMS}_d${DEPTH}_${DATASET}_moe${MOE}_scale${SCALE}
+        # rm -rf $ROOT_DIR/results/models/LESSVIT_b${EMBED_DIMS}_d${DEPTH}_${DATASET}_moe${MOE}_scale${SCALE}
     done
 done

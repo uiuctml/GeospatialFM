@@ -18,6 +18,7 @@ def parse_args(sys_args=None):
     parser.add_argument("--train_frac", type=float, default=1.0, help="Fraction of train set to be used in training")
     parser.add_argument("--val_frac", type=float, default=1.0, help="Fraction of val set to be used in evaluation")
     parser.add_argument("--test_frac", type=float, default=1.0, help="Fraction of test set to be used in testing")
+    # parser.add_argument("--data_seed", type=int, default=42, help="Seed for data splitting")
 
     # Model arguments
     parser.add_argument("--patch_size", type=int, default=16, help="Size of patches for hyperspectral patch embedding")
