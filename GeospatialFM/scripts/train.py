@@ -93,7 +93,7 @@ def main(args):
         logger.info(f"  Gradient Accumulation steps = {trainer.args.gradient_accumulation_steps}")
         logger.info(f"  Total optimization steps = {max_steps}")
 
-    trainer.train()
+    trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
     
 if __name__ == "__main__":
     args = parse_args()
