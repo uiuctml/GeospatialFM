@@ -47,7 +47,7 @@ def main(args):
     custom_loss_function = partial(calculate_modal_loss, loss_type=args.loss_type)
     
     if args.resume_from_checkpoint == "latest":
-        args.resume_from_checkpoint = get_lasted_checkpoint(args, args.run_name)
+        args.resume_from_checkpoint = get_lasted_checkpoint(args)
     
     training_args = TrainingArguments(
         **{k: v for k, v in vars(args).items() if k in TrainingArguments.__dataclass_fields__},
