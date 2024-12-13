@@ -48,6 +48,7 @@ def main(args):
     
     if args.resume_from_checkpoint == "latest":
         args.resume_from_checkpoint = get_lasted_checkpoint(args)
+        print(f"Resume from checkpoint: {args.resume_from_checkpoint}")
     
     training_args = TrainingArguments(
         **{k: v for k, v in vars(args).items() if k in TrainingArguments.__dataclass_fields__},
