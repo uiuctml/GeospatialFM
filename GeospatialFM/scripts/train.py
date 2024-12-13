@@ -12,7 +12,7 @@ from GeospatialFM.data_process import pretrain_transform, multimodal_collate_fn
 from GeospatialFM.models import SpatialSpectralLowRankViTConfig, SpatialSpectralMAEViT
 from GeospatialFM.scripts.trainer import MAETrainer
 from GeospatialFM.scripts.args import parse_args
-from GeospatialFM.scripts.utils import calculate_modal_loss
+from GeospatialFM.scripts.utils import calculate_modal_loss, get_lasted_checkpoint
 
 logger = get_logger(__name__)
 
@@ -45,6 +45,9 @@ def main(args):
     dataset = dict(train=SSL4EODataset(root=args.data_dir))
 
     custom_loss_function = partial(calculate_modal_loss, loss_type=args.loss_type)
+    
+    if args.resume_from_checkpoint == "latest":
+        args.resume_from_checkpoint = get_lasted_checkpoint(args, args.run_name)
     
     training_args = TrainingArguments(
         **{k: v for k, v in vars(args).items() if k in TrainingArguments.__dataclass_fields__},

@@ -1,5 +1,13 @@
 import torch
 from typing import Dict
+import os
+
+def get_lasted_checkpoint(args, run_name: str) -> str:
+    checkpoint_dir = os.path.join(args.output_dir, run_name)
+    checkpoints = [f.path for f in os.scandir(checkpoint_dir) if f.is_dir() and 'checkpoint' in f.path]
+    if checkpoints:
+        return max(checkpoints, key=os.path.getctime)  # Get the most recent checkpoint
+    return None
   
 def calculate_modal_loss(outputs: Dict[str, torch.Tensor], loss_type: str = 'mse') -> torch.Tensor:
     loss = {}

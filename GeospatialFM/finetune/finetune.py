@@ -46,7 +46,7 @@ def model_init(trial):
 
 def optuna_hp_space(trial):
     return {
-        "learning_rate": trial.suggest_float("learning_rate", 1e-4, 5e-4, step=1e-4),
+        "learning_rate": trial.suggest_categorical("learning_rate", [3e-5, 5e-5, 8e-5, 1e-4, 3e-4, 5e-4, 8e-4, 1e-3]),
     }
 
 def main(args):    
