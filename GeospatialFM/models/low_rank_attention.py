@@ -163,7 +163,7 @@ class LowDimPool(nn.Module):
         
         self.channel_norm = norm_layer(channel_dim)
         self.spatial_norm = norm_layer(spatial_dim)
-        self.norm = norm_layer(dim)
+        # self.norm = norm_layer(dim)
         
         if skip_pool:
             self.channel_pool = lambda x: x[:, :, 0]
@@ -184,14 +184,14 @@ class LowDimPool(nn.Module):
         x_c = x_c[:, :, 0] + self.channel_pool(self.channel_norm(x_c)) # B, C, dim
         x_s = x_s[:, 0] + self.spatial_pool(self.spatial_norm(x_s.transpose(1, 2))) # B, HW, dim
         
-        xs = x_s.reshape(B, HW, self.num_heads, -1).permute(0, 2, 1, 3)  # B, num_heads, HW, spatial_dim
-        xc = x_c.reshape(B, C, self.num_heads, -1).permute(0, 2, 1, 3) # B, num_heads, C, channel_dim
+        # xs = x_s.reshape(B, HW, self.num_heads, -1).permute(0, 2, 1, 3)  # B, num_heads, HW, spatial_dim
+        # xc = x_c.reshape(B, C, self.num_heads, -1).permute(0, 2, 1, 3) # B, num_heads, C, channel_dim
         
-        x = torch.einsum('...ca,...nb->...cnab', xc, xs).flatten(-2) # B, num_heads, C, HW, D
-        x = x.permute(0, 2, 3, 1, 4).reshape(B, C, HW, D)
-        if pos_chan_embedding is not None:
-            x = x + pos_chan_embedding
-        x = self.norm(x)
+        # x = torch.einsum('...ca,...nb->...cnab', xc, xs).flatten(-2) # B, num_heads, C, HW, D
+        # x = x.permute(0, 2, 3, 1, 4).reshape(B, C, HW, D)
+        # if pos_chan_embedding is not None:
+        #     x = x + pos_chan_embedding
+        # x = self.norm(x)
         return x_c, x_s, x
 
 class AttentionBranch(nn.Module):
@@ -385,7 +385,7 @@ class LowRankBlock(nn.Module):
         self.drop_path2 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
     def forward(self, x: torch.Tensor, spatial_mask: torch.Tensor = None, pos_chan_embedding: torch.Tensor = None) -> torch.Tensor:
-        x_c, x_s, x = self.low_dim_pool(self.norm1(x), pos_chan_embedding)
+        x_c, x_s, _ = self.low_dim_pool(self.norm1(x), pos_chan_embedding)
         x = x + self.drop_path1(self.ls1(self.attn(self.channel_norm(x_c), self.spatial_norm(x_s), spatial_mask)))
         x = x + self.drop_path2(self.ls2(self.mlp(self.norm2(x))))
         return x

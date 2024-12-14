@@ -157,6 +157,15 @@ class LESSWithTaskHead(PreTrainedModel):
             )
             self.warnings_issued["estimate_tokens"] = True
         return 0
+    
+    def load_pretrained_encoder(self, pretrained_model_path):
+        from safetensors import safe_open
+        with safe_open(pretrained_model_path, framework="pt", device="cpu") as f:
+            for key in f.keys():
+                if key.startswith("encoder."):
+                    # Get the corresponding key in target model
+                    param = f.get_tensor(key)
+                    self.state_dict()[key].copy_(param)
 
 class LESSWithProjection(LESSWithTaskHead):
     def __init__(self, config):

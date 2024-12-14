@@ -9,7 +9,7 @@ from .hyperspectral_patch_embed import HyperspectralPatchEmbed
 from .pos_chan_embed import PositionalChannelEmbedding
 from .low_rank_attention import LowRankBlock, get_perception_field_mask
 from timm.models.vision_transformer import Block
-
+import torch.nn.functional as F
 class SpatialSpectralLowRankViTConfig(PretrainedConfig):
     model_type = "multi_modal_low_rank_vit"
 
@@ -552,6 +552,7 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
         norm_layer = partial(nn.LayerNorm, eps=1e-6)
         
         self.decoder_embed = nn.Linear(config.embed_dim, config.decoder_embed_dim, bias=True)
+        self.decoder_embed_norm = norm_layer(config.decoder_embed_dim)
         self.mask_token = nn.Parameter(torch.zeros(1, 1, 1, config.decoder_embed_dim))
         
         if config.drop_path_uniform is True:
@@ -579,11 +580,8 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
         ])
         
         self.decoder_norm = norm_layer(config.decoder_embed_dim)
-        # self.decoder_pred = nn.ModuleList([
-        #     nn.Linear(config.decoder_embed_dim, config.patch_size**2, bias=True)
-        #     for _ in range(config.decoder_out_chans)
-        # ])
-        self.decoder_pred = nn.Linear(config.decoder_embed_dim, config.patch_size**2, bias=True)
+        self.decoder_optical_pred = nn.Linear(config.decoder_embed_dim, config.patch_size**2, bias=True)
+        self.decoder_radar_pred = nn.Linear(config.decoder_embed_dim, config.patch_size**2, bias=True)
         
         self.pos_chan_embed = PositionalChannelEmbedding(config.decoder_embed_dim)
         
@@ -611,7 +609,12 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
         
         # embed tokens
         x = self.decoder_embed(x)  # B N+1 L+1 D
+        x = self.decoder_embed_norm(x)
+
         channel_wv = torch.cat((optical_channel_wv, radar_channel_wv), dim=1)  # 1 C = Co + Cr or B C
+        
+        n_optical_channels = optical_channel_wv.shape[1]
+        n_radar_channels = radar_channel_wv.shape[1]
         
         # remove cls token
         B, N, L, D = x[:, 1:, 1:, :].shape
@@ -647,6 +650,7 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
         
         # add positional and channel embedding
         pos_chan_embed = self.pos_chan_embed(x[:, 1:, 1:, :], channel_ids=channel_wv, spatial_resolution=spatial_resolution, cls_token=True).to(x.device, dtype=x.dtype)
+        pos_chan_embed = self.decoder_embed_norm(pos_chan_embed)
         hidden_states.append(pos_chan_embed.detach().cpu())
         x = x + pos_chan_embed
 
@@ -666,9 +670,19 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
             
         x = self.decoder_norm(x)
         
+        x = x[:, 1:, 1:, :]
+        
+        x_optical = x[:, :n_optical_channels, :, :]
+        x_radar = x[:, n_optical_channels:, :, :]
+        
         # predictor projection
-        x = self.decoder_pred(x)  # B C+1 HW+1 D -> B C+1 HW+1 patch_size**2 * C
-        x = x[:, 1:, 1:, :] # B, C, HW, patch_size**2
+        x_optical = self.decoder_optical_pred(x_optical)
+        x_radar = self.decoder_radar_pred(x_radar)
+        
+        x = torch.cat([x_optical, x_radar], dim=1) # B C HW patch_size**2
+        
+        # x = self.decoder_pred(x)  # B C+1 HW+1 D -> B C+1 HW+1 patch_size**2 * C
+        # x = x[:, 1:, 1:, :] # B, C, HW, patch_size**2
         # x_ = []
         # for i in range(self.config.decoder_out_chans):
         #     x_i = self.decoder_pred[i](x[:,i])

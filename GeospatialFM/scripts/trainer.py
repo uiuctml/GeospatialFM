@@ -47,7 +47,7 @@ class MAETrainer(Trainer):
 
         return (loss, outputs) if return_outputs else loss
     
-    def log(self, logs: Dict[str, float]) -> None:
+    def log(self, logs: Dict[str, float], *args, **kwargs) -> None:
         """
         Log `logs` on the various objects watching training.
 
