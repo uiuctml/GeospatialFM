@@ -552,8 +552,10 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
         norm_layer = partial(nn.LayerNorm, eps=1e-6)
         
         self.decoder_embed = nn.Linear(config.embed_dim, config.decoder_embed_dim, bias=True)
-        self.decoder_embed_norm = norm_layer(config.decoder_embed_dim)
+        # self.decoder_embed_norm = norm_layer(config.decoder_embed_dim)
         self.mask_token = nn.Parameter(torch.zeros(1, 1, 1, config.decoder_embed_dim))
+        self.spatial_mask_token = nn.Parameter(torch.zeros(1, 1, 1, config.decoder_embed_dim))
+        self.channel_mask_token = nn.Parameter(torch.zeros(1, 1, 1, config.decoder_embed_dim))
         
         if config.drop_path_uniform is True:
             dpr = [config.drop_path_rate] * config.decoder_depth
@@ -589,6 +591,8 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
 
     def initialize_weights(self):
         torch.nn.init.normal_(self.mask_token, std=.02)
+        torch.nn.init.normal_(self.spatial_mask_token, std=.02)
+        torch.nn.init.normal_(self.channel_mask_token, std=.02)
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
@@ -609,7 +613,7 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
         
         # embed tokens
         x = self.decoder_embed(x)  # B N+1 L+1 D
-        x = self.decoder_embed_norm(x)
+        # x = F.normalize(x, dim=-1)
 
         channel_wv = torch.cat((optical_channel_wv, radar_channel_wv), dim=1)  # 1 C = Co + Cr or B C
         
@@ -622,13 +626,17 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
         HW = pos_ids_restore.shape[1]
 
         # append mask tokens to sequence
-        mask_tokens = self.mask_token.expand(B, N+1, HW - L, -1)
+        channel_mask_token = self.channel_mask_token.expand(B, 1, HW - L, -1)
+        mask_tokens = self.mask_token.expand(B, N, HW - L, -1)
+        mask_tokens = torch.cat([channel_mask_token, mask_tokens], dim=1)
         x_ = torch.cat([x[:, :, 1:], mask_tokens], dim=2)  # B N+1 HW D, remove cls token
         x_ = torch.gather(x_, dim=2, index=pos_ids_restore.unsqueeze(1).unsqueeze(-1).repeat(1, N + 1, 1, D))  # unshuffle, B N+1 HW D
         x = torch.cat([x[:, :, :1], x_], dim=2)  # B N+1 HW+1 D, add cls token
         
         # append channel mask tokens to sequence
-        mask_tokens = self.mask_token.expand(B, C - N, HW+1, -1)
+        spatial_mask_token = self.spatial_mask_token.expand(B, C - N, 1, -1)
+        mask_tokens = self.mask_token.expand(B, C - N, HW, -1)
+        mask_tokens = torch.cat([spatial_mask_token, mask_tokens], dim=2)
         x_ = torch.cat([x[:, 1:], mask_tokens], dim=1)  # B, C, HW+1, D, remove cls token
         x_ = torch.gather(x_, dim=1, index=channel_ids_restore.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, HW + 1, D))  # unshuffle, B C HW+1 D
         x = torch.cat([x[:, :1], x_], dim=1)  # B C+1 HW+1 D, add cls token
@@ -637,20 +645,23 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
             # missing radar channels from encoder
             n_radar_channels = radar_channel_wv.shape[1]
             # extend x to C+n_radar_channels to the end
-            mask_tokens = self.mask_token.expand(B, n_radar_channels, HW+1, -1)  # B C HW D
+            spatial_mask_token = self.spatial_mask_token.expand(B, n_radar_channels, 1, -1)
+            mask_tokens = self.mask_token.expand(B, n_radar_channels, HW, -1)  # B C HW D
+            mask_tokens = torch.cat([spatial_mask_token, mask_tokens], dim=2)
             x = torch.cat([x, mask_tokens], dim=1)
         elif C == radar_channel_wv.shape[1]:
             # missing optical channels from encoder
             n_optical_channels = optical_channel_wv.shape[1]
             # extend x to C+n_optical_channels to the front behind the cls token
-            mask_tokens = self.mask_token.expand(B, n_optical_channels, HW+1, -1)
+            spatial_mask_token = self.spatial_mask_token.expand(B, n_optical_channels, 1, -1)
+            mask_tokens = self.mask_token.expand(B, n_optical_channels, HW, -1)
+            mask_tokens = torch.cat([spatial_mask_token, mask_tokens], dim=2)
             x = torch.cat([x[:, :1, :, :], mask_tokens, x[:, 1:, :, :]], dim=1)
             
         hidden_states.append(x.detach().cpu())
         
         # add positional and channel embedding
         pos_chan_embed = self.pos_chan_embed(x[:, 1:, 1:, :], channel_ids=channel_wv, spatial_resolution=spatial_resolution, cls_token=True).to(x.device, dtype=x.dtype)
-        pos_chan_embed = self.decoder_embed_norm(pos_chan_embed)
         hidden_states.append(pos_chan_embed.detach().cpu())
         x = x + pos_chan_embed
 
