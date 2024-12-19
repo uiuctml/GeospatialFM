@@ -37,6 +37,7 @@ def parse_args(sys_args=None):
     parser.add_argument("--num_experts", type=int, default=None, help="Number of experts, -1 for all channels, None for CLS token only")
     parser.add_argument("--topk", type=int, default=3, help="Top-k for MoE, -1 for all channels,")
     parser.add_argument("--use_moe", action="store_true", help="Use MoE")
+    parser.add_argument("--model_name", type=str, default=None, help="Model name to run")
     
     # extra model arguments
     parser.add_argument("--return_dict", action="store_true", help="Return a dictionary instead of a tuple")

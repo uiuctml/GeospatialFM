@@ -6,6 +6,7 @@ from typing import Dict
 import numpy as np
 from transformers import EvalPrediction
 from sklearn.metrics import accuracy_score, average_precision_score, jaccard_score
+from GeospatialFM.models.baseline_models.downstream_baseline_models import BaselineWithProjectionConfig, BaselineWithUPerNetConfig, BaselineWithProjection, BaselineWithUPerNet
 
 def get_task_model(args, num_classes=None, image_size=None):
     if args.task_type == "classification" or args.task_type == "multilabel":
@@ -19,6 +20,22 @@ def get_task_model(args, num_classes=None, image_size=None):
     else:
         raise NotImplementedError
     return model
+
+def get_baseline_model(args, num_classes=None, image_size=None):
+    if args.task_type == "classification" or args.task_type == "multilabel":
+        assert num_classes is not None
+        config = BaselineWithProjectionConfig(num_labels=num_classes, **vars(args))
+        model = BaselineWithProjection(config)
+    elif args.task_type == "segmentation":
+        assert num_classes is not None and image_size is not None
+        config = BaselineWithUPerNetConfig(num_labels=num_classes, image_size=image_size, **vars(args))
+        model = BaselineWithUPerNet(config)
+    else:
+        raise NotImplementedError
+    return model
+
+def load_ckpt(args):
+    pass
 
 def custom_loss_function(outputs, labels, num_items_in_batch, loss_fct):
     """

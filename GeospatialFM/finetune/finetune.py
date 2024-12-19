@@ -20,10 +20,10 @@ import json
 from functools import partial
 
 from GeospatialFM.finetune.args import parse_args
-from GeospatialFM.datasets.GFMBench.utils import get_dataset, get_metadata
+from GeospatialFM.datasets.GFMBench.utils import get_dataset, get_metadata, get_baseline_metadata
 from GeospatialFM.data_process.transforms import get_transform
 from GeospatialFM.data_process.collate_func import modal_specific_collate_fn
-from GeospatialFM.finetune.utils import get_loss_fn, get_metric, get_task_model
+from GeospatialFM.finetune.utils import get_loss_fn, get_metric, get_task_model, get_baseline_model
 
 logger = get_logger(__name__)
 
@@ -31,6 +31,11 @@ def model_init(trial):
     args = parse_args()
     metadata = get_metadata(args.dataset_name)
     
+    if args.model_name:
+        model = get_baseline_model(args, metadata["num_classes"], metadata["size"])
+        model.load_pretrained_encoder(args.pretrained_model_path)
+        return model
+
     # Initialize model
     model = get_task_model(args, metadata["num_classes"], metadata["size"])
     # load from checkpoint if provided
@@ -76,7 +81,8 @@ def main(args):
     collate_fn = partial(modal_specific_collate_fn, modal=args.modal)
     
     train_transform, eval_transform = get_transform(args.task_type, args.crop_size, args.scale, args.random_rotation, 
-                                                    optical_mean, optical_std, radar_mean, radar_std)
+                                                    optical_mean, optical_std, radar_mean, radar_std, 
+                                                    data_bands=metadata["s2c"]["bands"], model_bands=get_baseline_metadata(args.model_name))
     dataset = get_dataset(args, train_transform, eval_transform)
     
     # get loss function and metric

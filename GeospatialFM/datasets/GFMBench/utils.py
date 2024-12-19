@@ -45,3 +45,10 @@ def get_dataset(args, train_transform, eval_transform):
         dataset_dict[split] = dataset.with_transform(transform)
         
     return dataset_dict
+
+baseline_metadata = { # TODO: add your model's channels here
+    "croma": ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B11", "B12"],
+}
+
+def get_baseline_metadata(baseline_name):
+    return baseline_metadata[baseline_name]

@@ -4,6 +4,11 @@ from torchvision.transforms import functional as TF
 from functools import partial
 import torch
 
+RESIZE_SIZE = {
+    96: 121,
+    120: 144,
+}
+
 def NormalizeAll(optical=None, radar=None, optical_mean=None, optical_std=None, radar_mean=None, radar_std=None):
      # normalize
     def normalize(x, mean, std):
@@ -102,7 +107,7 @@ def pretrain_transform(example, crop_size=None, scale=None, optical_mean=None, o
     return example
 
 def segmentation_transform_one_sample(optical, radar, label, spatial_resolution, crop_size=None, scale=None, is_train=True, random_rotation=True, 
-                                       optical_mean=None, optical_std=None, radar_mean=None, radar_std=None):
+                                       optical_mean=None, optical_std=None, radar_mean=None, radar_std=None, data_bands=None, model_bands=None):
     # Convert lists directly to tensors
     optical = None if optical is None else torch.tensor(optical, dtype=torch.float32)
     radar = None if radar is None else torch.tensor(radar, dtype=torch.float32)
@@ -112,6 +117,10 @@ def segmentation_transform_one_sample(optical, radar, label, spatial_resolution,
     optical, radar = NormalizeAll(optical, radar, optical_mean, optical_std, radar_mean, radar_std)
 
     # random crop
+    if crop_size is not None:
+        if crop_size > optical.shape[-1]:
+            optical, radar = ResizeAll(optical, radar,  scale=1, crop_size=RESIZE_SIZE[crop_size])
+        
     if crop_size is not None and is_train:
         optical, radar, label = RandomCropAll(optical, radar, label, crop_size)
     elif crop_size is not None and not is_train:
@@ -129,6 +138,8 @@ def segmentation_transform_one_sample(optical, radar, label, spatial_resolution,
         if random_rotation:
             optical, radar, label = RandomRotationAll(optical, radar, label)
     
+    optical = Maybe_pad_optical(optical, data_bands, model_bands)
+    
     if scale is not None:
         optical, radar = ResizeAll(optical, radar, scale, crop_size)
         spatial_resolution = spatial_resolution / scale
@@ -137,7 +148,7 @@ def segmentation_transform_one_sample(optical, radar, label, spatial_resolution,
     return optical, radar, label, spatial_resolution
 
 def segmentation_transform(example, crop_size=None, scale=None, is_train=True, random_rotation=True, 
-                           optical_mean=None, optical_std=None, radar_mean=None, radar_std=None):
+                           optical_mean=None, optical_std=None, radar_mean=None, radar_std=None, data_bands=None, model_bands=None):
     optical = example.get('optical', None)
     radar = example.get('radar', None)
     label = example.get('label', None)
@@ -165,7 +176,7 @@ def segmentation_transform(example, crop_size=None, scale=None, is_train=True, r
         optical_i, radar_i, label_i, spatial_resolution_i = segmentation_transform_one_sample(
             optical_i, radar_i, label_i, spatial_resolution_i, 
             crop_size, scale, is_train, random_rotation, optical_mean,
-            optical_std, radar_mean, radar_std
+            optical_std, radar_mean, radar_std, data_bands=data_bands, model_bands=model_bands
         )
 
         if optical_i is not None:
@@ -189,7 +200,7 @@ def segmentation_transform(example, crop_size=None, scale=None, is_train=True, r
     return example
 
 def classification_transform_one_sample(optical, radar, spatial_resolution, crop_size=None, scale=None, is_train=True, random_rotation=True, 
-                                        optical_mean=None, optical_std=None, radar_mean=None, radar_std=None):
+                                        optical_mean=None, optical_std=None, radar_mean=None, radar_std=None, data_bands=None, model_bands=None):
     # Convert lists directly to tensors
     optical = None if optical is None else torch.tensor(optical, dtype=torch.float32)
     radar = None if radar is None else torch.tensor(radar, dtype=torch.float32)
@@ -198,6 +209,10 @@ def classification_transform_one_sample(optical, radar, spatial_resolution, crop
     optical, radar = NormalizeAll(optical, radar, optical_mean, optical_std, radar_mean, radar_std)
 
     # random crop
+    if crop_size is not None:
+        if crop_size > optical.shape[-1]:
+            optical, radar = ResizeAll(optical, radar,  scale=1, crop_size=RESIZE_SIZE[crop_size])
+
     if crop_size is not None and is_train:
         optical, radar, _ = RandomCropAll(optical, radar, crop_size=crop_size)
     elif crop_size is not None and not is_train:
@@ -215,6 +230,8 @@ def classification_transform_one_sample(optical, radar, spatial_resolution, crop
         if random_rotation:
             optical, radar, _ = RandomRotationAll(optical, radar)
     
+    optical = Maybe_pad_optical(optical, data_bands, model_bands)
+
     if scale is not None:
         optical, radar = ResizeAll(optical, radar, scale, crop_size)
         spatial_resolution = spatial_resolution / scale
@@ -222,7 +239,7 @@ def classification_transform_one_sample(optical, radar, spatial_resolution, crop
     return optical, radar, spatial_resolution
 
 def classification_transform(example, crop_size=None, scale=None, is_train=True, random_rotation=True, 
-                             optical_mean=None, optical_std=None, radar_mean=None, radar_std=None):
+                             optical_mean=None, optical_std=None, radar_mean=None, radar_std=None, data_bands=None, model_bands=None):
     optical = example.get('optical', None)
     radar = example.get('radar', None)
     spatial_resolution = example.get('spatial_resolution', None)
@@ -240,7 +257,7 @@ def classification_transform(example, crop_size=None, scale=None, is_train=True,
         radar_i = None if radar is None else radar[i]
         spatial_resolution_i = spatial_resolution[i] if spatial_resolution is not None else None
         optical_i, radar_i, spatial_resolution_i = classification_transform_one_sample(optical_i, radar_i, spatial_resolution_i, crop_size, scale, is_train, random_rotation,
-                                                                                       optical_mean, optical_std, radar_mean, radar_std)
+            optical_mean, optical_std, radar_mean, radar_std, data_bands=data_bands, model_bands=model_bands)
         if optical_i is not None:
             optical_list.append(optical_i)
         if radar_i is not None:
@@ -257,18 +274,48 @@ def classification_transform(example, crop_size=None, scale=None, is_train=True,
     
     return example
 
-def get_transform(task_type, crop_size=None, scale=None, random_rotation=True, optical_mean=None, optical_std=None, radar_mean=None, radar_std=None):
+def get_transform(task_type, crop_size=None, scale=None, random_rotation=True, optical_mean=None, optical_std=None, radar_mean=None, radar_std=None, data_bands=None, model_bands=None):
     if task_type == "segmentation":
         train_transform = partial(segmentation_transform, crop_size=crop_size, scale=scale, random_rotation=random_rotation, is_train=True, 
-                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std)
+                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, data_bands=data_bands, model_bands=model_bands)
         eval_transform = partial(segmentation_transform, crop_size=crop_size, scale=scale, is_train=False, 
-                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std)
+                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, data_bands=data_bands, model_bands=model_bands)
     elif task_type == "classification" or task_type == "multilabel":
         train_transform = partial(classification_transform, crop_size=crop_size, scale=scale, random_rotation=random_rotation, is_train=True, 
-                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std)
+                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, data_bands=data_bands, model_bands=model_bands)
         eval_transform = partial(classification_transform, crop_size=crop_size, scale=scale, is_train=False, 
-                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std)
+                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, data_bands=data_bands, model_bands=model_bands)
     else:
         raise NotImplementedError
     
     return train_transform, eval_transform
+
+def Maybe_pad_optical(optical, data_bands, model_bands) -> torch.Tensor:
+    """
+    Adjusts the input optical tensor to match the required model bands by either removing or padding bands.
+
+    Args:
+        optical (torch.Tensor): Input tensor of shape (C, H, W), where C is the number of channels (bands).
+        data_bands (list[str]): List of strings representing the names of bands in the input tensor.
+        model_bands (list[str]): List of strings representing the names of bands required by the model.
+
+    Returns:
+        torch.Tensor: Adjusted tensor with the channels aligned to `model_bands`.
+    """
+    if optical.shape[0] != len(data_bands):
+        raise ValueError("The number of channels in `optical` does not match the length of `data_bands`.")
+
+    band_to_idx = {band: idx for idx, band in enumerate(data_bands)}
+
+    adjusted_channels = []
+
+    for band in model_bands:
+        if band in band_to_idx:
+            adjusted_channels.append(optical[band_to_idx[band]])
+        else:
+            zero_channel = torch.zeros(optical.shape[1:], device=optical.device, dtype=optical.dtype)
+            adjusted_channels.append(zero_channel)
+
+    processed_optical = torch.stack(adjusted_channels, dim=0)
+
+    return processed_optical
