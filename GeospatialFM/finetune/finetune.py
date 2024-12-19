@@ -15,6 +15,7 @@ from transformers import TrainingArguments, Trainer
 from transformers import EarlyStoppingCallback
 from typing import Dict
 import numpy as np
+import json
 
 from functools import partial
 
@@ -47,6 +48,7 @@ def model_init(trial):
 def optuna_hp_space(trial):
     return {
         "learning_rate": trial.suggest_categorical("learning_rate", [3e-5, 5e-5, 8e-5, 1e-4, 3e-4, 5e-4, 8e-4, 1e-3]),
+        "warmup_ratio": trial.suggest_categorical("warmup_ratio", [0.05, 0.1, 0.2]),
     }
 
 def main(args):    
@@ -146,7 +148,15 @@ def main(args):
             logger.info("Parameters:")
             for key, value in best_trial.hyperparameters.items():
                 logger.info(f"\t{key}: {value}")
-    
+                
+            # write the best trial to a json file
+            best_trial_dict = {
+                "objective": best_trial.objective,
+                "parameters": best_trial.hyperparameters
+            }
+            with open(os.path.join(args.logging_dir, f"{args.run_name}.json"), "w") as f:
+                json.dump(best_trial_dict, f)
+
     else:
         trainer = Trainer(
         model=model_init(None),  # Initialize model with best hyperparameters

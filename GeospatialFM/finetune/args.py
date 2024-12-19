@@ -92,6 +92,6 @@ def parse_args(sys_args=None):
     
     # Append run name to directories
     args = parser.parse_args(sys_args)
-    args.output_dir = os.path.join(args.output_dir, args.run_name)
+    args.output_dir = os.path.join(args.output_dir, args.dataset_name, args.run_name)
     args.logging_dir = os.path.join(args.logging_dir, args.dataset_name)
     return args

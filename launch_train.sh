@@ -2,19 +2,19 @@ ROOT_DIR="/home/haozhesi/GeospatialFM"
 export PYTHONPATH=$PYTHONPATH:$ROOT_DIR
 export TORCH_NCCL_BLOCKING_WAIT=1
 
-DECODER_DEPTH=8
-EMBED_DIMS=4
+DECODER_DEPTH=4
+EMBED_DIMS=2
 
 accelerate launch GeospatialFM/scripts/train.py \
-    --data_dir $ROOT_DIR/data/geospatial/SSL4EO \
+    --data_dir $ROOT_DIR/data/geospatial-3/SSL4EO \
     --per_device_train_batch_size 128 \
-    --gradient_accumulation_steps 1 \
+    --gradient_accumulation_steps 2 \
     --num_train_epochs 100 \
     --learning_rate 1e-4 \
     --weight_decay 0.05 \
     --mask_ratio 0.75 \
     --channel_mask_ratio 0.5 \
-    --warmup_ratio 0.1 \
+    --warmup_ratio 0.05 \
     --report_to wandb \
     --save_steps 0.1 \
     --save_total_limit 5 \
@@ -32,7 +32,6 @@ accelerate launch GeospatialFM/scripts/train.py \
     --decoder_depth $DECODER_DEPTH \
     --decoder_out_chans 15 \
     --use_perception_field_mask \
-    --resume_from_checkpoint latest \
     --max_grad_norm 1.0 \
     --proj_drop 0.1 \
     --attn_drop 0.1 \
@@ -41,4 +40,5 @@ accelerate launch GeospatialFM/scripts/train.py \
     --modal_mode multi \
     --scale 1 \
     --crop_size 128 \
+    --init_values 1.0
     
