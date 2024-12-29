@@ -65,8 +65,10 @@ def parse_args(sys_args=None):
     
     # Evaluation arguments
     parser.add_argument("--per_device_eval_batch_size", type=int, default=32, help="Batch size for evaluation")
+    parser.add_argument("--eval_accumulation_steps", type=int, default=None, help="Number of steps to accumulate before moving to CPU")
     parser.add_argument("--eval_steps", type=int, default=500, help="Evaluate every X updates steps")
     parser.add_argument("--eval_strategy", type=str, choices=["epoch", "steps", "no"], default="epoch", help="Evaluation strategy")
+    parser.add_argument("--eval_on_start", action="store_true")
     
     # Logging and saving arguments
     parser.add_argument("--output_dir", type=str, default="output", help="Directory to save model checkpoints and logs")

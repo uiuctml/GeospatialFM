@@ -9,6 +9,7 @@ from typing import Dict, Any
 import logging
 
 from .croma import PretrainedCROMA as CROMA
+from .satmae import vit_base_patch16 as SatMAE
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,7 @@ CKPT_PATH = "baseline_model_ckpt"
 
 BASELINE_MODELS = { # TODO: add your model init code here
     "croma": CROMA(pretrained_path=f'{CKPT_PATH}/CROMA_base.pt', size='base', modality='optical', image_resolution=120),
+    "satmae": SatMAE(img_size=96, patch_size=8, in_chans=10),
 }
 
 class BaselineEncoderConfig(PretrainedConfig):
@@ -44,6 +46,8 @@ class BaselineEncoderConfig(PretrainedConfig):
         use_moe: bool = False,
         topk: int = None,
         model_name: str = None,
+        dataset_name: str = None,
+        crop_size: int = None,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -70,6 +74,8 @@ class BaselineEncoderConfig(PretrainedConfig):
         self.use_moe = use_moe if self.num_experts > 0 else False
         self.topk = topk
         self.model_name = model_name
+        self.dataset_name = dataset_name # for landsat
+        self.crop_size = crop_size # for landsat
         
         # Perception field mask
         self.use_perception_field_mask = use_perception_field_mask
@@ -170,9 +176,13 @@ class BaselineWithTaskHead(PreTrainedModel):
     def load_pretrained_encoder(self, pretrained_model_path):
         # TODO: add your model's ckpt loading code here
         if self.config.model_name == "croma":
-            pass
+            return
+        elif self.config.model_name == "satmae":
+            state_dict = torch.load(f"{CKPT_PATH}/pretrain-vit-base-e199.pth")['model']
         else: 
             raise NotImplementedError
+        
+        self.encoder.load_state_dict(state_dict, strict=False)
 
 class BaselineWithProjection(BaselineWithTaskHead):
     def __init__(self, config):
@@ -182,7 +192,7 @@ class BaselineWithProjection(BaselineWithTaskHead):
         self.classifier = MoELinearHead(config.embed_dim, config.num_labels, config.num_experts, config.topk) if config.use_moe else LinearHead(config.embed_dim, config.num_labels)
         
         # Initialize weights
-        self.apply(self._init_weights)
+        # self.apply(self._init_weights)
         
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
@@ -197,10 +207,11 @@ class BaselineWithProjection(BaselineWithTaskHead):
         # TODO: add your model's forward pass code here
         if self.config.model_name == "croma":
             outputs = self.encoder(optical_images=optical)['optical_GAP']
+        elif self.config.model_name == "satmae":
+            outputs = self.encoder(optical)['outcome']
         else:
             raise NotImplementedError
         
-        # Get logits
         logits = self.classifier(outputs)['logits']
 
         return {"logits": logits} if self.config.return_dict else logits
@@ -212,12 +223,12 @@ class BaselineWithUPerNet(BaselineWithTaskHead):
         self.encoder = BASELINE_MODELS[config.model_name]
         self.decoder = UPerNet(
             num_classes=config.num_labels,
-            image_size=config.image_size,
+            image_size=config.image_size if config.dataset_name != "landsat" else config.crop_size,
             debug=False
         )
         
         # Initialize weights
-        self.apply(self._init_weights)
+        # self.apply(self._init_weights)
         
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
@@ -232,6 +243,8 @@ class BaselineWithUPerNet(BaselineWithTaskHead):
         # TODO: add your model forward pass code here
         if self.config.model_name == "croma":
             outputs = self.encoder(optical_images=optical)['optical_encodings']
+        elif self.config.model_name == "satmae":
+            outputs = self.encoder(optical)['patch_embeddings']
         else:
             raise NotImplementedError
             

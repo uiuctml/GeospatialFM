@@ -117,9 +117,9 @@ def segmentation_transform_one_sample(optical, radar, label, spatial_resolution,
     optical, radar = NormalizeAll(optical, radar, optical_mean, optical_std, radar_mean, radar_std)
 
     # random crop
-    if crop_size is not None:
-        if crop_size > optical.shape[-1]:
-            optical, radar = ResizeAll(optical, radar,  scale=1, crop_size=RESIZE_SIZE[crop_size])
+    # if crop_size is not None:
+    #     if crop_size > optical.shape[-1]:
+    #         optical, radar = ResizeAll(optical, radar,  scale=1, crop_size=crop_size)
         
     if crop_size is not None and is_train:
         optical, radar, label = RandomCropAll(optical, radar, label, crop_size)

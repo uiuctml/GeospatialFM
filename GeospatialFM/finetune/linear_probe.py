@@ -28,6 +28,30 @@ import optuna
 
 logger = get_logger(__name__)
 
+def compute_encoding_baseline(batch, model, task_type, modal='optical'):
+    optical = batch.get("optical", None)
+    radar = batch.get("radar", None)
+    optical_channel_wv = batch.get("optical_channel_wv", None)
+    radar_channel_wv = batch.get("radar_channel_wv", None)  
+    spatial_resolution = batch.get("spatial_resolution", None)  
+    labels = batch.get("label", None)
+    
+    optical = None if optical is None else torch.stack(optical).to(model.device)
+    radar = None if radar is None else torch.stack(radar).to(model.device)
+    optical_channel_wv = None if optical_channel_wv is None else torch.tensor(optical_channel_wv[0]).unsqueeze(0).to(model.device)
+    radar_channel_wv = None if radar_channel_wv is None else torch.tensor(radar_channel_wv[0]).unsqueeze(0).to(model.device)
+    spatial_resolution = None if spatial_resolution is None else spatial_resolution[0]
+    labels = None if labels is None else torch.tensor(labels)
+
+    with torch.no_grad(): # TODO: make it compatible with other baseline models
+        # optical = optical.float() / 255
+        output = model(optical_images=optical)['optical_GAP']
+        # output = model(optical)['outcome']
+    
+    features = output.cpu()
+
+    return {"features": features, "labels": labels}
+
 def compute_encoding(batch, model, task_type, modal='optical'):
     optical = batch.get("optical", None)
     radar = batch.get("radar", None)

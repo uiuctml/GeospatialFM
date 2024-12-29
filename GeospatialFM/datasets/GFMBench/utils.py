@@ -8,15 +8,21 @@ GFMBENCH_SCRIPTS_PATH = os.path.dirname(__file__)
 DATASET_PATH = {
     "eurosat": "EuroSAT",
     "bigearthnet": "BigEarthNet",
+    "so2sat": "So2Sat",
     "dfc2020": "DFC2020",
-    "segmunich": "SegMunich"
+    "segmunich": "SegMunich",
+    "marida": "MARIDA",
+    "landsat": "SSL4EOLBenchmark"
 }
 
 DATASET = {
     "eurosat": 'GFM-Bench/EuroSAT',
     "bigearthnet": "GFM-Bench/BigEarthNet",
+    "so2sat": "GFM-Bench/So2Sat",
     "dfc2020": "GFM-Bench/DFC2020",
-    "segmunich": "GFM-Bench/SegMunich"
+    "segmunich": "GFM-Bench/SegMunich",
+    "marida": "GFM-Bench/MARIDA",
+    "landsat": "GFM-Bench/SSL4EO-L-Benchmark"
 }
 
 def get_metadata(dataset_name):
@@ -48,7 +54,15 @@ def get_dataset(args, train_transform, eval_transform):
 
 baseline_metadata = { # TODO: add your model's channels here
     "croma": ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B11", "B12"],
+    "satmae": ["B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B11", "B12"]
 }
 
-def get_baseline_metadata(baseline_name):
+landsat_metadata = { # only work for oli_tirs_toa
+    'croma': ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B10", "B11", "B12", "B13"] # "B13" is just padding 
+}
+
+def get_baseline_metadata(args):
+    baseline_name = args.model_name
+    if args.dataset_name.lower().strip() == "landsat":
+        return landsat_metadata[baseline_name]
     return baseline_metadata[baseline_name]

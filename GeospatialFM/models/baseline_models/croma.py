@@ -110,6 +110,13 @@ class PretrainedCROMA(nn.Module):
             return_dict['joint_GAP'] = joint_GAP
 
         return return_dict
+    
+    @property
+    def device(self):
+        try:
+            return next(self.parameters()).device
+        except StopIteration:
+            return torch.device("cpu")
 
 def get_2dalibi(num_heads, num_patches):
     # inspired by: https://github.com/ofirpress/attention_with_linear_biases
