@@ -114,4 +114,9 @@ def linear_probe_collate_fn(batch):
         features.append(example['features'])
         labels.append(example['label'])
         
-    return {'features': torch.stack(features), 'labels': torch.tensor(labels)}
+    try:
+        labels = torch.tensor(labels)
+    except:
+        labels = torch.stack(labels) # for multilabel
+        
+    return {'features': torch.stack(features), 'labels': labels}

@@ -7,33 +7,6 @@ class MAETrainer(Trainer):
         super().__init__(**kwargs)
         self.modal_mode = modal_mode
 
-    def compute_loss(self, model, inputs, return_outputs=False, mask_ratio=None, channel_mask_ratio=None):
-        optical = inputs.get("optical").to(self.accelerator.device, dtype=self.weight_dtype)
-        radar = inputs.get("radar").to(self.accelerator.device, dtype=self.weight_dtype)
-        optical_channel_wv = inputs.get("optical_channel_wv")
-        radar_channel_wv = inputs.get("radar_channel_wv")
-        spatial_resolution = inputs.get("spatial_resolution")
-        
-        if self.modal_mode == "random":
-            modal = np.random.choice(['multi', 'optical', 'radar'])
-        else:
-            modal = self.modal_mode
-        
-        outputs = model(
-            optical=optical,
-            radar=radar,
-            optical_channel_wv=optical_channel_wv,
-            radar_channel_wv=radar_channel_wv,
-            mask_ratio=mask_ratio,
-            channel_mask_ratio=channel_mask_ratio,
-            spatial_resolution=spatial_resolution,
-            modal=modal
-        )
-
-        loss = self.calculate_modal_loss(outputs, self.loss_type)
-
-        return (loss, outputs) if return_outputs else loss
-
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         if self.modal_mode == "random":
             modal = np.random.choice(['multi', 'optical', 'radar'])

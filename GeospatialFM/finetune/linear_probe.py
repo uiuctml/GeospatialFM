@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from datetime import timedelta
 import math
+import json
 
 import torch
 from accelerate.logging import get_logger
@@ -177,78 +178,78 @@ def main(args):
                 config=vars(args)
             )
     
-    trainer = Trainer(
-        model=None,
-        model_init=model_init,
-        args=training_args,
-        train_dataset=dataset['train'],
-        eval_dataset=dataset['val'],
-        data_collator=linear_probe_collate_fn,
-        compute_metrics=compute_metrics,
-        compute_loss_func=custom_loss_function
-    )
-    
-    # Hyperparameter search
-    best_trial = trainer.hyperparameter_search(
-        direction="maximize",
-        backend="optuna",
-        hp_space=optuna_hp_space,
-        n_trials=args.n_trials,
-        storage=f"sqlite:///{args.logging_dir}/linear_probe.db",
-        study_name=args.run_name,
-        load_if_exists=True,
-        pruner=optuna.pruners.NopPruner()  # FIXME: Pruner is not compatible with our server now, fix it later
-    )
-    
-    # Print the best hyperparameters
-    logger.info(f"\n\nBest trial:")
-    logger.info(f"Value (objective): {best_trial.objective}")
-    logger.info("Parameters:")
-    for key, value in best_trial.hyperparameters.items():
-        logger.info(f"\t{key}: {value}")
-    
-    # Update training args with best hyperparameters
-    for key, value in best_trial.hyperparameters.items():
-        setattr(training_args, key, value)
-    
-    # Create new trainer with best hyperparameters
-    del trainer
-    trainer = Trainer(
-        model=model_init(None),
-        args=training_args,
-        train_dataset=dataset['train'],
-        eval_dataset=dataset['val'],
-        data_collator=linear_probe_collate_fn,
-        compute_metrics=compute_metrics,
-        compute_loss_func=custom_loss_function
-    )
-    
-    # Train and evaluate
-    train_result = trainer.train()
-    
-    # Save the best model first
-    trainer.save_model(os.path.join(args.output_dir, "last_model"))
-    
-    # Final evaluation
-    metrics = trainer.evaluate(eval_dataset=dataset['test'])
-    
-    # Log the metrics
-    trainer.log_metrics("test", metrics)
-    trainer.save_metrics("test", metrics)
-    
-    # Final evaluation
-    metrics = trainer.evaluate(eval_dataset=dataset['val'])
-    
-    # Log the metrics
-    trainer.log_metrics("val", metrics)
-    trainer.save_metrics("val", metrics)
-    
-    # # Save the final model
-    # trainer.save_model(os.path.join(args.output_dir, "final_model"))
-    
-    # Save training state
-    trainer.save_state()
-    
+    # if args.use_optuna:
+    if args.use_optuna:
+        trainer = Trainer(
+            model=None,
+            model_init=model_init,
+            args=training_args,
+            train_dataset=dataset['train'],
+            eval_dataset=dataset['val'],
+            data_collator=linear_probe_collate_fn,
+            compute_metrics=compute_metrics,
+            compute_loss_func=custom_loss_function
+        )
+        
+        # Hyperparameter search
+        best_trial = trainer.hyperparameter_search(
+            direction="maximize",
+            backend="optuna",
+            hp_space=optuna_hp_space,
+            n_trials=args.n_trials,
+            storage=f"sqlite:///{args.logging_dir}/linear_probe.db",
+            study_name=args.run_name,
+            load_if_exists=True,
+            pruner=optuna.pruners.NopPruner()  # FIXME: Pruner is not compatible with our server now, fix it later
+        )
+        
+        if training_args.local_rank == 0:
+            # Print the best hyperparameters
+            logger.info(f"\n\nBest trial:")
+            logger.info(f"Value (objective): {best_trial.objective}")
+            logger.info("Parameters:")
+            for key, value in best_trial.hyperparameters.items():
+                logger.info(f"\t{key}: {value}")
+                
+            # write the best trial to a json file
+            best_trial_dict = {
+                "objective": best_trial.objective,
+                "parameters": best_trial.hyperparameters
+            }
+            with open(os.path.join(args.logging_dir, f"{args.run_name}.json"), "w") as f:
+                json.dump(best_trial_dict, f)
+
+    else:
+        trainer = Trainer(
+            model=model_init(None),
+            args=training_args,
+            train_dataset=dataset['train'],
+            eval_dataset=dataset['val'],
+            data_collator=linear_probe_collate_fn,
+            compute_metrics=compute_metrics,
+            compute_loss_func=custom_loss_function
+        )
+        
+        # Train and evaluate
+        train_result = trainer.train()
+        
+        # Final evaluation
+        metrics = trainer.evaluate(eval_dataset=dataset['test'])
+        
+        # Log the metrics
+        trainer.log_metrics("test", metrics)
+        trainer.save_metrics("test", metrics)
+        
+        # Final evaluation
+        metrics = trainer.evaluate(eval_dataset=dataset['val'])
+        
+        # Log the metrics
+        trainer.log_metrics("val", metrics)
+        trainer.save_metrics("val", metrics)
+        
+        # Save training state
+        trainer.save_state()
+
 if __name__ == "__main__":
     args = parse_args()
     main(args)

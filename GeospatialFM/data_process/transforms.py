@@ -36,10 +36,13 @@ def NormalizeAll(optical=None, radar=None, optical_mean=None, optical_std=None, 
     return optical, radar
 
 def RandomCropAll(optical=None, radar=None, label=None, crop_size=None):
-    i, j, h, w = transforms.RandomCrop.get_params(optical, [crop_size, crop_size])
-    optical = ModuleNotFoundError if optical is None else TF.crop(optical, i, j, h, w)
-    radar = None if radar is None else TF.crop(radar, i, j, h, w)
-    label = None if label is None else TF.crop(label, i, j, h, w)
+    try:
+        i, j, h, w = transforms.RandomCrop.get_params(optical, [crop_size, crop_size])
+        optical = None if optical is None else TF.crop(optical, i, j, h, w)
+        radar = None if radar is None else TF.crop(radar, i, j, h, w)
+        label = None if label is None else TF.crop(label, i, j, h, w)
+    except:
+        optical, radar, label = CenterCropAll(optical, radar, label, crop_size)
     return optical, radar, label
 
 def CenterCropAll(optical=None, radar=None, label=None, crop_size=None):

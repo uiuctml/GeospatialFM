@@ -9,14 +9,18 @@ DATASET_PATH = {
     "eurosat": "EuroSAT",
     "bigearthnet": "BigEarthNet",
     "dfc2020": "DFC2020",
-    "segmunich": "SegMunich"
+    "segmunich": "SegMunich",
+    "so2sat": "So2Sat",
+    "marida": "MARIDA"
 }
 
 DATASET = {
     "eurosat": 'GFM-Bench/EuroSAT',
     "bigearthnet": "GFM-Bench/BigEarthNet",
     "dfc2020": "GFM-Bench/DFC2020",
-    "segmunich": "GFM-Bench/SegMunich"
+    "segmunich": "GFM-Bench/SegMunich",
+    "so2sat": "GFM-Bench/So2Sat",
+    "marida": "GFM-Bench/MARIDA"
 }
 
 def get_metadata(dataset_name):
