@@ -80,6 +80,7 @@ def compute_metrics_IoU(eval_pred: EvalPrediction, num_classes=11) -> Dict:
         mat += torch.bincount(inds, minlength=n**2).reshape(n, n)
     mat_to_float = mat.to(torch.float32)
     iu = torch.diag(mat_to_float) / (mat_to_float.sum(dim=1) + mat_to_float.sum(dim=0) - torch.diag(mat_to_float))
+    iu[torch.isnan(iu)] = 0.0
     IoU = torch.mean(iu).item()
 
     return {"IoU": IoU}
