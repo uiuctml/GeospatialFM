@@ -11,7 +11,8 @@ DATASET_PATH = {
     "dfc2020": "DFC2020",
     "segmunich": "SegMunich",
     "so2sat": "So2Sat",
-    "marida": "MARIDA"
+    "marida": "MARIDA",
+    "landsat": "SSL4EOLBenchmark",
 }
 
 DATASET = {
@@ -20,7 +21,8 @@ DATASET = {
     "dfc2020": "GFM-Bench/DFC2020",
     "segmunich": "GFM-Bench/SegMunich",
     "so2sat": "GFM-Bench/So2Sat",
-    "marida": "GFM-Bench/MARIDA"
+    "marida": "GFM-Bench/MARIDA",
+    "landsat": "GFM-Bench/SSL4EO-L-Benchmark",
 }
 
 def get_metadata(dataset_name):

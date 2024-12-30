@@ -32,7 +32,8 @@ def model_init(trial):
     metadata = get_metadata(args.dataset_name)
     
     # Initialize model
-    model = get_task_model(args, metadata["num_classes"], metadata["size"])
+    image_size = args.crop_size if args.dataset_name.lower().strip() == "landsat" and args.crop_size is not None else metadata['size']
+    model = get_task_model(args, metadata["num_classes"], image_size)
     # load from checkpoint if provided
     if args.pretrained_model_path:
         from safetensors import safe_open
@@ -70,13 +71,13 @@ def main(args):
     metadata = get_metadata(args.dataset_name)
     args.crop_size = metadata["size"] if args.crop_size is None else args.crop_size
     
-    optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"]
-    radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"]
+    optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"] if args.dataset_name.lower().strip() != "landsat" else (metadata['mean'], metadata['std'])
+    radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"] if args.dataset_name.lower().strip() != "landsat" else (None, None)
     
     collate_fn = partial(modal_specific_collate_fn, modal=args.modal)
     
     train_transform, eval_transform = get_transform(args.task_type, args.crop_size, args.scale, args.random_rotation, 
-                                                    optical_mean, optical_std, radar_mean, radar_std)
+                                                    optical_mean, optical_std, radar_mean, radar_std, args.dataset_name)
     dataset = get_dataset(args, train_transform, eval_transform)
     
     # get loss function and metric
