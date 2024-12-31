@@ -17,10 +17,10 @@ import numpy as np
 from functools import partial
 
 from GeospatialFM.finetune.args import parse_args
-from GeospatialFM.datasets.GFMBench.utils import get_dataset, get_metadata
+from GeospatialFM.datasets.GFMBench.utils import get_dataset, get_metadata, get_baseline_metadata
 from GeospatialFM.data_process.transforms import get_transform
 from GeospatialFM.data_process.collate_func import modal_specific_collate_fn, linear_probe_collate_fn
-from GeospatialFM.finetune.utils import get_loss_fn, get_metric, get_task_model
+from GeospatialFM.finetune.utils import get_loss_fn, get_metric, get_task_model, get_baseline_model
 
 from datasets.fingerprint import Hasher
 
@@ -82,6 +82,11 @@ def compute_encoding(batch, model, task_type, modal='optical'):
 def model_init(trial):
     args = parse_args()
     metadata = get_metadata(args.dataset_name)
+
+    if args.model_name:
+        model = get_baseline_model(args, metadata["num_classes"], metadata["size"])
+        model.load_pretrained_encoder(args.pretrained_model_path)
+        return model
     
     # Initialize model
     model = get_task_model(args, metadata["num_classes"], metadata["size"])
@@ -125,13 +130,14 @@ def main(args):
     
     optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"]
     radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"]
+    data_bands = metadata["s2c"]["bands"]
     
     train_transform, eval_transform = get_transform(args.task_type, args.crop_size, args.scale, args.random_rotation, 
-                                                    optical_mean, optical_std, radar_mean, radar_std)
+                                                    optical_mean, optical_std, radar_mean, radar_std, data_bands=data_bands, model_bands=get_baseline_metadata(args))
     dataset = get_dataset(args, train_transform, eval_transform)
     
     # Initialize model
-    model = get_task_model(args, metadata["num_classes"], metadata["size"])
+    model = get_baseline_model(args, metadata["num_classes"], metadata["size"])
     # load from checkpoint if provided
     if args.pretrained_model_path:
         from safetensors import safe_open
@@ -154,7 +160,7 @@ def main(args):
     encoder.cuda().eval()
     
     # preprocess dataset
-    compute_encoding_fn = partial(compute_encoding, model=encoder, task_type=args.task_type, modal=args.modal)
+    compute_encoding_fn = partial(compute_encoding_baseline, model=encoder, task_type=args.task_type, modal=args.modal)
     
     for split, dataset_split in dataset.items():
         if args.regenerate_embeddings:

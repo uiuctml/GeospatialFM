@@ -26,7 +26,7 @@ def get_baseline_model(args, num_classes=None, image_size=None):
         assert num_classes is not None
         config = BaselineWithProjectionConfig(num_labels=num_classes, **vars(args))
         model = BaselineWithProjection(config)
-    elif args.task_type == "segmentation":
+    elif args.task_type == "segmentation" or args.task_type == "landsat":
         assert num_classes is not None and image_size is not None
         config = BaselineWithUPerNetConfig(num_labels=num_classes, image_size=image_size, **vars(args))
         model = BaselineWithUPerNet(config)
@@ -48,7 +48,7 @@ def custom_loss_function(outputs, labels, num_items_in_batch, loss_fct):
     return loss
 
 def get_loss_fn(task_type):
-    if task_type == "classification" or task_type == "segmentation":
+    if task_type == "classification" or task_type == "segmentation" or task_type == "landsat":
         loss_fct = torch.nn.CrossEntropyLoss(ignore_index=255)
     elif task_type == "multilabel":
         loss_fct = torch.nn.MultiLabelSoftMarginLoss()
@@ -97,6 +97,7 @@ def compute_metrics_IoU(eval_pred: EvalPrediction, num_classes=11) -> Dict:
         mat += torch.bincount(inds, minlength=n**2).reshape(n, n)
     mat_to_float = mat.to(torch.float32)
     iu = torch.diag(mat_to_float) / (mat_to_float.sum(dim=1) + mat_to_float.sum(dim=0) - torch.diag(mat_to_float))
+    iu[torch.isnan(iu)] = 0.0
     IoU = torch.mean(iu).item()
 
     return {"IoU": IoU}
@@ -106,7 +107,7 @@ def get_metric(task_type, num_classes=None):
         return compute_metrics_acc, "accuracy"
     elif task_type == "multilabel":
         return compute_metrics_mAP, "micro_mAP"
-    elif task_type == "segmentation":
+    elif task_type == "segmentation" or task_type == "landsat":
         return partial(compute_metrics_IoU, num_classes=num_classes), "IoU"
     else:
         raise NotImplementedError

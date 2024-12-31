@@ -11,7 +11,7 @@ SCALE=1
 
 WD=0.01
 
-for LR in 1e-4 8e-4 5e-4 3e-3 1e-4 8e-5 5e-5 3e-5 1e-5; do
+for LR in 1e-3 8e-4 5e-4 3e-4 1e-4 8e-5 5e-5 3e-5 1e-5; do
     accelerate launch --num_processes=2 --main_process_port=10089 GeospatialFM/finetune/finetune.py \
         --data_dir /data/common/geospatial \
         --dataset_name $DATASET \
@@ -21,6 +21,7 @@ for LR in 1e-4 8e-4 5e-4 3e-3 1e-4 8e-5 5e-5 3e-5 1e-5; do
         --return_dict \
         --per_device_train_batch_size 64 \
         --gradient_accumulation_steps 2 \
+        --eval_on_start \
         --eval_steps 2000 \
         --num_train_epochs 10 \
         --learning_rate $LR \
@@ -36,9 +37,9 @@ for LR in 1e-4 8e-4 5e-4 3e-3 1e-4 8e-5 5e-5 3e-5 1e-5; do
         --output_dir $ROOT_DIR/results_wyx/models \
         --logging_dir $ROOT_DIR/results_wyx/logs \
         --wandb_dir $ROOT_DIR/results_wyx/ \
-        --run_name CROMA_${DATASET}_lr${LR}_wd${WD} \
+        --run_name SatMAE_${DATASET}_lr${LR}_wd${WD} \
         --lr_scheduler_type cosine \
-        --crop_size 120 \
-        --model_name croma \
+        --crop_size 96 \
+        --model_name satmae \
 
 done

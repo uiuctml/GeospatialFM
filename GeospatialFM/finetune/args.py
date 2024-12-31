@@ -6,7 +6,7 @@ def parse_args(sys_args=None):
 
     # Dataset arguments
     parser.add_argument("--dataset_name", type=str, required=True, help="Name of the dataset")
-    parser.add_argument("--task_type", type=str, choices=["classification", "multilabel", "segmentation"], required=True, help="Task type")
+    parser.add_argument("--task_type", type=str, choices=["classification", "multilabel", "segmentation", "landsat"], required=True, help="Task type")
     parser.add_argument("--data_dir", type=str, required=True, help="Path to the GFMBench")
     parser.add_argument("--dataloader_num_workers", type=int, default=4, help="Number of subprocesses to use for data loading")
     parser.add_argument("--dataloader_pin_memory", action="store_true", help="Whether to pin memory for data loading")

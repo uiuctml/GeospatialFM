@@ -58,7 +58,8 @@ baseline_metadata = { # TODO: add your model's channels here
 }
 
 landsat_metadata = { # only work for oli_tirs_toa
-    'croma': ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B10", "B11", "B12", "B13"] # "B13" is just padding 
+    'croma': ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B10", "B11", "B12", "B13"], # "B13" is just padding 
+    'satmae': ["B2", "B3", "B4", "B5", "B6", "B7", "B8", "B10", "B11", "B12"] # Remove B1 (coastal/Aerosol) and B9 (cirrus) from oli_tirs, add B12 as padding to make sure there are 10 channels
 }
 
 def get_baseline_metadata(args):

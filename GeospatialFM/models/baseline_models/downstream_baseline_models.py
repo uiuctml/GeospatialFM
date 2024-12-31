@@ -20,6 +20,11 @@ BASELINE_MODELS = { # TODO: add your model init code here
     "satmae": SatMAE(img_size=96, patch_size=8, in_chans=10),
 }
 
+IMAGE_SIZE = {
+    96: 112,
+    120: 128,
+}
+
 class BaselineEncoderConfig(PretrainedConfig):
     model_type = "less_vit_encoder"
 
@@ -46,8 +51,7 @@ class BaselineEncoderConfig(PretrainedConfig):
         use_moe: bool = False,
         topk: int = None,
         model_name: str = None,
-        dataset_name: str = None,
-        crop_size: int = None,
+        task_type: str = None,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -74,8 +78,7 @@ class BaselineEncoderConfig(PretrainedConfig):
         self.use_moe = use_moe if self.num_experts > 0 else False
         self.topk = topk
         self.model_name = model_name
-        self.dataset_name = dataset_name # for landsat
-        self.crop_size = crop_size # for landsat
+        self.task_type = task_type # for landsat
         
         # Perception field mask
         self.use_perception_field_mask = use_perception_field_mask
@@ -223,7 +226,7 @@ class BaselineWithUPerNet(BaselineWithTaskHead):
         self.encoder = BASELINE_MODELS[config.model_name]
         self.decoder = UPerNet(
             num_classes=config.num_labels,
-            image_size=config.image_size if config.dataset_name != "landsat" else config.crop_size,
+            image_size=config.image_size if config.task_type != "landsat" else 128,
             debug=False
         )
         
