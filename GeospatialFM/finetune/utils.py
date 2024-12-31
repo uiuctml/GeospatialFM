@@ -26,7 +26,7 @@ def get_baseline_model(args, num_classes=None, image_size=None):
         assert num_classes is not None
         config = BaselineWithProjectionConfig(num_labels=num_classes, **vars(args))
         model = BaselineWithProjection(config)
-    elif args.task_type == "segmentation" or args.task_type == "landsat":
+    elif args.task_type == "segmentation":
         assert num_classes is not None and image_size is not None
         config = BaselineWithUPerNetConfig(num_labels=num_classes, image_size=image_size, **vars(args))
         model = BaselineWithUPerNet(config)
@@ -48,7 +48,7 @@ def custom_loss_function(outputs, labels, num_items_in_batch, loss_fct):
     return loss
 
 def get_loss_fn(task_type):
-    if task_type == "classification" or task_type == "segmentation" or task_type == "landsat":
+    if task_type == "classification" or task_type == "segmentation":
         loss_fct = torch.nn.CrossEntropyLoss(ignore_index=255)
     elif task_type == "multilabel":
         loss_fct = torch.nn.MultiLabelSoftMarginLoss()

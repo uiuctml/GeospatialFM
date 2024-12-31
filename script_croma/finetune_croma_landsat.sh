@@ -15,7 +15,7 @@ for LR in 1e-4 8e-4 5e-4 3e-3 1e-4 8e-5 5e-5 3e-5 1e-5; do
     accelerate launch --num_processes=2 --main_process_port=10089 GeospatialFM/finetune/finetune.py \
         --data_dir /data/common/geospatial \
         --dataset_name $DATASET \
-        --task_type landsat \
+        --task_type segmentation \
         --scale $SCALE \
         --modal optical \
         --return_dict \

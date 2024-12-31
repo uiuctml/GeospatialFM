@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 import subprocess
 import random
-
+import shutil
 @dataclass
 class DatasetConfig:
     name: str
@@ -78,20 +78,33 @@ def generate_finetune_command(
     scale: int = 1,
     attention_radius: int = 640,
     topk: int = 3,
+    linear_probe: bool = False,
+    accelerator_config: str = "",
+    regenerate_embeddings: bool = False,
 ) -> str:
+    script = "linear_probe.py" if linear_probe else "finetune.py"
+    batch_size = 1024 if linear_probe else dataset_config.batch_size
+    grad_accum_steps = 1 if linear_probe else dataset_config.grad_accum_steps
+    num_epochs = 100 if linear_probe else dataset_config.num_epochs
+    
     cmd = [
         "accelerate launch",
-        f"--main_process_port {port}",
-        "GeospatialFM/finetune/finetune.py",
+        f"--main_process_port {port}"
+    ]
+    if accelerator_config:
+        cmd.append(accelerator_config)
+    
+    cmd.extend([
+        f"GeospatialFM/finetune/{script}",
         f"--data_dir {root_dir}/data/geospatial-2/",
         f"--dataset_name {dataset_config.name}",
         f"--task_type {dataset_config.task_type}",
         f"--scale {scale}",
         "--modal optical",
         "--return_dict",
-        f"--per_device_train_batch_size {dataset_config.batch_size}",
-        f"--gradient_accumulation_steps {dataset_config.grad_accum_steps}",
-        f"--num_train_epochs {dataset_config.num_epochs}",
+        f"--per_device_train_batch_size {batch_size}",
+        f"--gradient_accumulation_steps {grad_accum_steps}",
+        f"--num_train_epochs {num_epochs}",
         f"--learning_rate {learning_rate}",
         "--weight_decay 0.01",
         "--warmup_steps 0",
@@ -111,11 +124,18 @@ def generate_finetune_command(
         "--use_perception_field_mask",
         f"--pretrained_model_path {root_dir}/results/models/LESSVIT_b{embed_dims}_d{depth}/checkpoint-{checkpoint}/model.safetensors",
         f"--attention_radius {attention_radius}",
-        "--use_early_stopping",
-        f"--early_stopping_patience {dataset_config.early_stopping_patience}",
         f"--crop_size {dataset_config.crop_size}",
         "--init_values 1",
-    ]
+    ])
+    
+    if regenerate_embeddings:
+        cmd.append("--regenerate_embeddings")
+    
+    if not linear_probe:
+        cmd.append("--use_early_stopping")
+        cmd.append(f"--early_stopping_patience {dataset_config.early_stopping_patience}")
+    else:
+        cmd.append("--save_strategy no")
 
     if moe > 0:
         cmd.append("--use_moe")
@@ -133,6 +153,10 @@ def main():
     parser.add_argument("--dataset", required=True, choices=list(DATASET_CONFIGS.keys()))
     parser.add_argument("--root_dir", default="/home/haozhesi/GeospatialFM")
     parser.add_argument("--gpu_devices", default="0,1,2,3")
+    parser.add_argument("--lp", action="store_true", help="Run in linear probe mode")
+    parser.add_argument("--moe", default=0, type=int, help="Number of experts")
+    parser.add_argument("--scale", default=1, type=int, help="Scale of the model")
+    parser.add_argument("--regenerate_embeddings", action="store_true", help="Regenerate embeddings")
     args = parser.parse_args()
 
     # Set environment variables
@@ -141,22 +165,38 @@ def main():
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_devices
 
     dataset_config = DATASET_CONFIGS[args.dataset]
+    accelerator_config = "--config_file ~/.cache/huggingface/accelerate/lp_config.yaml" if args.lp else ""
     
     # sweep fields
-    learning_rates = ["3e-5", "5e-5", "8e-5", "1e-4", "3e-4", "5e-4", "8e-4", "1e-3"]
-    embed_dims_list = [2]  # Modify as needed
-    depth_list = [4, 8]    # Modify as needed
-    # adjustable parameters
-    moe = 0
-    scale = 1
+    if args.lp:
+        learning_rates = ["5e-3", "8e-3", "1e-2", "3e-2", "5e-2", "8e-2", "1e-1", "3e-1"]
+    else:
+        learning_rates = ["3e-5", "5e-5", "8e-5", "1e-4", "3e-4", "5e-4", "8e-4", "1e-3"]
     
+    embed_dims_list = [1, 2]  # Modify as needed
+    depth_list = [8, 4]    # Modify as needed
+    # adjustable parameters
+    moe = args.moe
+    scale = args.scale
     # random port
     port = random.randint(10000, 65535)
 
     for embed_dims in embed_dims_list:
         for depth in depth_list:
+            regenerate_embeddings = args.regenerate_embeddings
             for lr in learning_rates:
                 run_name = f"LESSVIT_b{embed_dims}_d{depth}_{dataset_config.name}_lr{lr}_scale{scale}_moe{moe}"
+                if args.lp:
+                    run_name += "_lp"
+                # check if the run_name already exists and completed
+                if os.path.exists(f"{args.root_dir}/results/models/{dataset_config.name}/{run_name}/test_results.json"):
+                    if args.regenerate_embeddings:
+                        print(f"Redo the experiment for {run_name}")
+                        shutil.rmtree(f"{args.root_dir}/results/models/{dataset_config.name}/{run_name}")
+                    else:
+                        print(f"Run {run_name} already exists and completed")
+                        continue
+                    
                 cmd = generate_finetune_command(
                     root_dir=args.root_dir,
                     dataset_config=dataset_config,
@@ -168,10 +208,15 @@ def main():
                     # adjustable parameters
                     moe=moe,
                     scale=scale,
+                    linear_probe=args.lp,
+                    accelerator_config=accelerator_config,
+                    regenerate_embeddings=regenerate_embeddings,
                 )
                 
                 print(f"Running command:\n{cmd}")
                 subprocess.run(cmd, shell=True)
+                
+                regenerate_embeddings = False
                 
                 # save the command to a file
                 with open(f"{args.root_dir}/results/models/{dataset_config.name}/{run_name}/launch_finetune.sh", "w") as f:

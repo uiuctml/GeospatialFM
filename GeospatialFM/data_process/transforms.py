@@ -46,10 +46,13 @@ def NormalizeAll(optical=None, radar=None, optical_mean=None, optical_std=None, 
     return optical, radar
 
 def RandomCropAll(optical=None, radar=None, label=None, crop_size=None):
-    i, j, h, w = transforms.RandomCrop.get_params(optical, [crop_size, crop_size])
-    optical = ModuleNotFoundError if optical is None else TF.crop(optical, i, j, h, w)
-    radar = None if radar is None else TF.crop(radar, i, j, h, w)
-    label = None if label is None else TF.crop(label, i, j, h, w)
+    try:
+        i, j, h, w = transforms.RandomCrop.get_params(optical, [crop_size, crop_size])
+        optical = None if optical is None else TF.crop(optical, i, j, h, w)
+        radar = None if radar is None else TF.crop(radar, i, j, h, w)
+        label = None if label is None else TF.crop(label, i, j, h, w)
+    except:
+        optical, radar, label = CenterCropAll(optical, radar, label, crop_size)
     return optical, radar, label
 
 def CenterCropAll(optical=None, radar=None, label=None, crop_size=None):
@@ -367,9 +370,13 @@ def landsat_transform(example, crop_size=None, scale=None, is_train=True, random
     
     return example
 
-def get_transform(task_type, crop_size=None, scale=None, random_rotation=True, optical_mean=None, optical_std=None, radar_mean=None, radar_std=None, data_bands=None, model_bands=None):
-    print(task_type)
-    if task_type == "segmentation":
+def get_transform(task_type, crop_size=None, scale=None, random_rotation=True, optical_mean=None, optical_std=None, radar_mean=None, radar_std=None, dataset_name=None):
+    if dataset_name == "landsat":
+        train_transform = partial(landsat_transform, crop_size=crop_size, scale=scale, random_rotation=random_rotation, is_train=True, 
+                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std)
+        eval_transform = partial(landsat_transform, crop_size=crop_size, scale=scale, is_train=False, 
+                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std)
+    elif task_type == "segmentation":
         train_transform = partial(segmentation_transform, crop_size=crop_size, scale=scale, random_rotation=random_rotation, is_train=True, 
                                   optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, data_bands=data_bands, model_bands=model_bands)
         eval_transform = partial(segmentation_transform, crop_size=crop_size, scale=scale, is_train=False, 
@@ -378,11 +385,6 @@ def get_transform(task_type, crop_size=None, scale=None, random_rotation=True, o
         train_transform = partial(classification_transform, crop_size=crop_size, scale=scale, random_rotation=random_rotation, is_train=True, 
                                   optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, data_bands=data_bands, model_bands=model_bands)
         eval_transform = partial(classification_transform, crop_size=crop_size, scale=scale, is_train=False, 
-                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, data_bands=data_bands, model_bands=model_bands)
-    elif task_type == "landsat":
-        train_transform = partial(landsat_transform, crop_size=crop_size, scale=scale, random_rotation=random_rotation, is_train=True, 
-                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, data_bands=data_bands, model_bands=model_bands)
-        eval_transform = partial(landsat_transform, crop_size=crop_size, scale=scale, is_train=False, 
                                   optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, data_bands=data_bands, model_bands=model_bands)
     else:
         raise NotImplementedError
