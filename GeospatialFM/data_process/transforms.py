@@ -370,7 +370,7 @@ def landsat_transform(example, crop_size=None, scale=None, is_train=True, random
     
     return example
 
-def get_transform(task_type, crop_size=None, scale=None, random_rotation=True, optical_mean=None, optical_std=None, radar_mean=None, radar_std=None,  data_bands=None, model_bands=None, dataset_name=None):
+def get_transform(task_type, crop_size=None, scale=None, random_rotation=True, optical_mean=None, optical_std=None, radar_mean=None, radar_std=None, data_bands=None, model_bands=None, dataset_name=None):
     if dataset_name == "landsat":
         train_transform = partial(landsat_transform, crop_size=crop_size, scale=scale, random_rotation=random_rotation, is_train=True, 
                                   optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, data_bands=data_bands, model_bands=model_bands)

@@ -75,16 +75,21 @@ def main(args):
     # Load dataset
     metadata = get_metadata(args.dataset_name)
     args.crop_size = metadata["size"] if args.crop_size is None else args.crop_size
-    
-    optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"] if args.dataset_name.lower().strip() != "landsat" else (metadata['mean'], metadata['std'])
-    radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"] if args.dataset_name.lower().strip() != "landsat" else (None, None)
-    data_bands = metadata["s2c"]["bands"] if args.dataset_name.lower().strip() != "landsat" else metadata["bands"]
+
+    if args.dataset_name.lower().strip() == "landsat":
+        optical_mean, optical_std = (metadata['mean'], metadata['std']) 
+        radar_mean, radar_std = (None, None)
+        data_bands = metadata["bands"]
+    else:
+        optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"] 
+        radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"]
+        data_bands = metadata["s2c"]["bands"] 
     
     collate_fn = partial(modal_specific_collate_fn, modal=args.modal)
     
     train_transform, eval_transform = get_transform(args.task_type, args.crop_size, args.scale, args.random_rotation, 
                                                     optical_mean, optical_std, radar_mean, radar_std, 
-                                                    data_bands=data_bands, model_bands=get_baseline_metadata(args), args.dataset_name)
+                                                    data_bands=data_bands, model_bands=get_baseline_metadata(args), dataset_name=args.dataset_name)
     dataset = get_dataset(args, train_transform, eval_transform)
     
     # get loss function and metric

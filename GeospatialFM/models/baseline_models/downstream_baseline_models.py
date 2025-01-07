@@ -51,7 +51,7 @@ class BaselineEncoderConfig(PretrainedConfig):
         use_moe: bool = False,
         topk: int = None,
         model_name: str = None,
-        task_type: str = None,
+        dataset_name: str = None,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -78,7 +78,7 @@ class BaselineEncoderConfig(PretrainedConfig):
         self.use_moe = use_moe if self.num_experts > 0 else False
         self.topk = topk
         self.model_name = model_name
-        self.task_type = task_type # for landsat
+        self.dataset_name = dataset_name # for landsat
         
         # Perception field mask
         self.use_perception_field_mask = use_perception_field_mask
@@ -226,7 +226,7 @@ class BaselineWithUPerNet(BaselineWithTaskHead):
         self.encoder = BASELINE_MODELS[config.model_name]
         self.decoder = UPerNet(
             num_classes=config.num_labels,
-            image_size=config.image_size if config.task_type != "landsat" else 128,
+            image_size=config.image_size if config.dataset_name != "landsat" else 128,
             debug=False
         )
         
