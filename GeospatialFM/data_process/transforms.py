@@ -125,10 +125,10 @@ def segmentation_transform_one_sample(optical, radar, label, spatial_resolution,
     optical, radar = NormalizeAll(optical, radar, optical_mean, optical_std, radar_mean, radar_std)
 
     # random crop
-    if crop_size is not None: # for seg baseline other than landsat
+    if crop_size is not None:
         if crop_size > optical.shape[-1]:
             optical, radar = ResizeAll(optical, radar,  scale=1, crop_size=crop_size)
-
+        
     # if crop_size is not None and is_train:
     #     optical, radar, label = RandomCropAll(optical, radar, label, crop_size)
     # elif crop_size is not None and not is_train:
@@ -370,12 +370,12 @@ def landsat_transform(example, crop_size=None, scale=None, is_train=True, random
     
     return example
 
-def get_transform(task_type, crop_size=None, scale=None, random_rotation=True, optical_mean=None, optical_std=None, radar_mean=None, radar_std=None, dataset_name=None):
+def get_transform(task_type, crop_size=None, scale=None, random_rotation=True, optical_mean=None, optical_std=None, radar_mean=None, radar_std=None,  data_bands=None, model_bands=None, dataset_name=None):
     if dataset_name == "landsat":
         train_transform = partial(landsat_transform, crop_size=crop_size, scale=scale, random_rotation=random_rotation, is_train=True, 
-                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std)
+                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, data_bands=data_bands, model_bands=model_bands)
         eval_transform = partial(landsat_transform, crop_size=crop_size, scale=scale, is_train=False, 
-                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std)
+                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, data_bands=data_bands, model_bands=model_bands)
     elif task_type == "segmentation":
         train_transform = partial(segmentation_transform, crop_size=crop_size, scale=scale, random_rotation=random_rotation, is_train=True, 
                                   optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, data_bands=data_bands, model_bands=model_bands)

@@ -58,15 +58,6 @@ def optuna_hp_space(trial):
     }
 
 def main(args):    
-    # import faulthandler
-    # import signal
-
-    # # Enable faulthandler
-    # faulthandler.enable()
-
-    # # Set a timeout (e.g., 30 seconds)
-    # faulthandler.dump_traceback_later(60, repeat=True)
-
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",

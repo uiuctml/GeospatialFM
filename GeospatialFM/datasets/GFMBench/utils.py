@@ -6,7 +6,7 @@ import os
 GFMBENCH_SCRIPTS_PATH = os.path.dirname(__file__)
 
 DATASET_PATH = {
-    "eurosat": "EuroSAT",
+    "eurosat": "EuroSAT_hf",
     "bigearthnet": "BigEarthNet",
     "so2sat": "So2Sat",
     "dfc2020": "DFC2020",

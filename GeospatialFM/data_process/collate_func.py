@@ -112,7 +112,7 @@ def linear_probe_collate_fn(batch):
     
     for example in batch:
         features.append(example['features'])
-        labels.append(example['label'])
+        labels.append(example['labels'])
         
     try:
         labels = torch.tensor(labels)

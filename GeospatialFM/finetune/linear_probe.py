@@ -45,9 +45,8 @@ def compute_encoding_baseline(batch, model, task_type, modal='optical'):
     labels = None if labels is None else torch.tensor(labels)
 
     with torch.no_grad(): # TODO: make it compatible with other baseline models
-        # optical = optical.float() / 255
-        output = model(optical_images=optical)['optical_GAP']
-        # output = model(optical)['outcome']
+        output = model(optical_images=optical)['optical_GAP'] # CROMA
+        # output = model(optical)['outcome'] # SatMAE
     
     features = output.cpu()
 
@@ -87,7 +86,7 @@ def model_init(trial):
     if args.model_name:
         model = get_baseline_model(args, metadata["num_classes"], metadata["size"])
         model.load_pretrained_encoder(args.pretrained_model_path)
-        return model
+        return model.classifier
     
     # Initialize model
     model = get_task_model(args, metadata["num_classes"], metadata["size"])
@@ -139,6 +138,7 @@ def main(args):
     
     # Initialize model
     model = get_baseline_model(args, metadata["num_classes"], metadata["size"])
+    model.load_pretrained_encoder(args.pretrained_model_path)
     # load from checkpoint if provided
     if args.pretrained_model_path:
         from safetensors import safe_open
@@ -166,12 +166,15 @@ def main(args):
     for split, dataset_split in dataset.items():
         if args.regenerate_embeddings:
             dataset_split.cleanup_cache_files() 
-        new_fingerprint_for_encoder = Hasher.hash((args.pretrained_model_path, args.modal, args.dataset_name, split, args.scale))
+        new_fingerprint_for_encoder = Hasher.hash((args.pretrained_model_path, args.modal, args.dataset_name, split, args.scale, args.model_name))
         feature_dataset = dataset_split.map(compute_encoding_fn, batched=True, batch_size=64, new_fingerprint=new_fingerprint_for_encoder)
-        feature_dataset.remove_columns(['spatial_resolution'])
-        if 'optical' in feature_dataset.column_names: feature_dataset.remove_columns(['optical', 'optical_channel_wv'])
-        if 'radar' in feature_dataset.column_names: feature_dataset.remove_columns(['radar', 'radar_channel_wv'])
-        feature_dataset.set_format(type='torch')
+        # feature_dataset = dataset_split.map(compute_encoding_fn, batched=True, batch_size=64)
+        feature_dataset = feature_dataset.remove_columns(['spatial_resolution'])
+        feature_dataset = feature_dataset.remove_columns(['label'])
+        if 'optical' in feature_dataset.column_names: feature_dataset = feature_dataset.remove_columns(['optical', 'optical_channel_wv'])
+        if 'radar' in feature_dataset.column_names: feature_dataset = feature_dataset.remove_columns(['radar', 'radar_channel_wv'])
+        # feature_dataset.set_format(type='torch')
+        feature_dataset.set_format(type='torch', columns=['features', 'labels'])
         dataset[split] = feature_dataset
         
     del encoder
