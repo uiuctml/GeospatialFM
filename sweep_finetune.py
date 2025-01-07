@@ -63,6 +63,13 @@ DATASET_CONFIGS = {
         task_type="segmentation",
         crop_size=96,
     ),
+    "landsat": DatasetConfig(
+        name="landsat",
+        task_type="segmentation",
+        crop_size=128,
+        grad_accum_steps=4,
+        batch_size=16,
+    ),
 }
 
 def generate_finetune_command(
@@ -157,6 +164,7 @@ def main():
     parser.add_argument("--moe", default=0, type=int, help="Number of experts")
     parser.add_argument("--scale", default=1, type=int, help="Scale of the model")
     parser.add_argument("--regenerate_embeddings", action="store_true", help="Regenerate embeddings")
+    parser.add_argument("--checkpoint", default=24600, type=int, help="Checkpoint to load")
     args = parser.parse_args()
 
     # Set environment variables
@@ -173,8 +181,8 @@ def main():
     else:
         learning_rates = ["3e-5", "5e-5", "8e-5", "1e-4", "3e-4", "5e-4", "8e-4", "1e-3"]
     
-    embed_dims_list = [1, 2]  # Modify as needed
-    depth_list = [8, 4]    # Modify as needed
+    embed_dims_list = [2]  # Modify as needed
+    depth_list = [4]    # Modify as needed
     # adjustable parameters
     moe = args.moe
     scale = args.scale
@@ -188,6 +196,8 @@ def main():
                 run_name = f"LESSVIT_b{embed_dims}_d{depth}_{dataset_config.name}_lr{lr}_scale{scale}_moe{moe}"
                 if args.lp:
                     run_name += "_lp"
+                if args.checkpoint != 24600:
+                    run_name += f"_ckpt{args.checkpoint}"
                 # check if the run_name already exists and completed
                 if os.path.exists(f"{args.root_dir}/results/models/{dataset_config.name}/{run_name}/test_results.json"):
                     if args.regenerate_embeddings:
@@ -205,6 +215,7 @@ def main():
                     learning_rate=lr,
                     port=port,
                     run_name=run_name,
+                    checkpoint=args.checkpoint,
                     # adjustable parameters
                     moe=moe,
                     scale=scale,

@@ -32,8 +32,7 @@ def model_init(trial):
     metadata = get_metadata(args.dataset_name)
     
     # Initialize model
-    image_size = args.crop_size if args.dataset_name.lower().strip() == "landsat" and args.crop_size is not None else metadata['size']
-    model = get_task_model(args, metadata["num_classes"], image_size)
+    model = get_task_model(args, metadata["num_classes"], args.crop_size)
     # load from checkpoint if provided
     if args.pretrained_model_path:
         from safetensors import safe_open
@@ -71,8 +70,12 @@ def main(args):
     metadata = get_metadata(args.dataset_name)
     args.crop_size = metadata["size"] if args.crop_size is None else args.crop_size
     
-    optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"] if args.dataset_name.lower().strip() != "landsat" else (metadata['mean'], metadata['std'])
-    radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"] if args.dataset_name.lower().strip() != "landsat" else (None, None)
+    try: # for sentinel-2 and sentinel-1
+        optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"]
+        radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"]
+    except: # for landsat and other datasets
+        optical_mean, optical_std = metadata['mean'], metadata['std']
+        radar_mean, radar_std = None, None
     
     collate_fn = partial(modal_specific_collate_fn, modal=args.modal)
     
