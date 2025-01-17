@@ -25,6 +25,10 @@ DATASET = {
     "landsat": "GFM-Bench/SSL4EO-L-Benchmark",
 }
 
+DATASET_CONFIG_NAME = {
+    "landsat": "etm_oli_toa_nlcd",
+}
+
 def get_metadata(dataset_name):
     dataset = DATASET[dataset_name.lower()]
     infos = get_dataset_infos(dataset, trust_remote_code=True)
@@ -37,6 +41,7 @@ def get_dataset(args, train_transform, eval_transform):
     # data_class_path = os.path.join(GFMBENCH_SCRIPTS_PATH, data_class_path)
     os.makedirs(dataset_path, exist_ok=True)
     # config = CONFIG[args.dataset_name.lower()](data_dir=args.data_dir) # TODO: what to pass in?
+    config_name = DATASET_CONFIG_NAME.get(args.dataset_name.lower(), None)
     dataset_name = DATASET[args.dataset_name.lower()]
 
     dataset_frac = {"train_frac": args.train_frac, "val_frac": args.val_frac, "test_frac": args.test_frac}
@@ -44,7 +49,7 @@ def get_dataset(args, train_transform, eval_transform):
     dataset_dict = {}
     for split in ["train", "val", "test"]:
         transform = train_transform if split == "train" else eval_transform
-        dataset = load_dataset(dataset_name, split=split, cache_dir=dataset_path, trust_remote_code=True)
+        dataset = load_dataset(dataset_name, split=split, cache_dir=dataset_path, trust_remote_code=True, config_name=config_name)
         split_frac = dataset_frac.get(f"{split}_frac")
         if split_frac != 1.0:
             dataset = dataset.train_test_split(train_size=split_frac, seed=42)['train'] 

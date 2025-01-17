@@ -11,11 +11,12 @@ class DatasetConfig:
     task_type: str
     crop_size: int
     batch_size: int = 32
-    grad_accum_steps: int = 2
+    effective_batch_size: int = 256
     num_epochs: int = 10
     early_stopping_patience: int = 3
     train_frac: Optional[float] = None
     val_frac: Optional[float] = None
+    scale: int = 1
 
 # Dataset-specific configurations
 DATASET_CONFIGS = {
@@ -35,7 +36,6 @@ DATASET_CONFIGS = {
         name="segmunich",
         task_type="segmentation",
         crop_size=128,
-        grad_accum_steps=4,
         batch_size=16,
     ),
     "eurosat": DatasetConfig(
@@ -43,20 +43,20 @@ DATASET_CONFIGS = {
         task_type="classification",
         crop_size=64,
         batch_size=64,
-        grad_accum_steps=1,
         num_epochs=20,
         early_stopping_patience=5,
+        scale=2
     ),
     "so2sat": DatasetConfig(
         name="so2sat",
         task_type="classification",
         crop_size=32,
         batch_size=64,
-        grad_accum_steps=1,
         num_epochs=20,
         early_stopping_patience=5,
         train_frac=0.1,
         val_frac=0.1,
+        scale=4
     ),
     "marida": DatasetConfig(
         name="marida",
@@ -67,7 +67,6 @@ DATASET_CONFIGS = {
         name="landsat",
         task_type="segmentation",
         crop_size=128,
-        grad_accum_steps=4,
         batch_size=16,
     ),
 }
@@ -88,10 +87,13 @@ def generate_finetune_command(
     linear_probe: bool = False,
     accelerator_config: str = "",
     regenerate_embeddings: bool = False,
+    n_gpus: int = 4,
+    per_device_batch_size: Optional[int] = None,
 ) -> str:
     script = "linear_probe.py" if linear_probe else "finetune.py"
+    dataset_config.batch_size = per_device_batch_size if per_device_batch_size else dataset_config.batch_size
     batch_size = 1024 if linear_probe else dataset_config.batch_size
-    grad_accum_steps = 1 if linear_probe else dataset_config.grad_accum_steps
+    grad_accum_steps = 1 if linear_probe else dataset_config.effective_batch_size // n_gpus // dataset_config.batch_size
     num_epochs = 100 if linear_probe else dataset_config.num_epochs
     
     cmd = [
@@ -106,7 +108,7 @@ def generate_finetune_command(
         f"--data_dir {root_dir}/data/geospatial-2/",
         f"--dataset_name {dataset_config.name}",
         f"--task_type {dataset_config.task_type}",
-        f"--scale {scale}",
+        f"--scale {dataset_config.scale}",
         "--modal optical",
         "--return_dict",
         f"--per_device_train_batch_size {batch_size}",
@@ -162,9 +164,13 @@ def main():
     parser.add_argument("--gpu_devices", default="0,1,2,3")
     parser.add_argument("--lp", action="store_true", help="Run in linear probe mode")
     parser.add_argument("--moe", default=0, type=int, help="Number of experts")
-    parser.add_argument("--scale", default=1, type=int, help="Scale of the model")
     parser.add_argument("--regenerate_embeddings", action="store_true", help="Regenerate embeddings")
     parser.add_argument("--checkpoint", default=24600, type=int, help="Checkpoint to load")
+    parser.add_argument("--per_device_batch_size", "-b", default=None, type=int, help="Per device batch size")
+    parser.add_argument("--scale", default=None, type=int, help="Scale of the model")
+    # reproduce hyper-parameters
+    parser.add_argument("--lr", default=None, type=float, help="Override learning rate")
+    
     args = parser.parse_args()
 
     # Set environment variables
@@ -173,19 +179,22 @@ def main():
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_devices
 
     dataset_config = DATASET_CONFIGS[args.dataset]
-    accelerator_config = "--config_file ~/.cache/huggingface/accelerate/lp_config.yaml" if args.lp else ""
+    accelerator_config = "--config_file ~/.cache/huggingface/accelerate/lp_config.yaml" if (args.lp or len(args.gpu_devices.split(",")) == 1) else ""
     
     # sweep fields
     if args.lp:
         learning_rates = ["5e-3", "8e-3", "1e-2", "3e-2", "5e-2", "8e-2", "1e-1", "3e-1"]
     else:
         learning_rates = ["3e-5", "5e-5", "8e-5", "1e-4", "3e-4", "5e-4", "8e-4", "1e-3"]
+        
+    if args.lr:
+        learning_rates = [args.lr]
     
     embed_dims_list = [2]  # Modify as needed
     depth_list = [4]    # Modify as needed
     # adjustable parameters
     moe = args.moe
-    scale = args.scale
+    scale = args.scale if args.scale else dataset_config.scale
     # random port
     port = random.randint(10000, 65535)
 
@@ -216,6 +225,8 @@ def main():
                     port=port,
                     run_name=run_name,
                     checkpoint=args.checkpoint,
+                    n_gpus=len(args.gpu_devices.split(",")),
+                    per_device_batch_size=args.per_device_batch_size,
                     # adjustable parameters
                     moe=moe,
                     scale=scale,
