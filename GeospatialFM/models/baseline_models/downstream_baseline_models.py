@@ -10,14 +10,25 @@ import logging
 
 from .croma import PretrainedCROMA as CROMA
 from .satmae import vit_base_patch16 as SatMAE
+from .spectralgpt import vit_base_patch8_128 as SpectralGPT
+from .scalemae import vit_large_patch16 as ScaleMAE
+from .satmae_plus import vit_large_patch16 as SatMAE_plus
 
 logger = logging.getLogger(__name__)
 
 CKPT_PATH = "baseline_model_ckpt"
 
-BASELINE_MODELS = { # TODO: add your model init code here
-    "croma": CROMA(pretrained_path=f'{CKPT_PATH}/CROMA_base.pt', size='base', modality='optical', image_resolution=120),
-    "satmae": SatMAE(img_size=96, patch_size=8, in_chans=10),
+# BASELINE_MODELS = { # TODO: add your model init code here
+#     "croma": CROMA(pretrained_path=f'{CKPT_PATH}/CROMA_base.pt', size='base', modality='optical', image_resolution=120),
+#     "satmae": SatMAE(img_size=96, patch_size=8, in_chans=10),
+# }
+
+BASELINE_MODELS = {  # Lazy initialization
+    "croma": lambda: CROMA(pretrained_path=f'{CKPT_PATH}/CROMA_base.pt', size='base', modality='optical', image_resolution=120),
+    "satmae": lambda: SatMAE(img_size=96, patch_size=8, in_chans=10),
+    "spectralgpt": lambda: SpectralGPT(),
+    "scalemae": lambda: ScaleMAE(img_size=224, global_pool=True),
+    "satmae++": lambda: SatMAE_plus(img_size=96, patch_size=8, in_chans=10),
 }
 
 IMAGE_SIZE = {
@@ -182,6 +193,12 @@ class BaselineWithTaskHead(PreTrainedModel):
             return
         elif self.config.model_name == "satmae":
             state_dict = torch.load(f"{CKPT_PATH}/pretrain-vit-base-e199.pth")['model']
+        elif self.config.model_name == "spectralgpt":
+            state_dict = torch.load(f"{CKPT_PATH}/SpectralGPT+.pth")['model']
+        elif self.config.model_name == "satmae++":
+            state_dict = torch.load(f"{CKPT_PATH}/checkpoint_ViT-L_pretrain_fmow_sentinel.pth")['model']
+        elif self.config.model_name == "scalemae":
+            state_dict = torch.load(f"{CKPT_PATH}/scalemae-vitlarge-800.pth")['model']
         else: 
             raise NotImplementedError
         
@@ -191,7 +208,7 @@ class BaselineWithProjection(BaselineWithTaskHead):
     def __init__(self, config):
         super().__init__(config)
         self.num_labels = config.num_labels
-        self.encoder = BASELINE_MODELS[config.model_name]
+        self.encoder = BASELINE_MODELS[config.model_name]()
         self.classifier = MoELinearHead(config.embed_dim, config.num_labels, config.num_experts, config.topk) if config.use_moe else LinearHead(config.embed_dim, config.num_labels)
         
         # Initialize weights
@@ -210,7 +227,7 @@ class BaselineWithProjection(BaselineWithTaskHead):
         # TODO: add your model's forward pass code here
         if self.config.model_name == "croma":
             outputs = self.encoder(optical_images=optical)['optical_GAP']
-        elif self.config.model_name == "satmae":
+        elif self.config.model_name in ["satmae", "spectralgpt", "satmae++", "scalemae"]:
             outputs = self.encoder(optical)['outcome']
         else:
             raise NotImplementedError
@@ -223,11 +240,12 @@ class BaselineWithUPerNet(BaselineWithTaskHead):
     def __init__(self, config):
         super().__init__(config)
         self.num_labels = config.num_labels
-        self.encoder = BASELINE_MODELS[config.model_name]
+        self.encoder = BASELINE_MODELS[config.model_name]()
         self.decoder = UPerNet(
             num_classes=config.num_labels,
             image_size=config.image_size if config.dataset_name != "landsat" else 128,
-            debug=False
+            debug=False,
+            embed_dim=config.embed_dim
         )
         
         # Initialize weights
@@ -246,7 +264,7 @@ class BaselineWithUPerNet(BaselineWithTaskHead):
         # TODO: add your model forward pass code here
         if self.config.model_name == "croma":
             outputs = self.encoder(optical_images=optical)['optical_encodings']
-        elif self.config.model_name == "satmae":
+        elif self.config.model_name in ["satmae", "spectralgpt", "satmae++", "scalemae"]:
             outputs = self.encoder(optical)['patch_embeddings']
         else:
             raise NotImplementedError

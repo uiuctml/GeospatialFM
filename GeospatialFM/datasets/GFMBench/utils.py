@@ -53,9 +53,12 @@ def get_dataset(args, train_transform, eval_transform):
     return dataset_dict
 
 baseline_metadata = { # TODO: add your model's channels here
-    # "croma": ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B11", "B12"], # oli_tirs_toa
-    "croma": ["B0", "B1", "B2", "B3", "B6L", "B6H", "B0", "B4", "B0", "B8", "B5", "B7"], # etm_toa
-    "satmae": ["B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B11", "B12"]
+    "croma": ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B11", "B12"], # oli_tirs_toa
+    # "croma": ["B0", "B1", "B2", "B3", "B6L", "B6H", "B0", "B4", "B0", "B8", "B5", "B7"], # etm_toa
+    "satmae": ["B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B11", "B12"],
+    "spectralgpt": ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B11", "B12"], 
+    "scalemae": ["B4", "B3", "B2"],
+    "satmae++": ["B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B11", "B12"],
 }
 
 landsat_metadata = { # only work for oli_tirs_toa

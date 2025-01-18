@@ -133,7 +133,7 @@ class FPNHEAD(nn.Module):
         return x
 
 class UPerNet(nn.Module):
-    def __init__(self, num_classes=13, image_size=128, debug=False, kernel_size=3):
+    def __init__(self, num_classes=13, image_size=128, debug=False, kernel_size=3, embed_dim=768):
         super(UPerNet, self).__init__()
         self.num_classes = num_classes
         self.in_channels = 2048 # number of channels at the top layer
@@ -145,7 +145,7 @@ class UPerNet(nn.Module):
 
         # ViT-B
         self.conv0 = nn.Sequential(
-            nn.Conv2d(768, 512, 1, 1),
+            nn.Conv2d(embed_dim, 512, 1, 1),
             nn.GroupNorm(32, 512),
             nn.GELU(),
             nn.ConvTranspose2d(512, 256, 8, 8),  # 2048, 16, 16
@@ -153,7 +153,7 @@ class UPerNet(nn.Module):
         )
 
         self.conv1 = nn.Sequential(
-            nn.Conv2d(768, 512, 1, 1),
+            nn.Conv2d(embed_dim, 512, 1, 1),
             nn.GroupNorm(32, 512),
             nn.GELU(),
             nn.ConvTranspose2d(512, 512, 4, 4),  # 2048, 16, 16
@@ -161,7 +161,7 @@ class UPerNet(nn.Module):
         )
 
         self.conv2 = nn.Sequential(
-            nn.Conv2d(768, 1024, 1, 1),
+            nn.Conv2d(embed_dim, 1024, 1, 1),
             nn.GroupNorm(32, 1024),
             nn.GELU(),
             nn.ConvTranspose2d(1024, 1024, 2, 2),  # 2048, 16, 16
@@ -169,7 +169,7 @@ class UPerNet(nn.Module):
         )
 
         self.conv3 = nn.Sequential(
-            nn.Conv2d(768, 2048, 1, 1),
+            nn.Conv2d(embed_dim, 2048, 1, 1),
             nn.GroupNorm(32, 2048),
             nn.GELU(),
             nn.Dropout(0.5)

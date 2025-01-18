@@ -7,6 +7,8 @@ import torch
 RESIZE_SIZE = {
     96: 121,
     120: 144,
+    128: 144,
+    224: 256,
 }
 
 IMAGE_SIZE = {
