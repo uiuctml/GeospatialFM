@@ -17,7 +17,7 @@ class DatasetConfig:
     train_frac: Optional[float] = None
     val_frac: Optional[float] = None
     scale: int = 1
-
+    dataset_version: Optional[str] = None
 # Dataset-specific configurations
 DATASET_CONFIGS = {
     "bigearthnet": DatasetConfig(
@@ -67,7 +67,10 @@ DATASET_CONFIGS = {
         name="landsat",
         task_type="segmentation",
         crop_size=128,
+        num_epochs=10,
+        early_stopping_patience=5,
         batch_size=16,
+        dataset_version = "etm_oli_toa_nlcd"
     ),
 }
 
@@ -89,12 +92,15 @@ def generate_finetune_command(
     regenerate_embeddings: bool = False,
     n_gpus: int = 4,
     per_device_batch_size: Optional[int] = None,
+    modal: str = "optical",
+    dataset_version: Optional[str] = None,
 ) -> str:
     script = "linear_probe.py" if linear_probe else "finetune.py"
     dataset_config.batch_size = per_device_batch_size if per_device_batch_size else dataset_config.batch_size
     batch_size = 1024 if linear_probe else dataset_config.batch_size
     grad_accum_steps = 1 if linear_probe else dataset_config.effective_batch_size // n_gpus // dataset_config.batch_size
     num_epochs = 100 if linear_probe else dataset_config.num_epochs
+    dataset_version = dataset_config.dataset_version if not dataset_version else dataset_version
     
     cmd = [
         "accelerate launch",
@@ -108,8 +114,8 @@ def generate_finetune_command(
         f"--data_dir {root_dir}/data/geospatial-2/",
         f"--dataset_name {dataset_config.name}",
         f"--task_type {dataset_config.task_type}",
-        f"--scale {dataset_config.scale}",
-        "--modal optical",
+        f"--scale {scale}",
+        f"--modal {modal}",
         "--return_dict",
         f"--per_device_train_batch_size {batch_size}",
         f"--gradient_accumulation_steps {grad_accum_steps}",
@@ -145,6 +151,9 @@ def generate_finetune_command(
         cmd.append(f"--early_stopping_patience {dataset_config.early_stopping_patience}")
     else:
         cmd.append("--save_strategy no")
+    
+    if dataset_version:
+        cmd.append(f"--dataset_version {dataset_version}")
 
     if moe > 0:
         cmd.append("--use_moe")
@@ -160,6 +169,7 @@ def generate_finetune_command(
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", required=True, choices=list(DATASET_CONFIGS.keys()))
+    parser.add_argument("--dataset_version", "-v", default=None, type=str, help="Data version")
     parser.add_argument("--root_dir", default="/home/haozhesi/GeospatialFM")
     parser.add_argument("--gpu_devices", default="0,1,2,3")
     parser.add_argument("--lp", action="store_true", help="Run in linear probe mode")
@@ -168,6 +178,9 @@ def main():
     parser.add_argument("--checkpoint", default=24600, type=int, help="Checkpoint to load")
     parser.add_argument("--per_device_batch_size", "-b", default=None, type=int, help="Per device batch size")
     parser.add_argument("--scale", default=None, type=int, help="Scale of the model")
+    parser.add_argument("--topk", default=3, type=int, help="Topk for MoE")
+    parser.add_argument("--modal", default="optical", type=str, help="Modal to finetune")
+    parser.add_argument("--attention_radius", default=640, type=int, help="Attention radius for perception field mask")
     # reproduce hyper-parameters
     parser.add_argument("--lr", default=None, type=float, help="Override learning rate")
     
@@ -202,11 +215,21 @@ def main():
         for depth in depth_list:
             regenerate_embeddings = args.regenerate_embeddings
             for lr in learning_rates:
-                run_name = f"LESSVIT_b{embed_dims}_d{depth}_{dataset_config.name}_lr{lr}_scale{scale}_moe{moe}"
+                run_name = f"LESSVIT_b{embed_dims}_d{depth}_{dataset_config.name}_lr{lr}_scale{scale}"
+                if args.dataset_version:
+                    run_name += f"_{args.dataset_version}"
+                if args.moe > 0:
+                    run_name += f"_moe{args.moe}"
+                if args.topk != 3:
+                    run_name += f"_topk{args.topk}"
                 if args.lp:
                     run_name += "_lp"
+                if args.modal != "optical":
+                    run_name += f"_{args.modal}"
                 if args.checkpoint != 24600:
-                    run_name += f"_ckpt{args.checkpoint}"
+                    run_name += f"_ckpt{args.checkpoint}"    
+                if args.attention_radius != 640:
+                    run_name += f"_ar{args.attention_radius}"
                 # check if the run_name already exists and completed
                 if os.path.exists(f"{args.root_dir}/results/models/{dataset_config.name}/{run_name}/test_results.json"):
                     if args.regenerate_embeddings:
@@ -227,12 +250,16 @@ def main():
                     checkpoint=args.checkpoint,
                     n_gpus=len(args.gpu_devices.split(",")),
                     per_device_batch_size=args.per_device_batch_size,
+                    topk=args.topk,
                     # adjustable parameters
                     moe=moe,
                     scale=scale,
                     linear_probe=args.lp,
                     accelerator_config=accelerator_config,
                     regenerate_embeddings=regenerate_embeddings,
+                    modal=args.modal,
+                    dataset_version=args.dataset_version,
+                    attention_radius=args.attention_radius,
                 )
                 
                 print(f"Running command:\n{cmd}")

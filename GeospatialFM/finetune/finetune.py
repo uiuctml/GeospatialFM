@@ -29,8 +29,7 @@ logger = get_logger(__name__)
 
 def model_init(trial):
     args = parse_args()
-    metadata = get_metadata(args.dataset_name)
-    
+    metadata = get_metadata(args.dataset_name, args.dataset_version)
     # Initialize model
     model = get_task_model(args, metadata["num_classes"], args.crop_size)
     # load from checkpoint if provided
@@ -67,7 +66,7 @@ def main(args):
         os.makedirs(args.logging_dir, exist_ok=True)
 
     # Load dataset
-    metadata = get_metadata(args.dataset_name)
+    metadata = get_metadata(args.dataset_name, args.dataset_version)
     args.crop_size = metadata["size"] if args.crop_size is None else args.crop_size
     
     try: # for sentinel-2 and sentinel-1
