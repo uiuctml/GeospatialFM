@@ -203,16 +203,52 @@ class LESSWithProjection(LESSWithTaskHead):
 
         return {"logits": logits} if self.config.return_dict else logits
 
+class MoEUpperNet(nn.Module):
+    def __init__(self, num_classes, image_size, embed_dim, num_experts=1, topk=3):
+        super().__init__()
+        self.upper_net = nn.ModuleList([UPerNet(num_classes, image_size, debug=False) for _ in range(num_experts)])
+        self.gate = nn.Linear(embed_dim, num_experts)
+        self.topk = topk
+        self.num_experts = num_experts
+        
+    def forward(self, features):
+        # features: [batch_size, num_channels, num_patches, embed_dim]
+        if self.topk == -1:
+            self.topk = features.shape[1]
+            
+        cls_tokens, features = features[:, :, 0, :], features[:, :, 1:, :]
+        gate_score = self.gate(cls_tokens) # [batch_size, num_channels, num_experts]
+        gate_score = gate_score.permute(0, 2, 1) # [batch_size, num_experts, num_channels]
+        gate_prob = F.softmax(gate_score, dim=-1) # [batch_size, num_experts, num_channels]
+        
+        expert_logits = []
+        for i in range(self.num_experts):
+            # features: [batch_size, num_channels, num_patches, embed_dim]
+            topk_values, topk_indices = torch.topk(gate_prob[:, i, :], self.topk, dim=-1) # [batch_size, topk]
+            gather_indices = topk_indices.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, features.shape[2], features.shape[3]) # [batch_size, topk, num_patches, 1]
+            topk_features = torch.gather(features, dim=1, index=gather_indices) # [batch_size, topk, num_patches, embed_dim]
+            topk_values = F.softmax(topk_values, dim=-1).unsqueeze(-1).unsqueeze(-1).expand(-1, -1, features.shape[2], features.shape[3]) # [batch_size, topk, num_patches, 1]
+            topk_features = (topk_features * topk_values).sum(dim=1) # [batch_size, num_patches, embed_dim]
+            logits = self.upper_net[i](topk_features)
+            expert_logits.append(logits)
+        
+        logits = torch.stack(expert_logits, dim=-1).mean(dim=-1)
+        
+        return logits
+        
 class LESSWithUPerNet(LESSWithTaskHead):
     def __init__(self, config):
         super().__init__(config)
         self.num_labels = config.num_labels
         self.encoder = SpatialSpectralLowRankViTEncoder(config)
-        self.decoder = UPerNet(
-            num_classes=config.num_labels,
-            image_size=config.image_size,
-            debug=False
-        )
+        if config.use_moe:
+            self.decoder = MoEUpperNet(config.num_labels, config.image_size, config.embed_dim, config.num_experts, config.topk)
+        else:
+            self.decoder = UPerNet(
+                num_classes=config.num_labels,
+                image_size=config.image_size,
+                debug=False
+            ) 
         
         # Initialize weights
         self.apply(self._init_weights)
@@ -234,8 +270,12 @@ class LESSWithUPerNet(LESSWithTaskHead):
             hidden_states = outputs[0]
         else:
             hidden_states = outputs.last_hidden_state
-            
-        # Get segmentation logits
-        logits = self.decoder(hidden_states[:, 0, 1:])
+        
+        if isinstance(self.decoder, UPerNet):
+            # Get segmentation logits
+            logits = self.decoder(hidden_states[:, 0, 1:]) # [batch_size, num_patches, embed_dim]
+        else:
+            # Get segmentation logits
+            logits = self.decoder(hidden_states) # [batch_size, num_channels, num_patches, embed_dim]
 
         return {"logits": logits} if self.config.return_dict else logits
