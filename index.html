@@ -38,6 +38,31 @@
   <script src="./static/js/bulma-carousel.min.js"></script>
   <script src="./static/js/bulma-slider.min.js"></script>
   <script src="./static/js/index.js"></script>
+
+  <!-- <style>
+    .hero-section {
+      background-image: url('static/images/nasa-yZygONrUBe8-unsplash.jpg'); /* Adjust path */
+      background-size: cover; /* Ensures the image covers the whole section */
+      background-position: center;
+      background-repeat: no-repeat;
+      width: 100vw; /* Full viewport width */
+      height: 50vh; /* Full viewport height */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+  </style> -->
+  
+  <style>
+    blockquote footer {
+    font-style: normal;
+    text-align: right;
+    margin-top: 5px;
+    display: block;
+  }
+  </style>
+
 </head>
 <body>
 
@@ -62,11 +87,11 @@
           More Research
         </a>
         <div class="navbar-dropdown">
-          <a class="navbar-item" href="https://arxiv.org/abs/2111.06377">
-            MAE
+          <a class="navbar-item" href="https://github.com/uiuctml/SpatialTemporalGFM">
+            SpatialTemporal-GFM (TODO)
           </a>
-          <a class="navbar-item" href="https://geography-aware-ssl.github.io/">
-            Geography Aware SSL
+          <a class="navbar-item" href="https://huggingface.co/GFM-Bench">
+            GFM-Bench
           </a>
           <!-- <a class="navbar-item" href="https://latentfusion.github.io">
             LatentFusion
@@ -89,6 +114,11 @@
           <h1 class="title is-1 publication-title">
             Towards Foundation Model for Multi-modal and Hyperspectral Geospatial Data
           </h1>
+          <!-- <div class="title-section">
+            <h1 class="title is-1 publication-title">
+              Towards Foundation Model for Multi-modal and Hyperspectral Geospatial Data
+            </h1>
+          </div> -->
           <div class="is-size-5 publication-authors">
             <span class="author-block">
               <a>Haozhe Si</a><sup>1</sup>,</span>
@@ -104,7 +134,7 @@
               <a>Han Zhao</a><sup>1</sup>,
             </span>
             <span class="author-block">
-              <a>Hendrik F. Hamann</a><sup>1</sup>,
+              <a>Hendrik F. Hamann</a><sup>1,2</sup>,
             </span>
           </div>
 
@@ -123,8 +153,8 @@
               <!-- PDF Link. -->
               <span class="link-block">
                 <a href="https://arxiv.org/pdf/2303.10752.pdf"
-                   class="external-link button is-normal is-rounded is-dark"
-                   target="_blank">
+                  class="external-link button is-normal is-rounded is-dark"
+                  target="_blank">
                   <span class="icon">
                       <i class="fas fa-file-pdf"></i>
                   </span>
@@ -133,8 +163,8 @@
               </span>
               <span class="link-block">
                 <a href="https://arxiv.org/pdf/2303.10752"
-                   class="external-link button is-normal is-rounded is-dark"
-                   target="_blank">
+                  class="external-link button is-normal is-rounded is-dark"
+                  target="_blank">
                   <span class="icon">
                       <i class="ai ai-arxiv"></i>
                   </span>
@@ -144,8 +174,8 @@
               <!-- Code Link. -->
               <span class="link-block">
                 <a href="https://github.com/Ehzoahis/DEReD"
-                   class="external-link button is-normal is-rounded is-dark"
-                   target="_blank">
+                  class="external-link button is-normal is-rounded is-dark"
+                  target="_blank">
                   <span class="icon">
                       <i class="fab fa-github"></i>
                   </span>
@@ -155,10 +185,11 @@
               <!-- Dataset Link. -->
               <span class="link-block">
                 <a href="https://huggingface.co/GFM-Bench"
-                   class="external-link button is-normal is-rounded is-dark"
-                   target="_blank">
+                  class="external-link button is-normal is-rounded is-dark"
+                  target="_blank">
                   <span class="icon">
-                      <i class="far fa-images"></i>
+                      <!-- <i class="far fa-images"></i> -->
+                      <img src="https://huggingface.co/front/assets/huggingface_logo-noborder.svg" alt="Hugging Face" width="20">
                   </span>
                   <span>Benchmark</span>
                 </a>
@@ -166,7 +197,7 @@
               <!-- Video Link. -->
               <!-- <span class="link-block">
                 <a href="https://www.youtube.com/watch?v=MrKrnHhk8IA"
-                   class="external-link button is-normal is-rounded is-dark">
+                  class="external-link button is-normal is-rounded is-dark">
                   <span class="icon">
                       <i class="fab fa-youtube"></i>
                   </span>
@@ -185,12 +216,12 @@
 <section class="hero teaser">
   <div class="container is-max-desktop">
     <div class="hero-body">
-      <img src="./static/images/pipeline.svg"
+      <img src="static/images/hero_teaser.svg"
       alt="Pipeline of our proposed framework."/>
       
       <h2 class="subtitle has-text-centered">
         <!-- <span class="dnerf">PAC-Net</span> turns selfie videos from your phone into -->
-        An overview of the proposed framework. The framework consists of a neural model, DAIF-Net, and an optical model.
+        Our proposed framework <strong>Hyer-MAE</strong>.
       </h2>
     </div>
   </div>
@@ -304,12 +335,7 @@
         <h2 class="title is-3">Abstract</h2>
         <div class="content has-text-justified">
           <p>
-            Geospatial imagery data, such as that collected by satellite-based sensing systems at different times and spectral bands, hold immense potential for enabling a wide range of high-impact applications. This potential comes from the rich information of this data, which is spatially and temporally contextualized across multiple channels (e.g., spectral bands etc.) and sensing modalities. 
-          <p>
-            Recent work has adapted existing self-supervised learning (SSL) approaches for geospatial data. However, they fall short of tailored model architectures and training objects, leading to inflexibility and computational inefficiencies especially when faced with an increasing number of channels and modalities. To address these limitations, we introduce Low-rank Efficient Spatial-Spectral Vision Transformer (LESS ViT) with three key innovations: (i) the LESS Attention Block that approximates high-dimensional spatial-spectral attention through Kronecker's product of the low-dimensional spatial and spectral attention components; (ii) the Continuous Positional-Channel Embedding Layer that preserves both spatial and spectral continuity and physical characteristics of each patch; and (iii) the Perception Field Mask that exploits local spatial dependencies by constraining attention to neighboring patches. 
-          </p>
-          <p>
-            To evaluate its empirical performance, we construct a benchmark, GFM-Bench, which serves as a comprehensive benchmark over geospatial data. We pre-train LESS ViT using a Hyperspectral Masked Autoencoder (MAE) framework with integrated positional and channel masking strategies. Experimental results demonstrate that our proposed method surpasses current state-of-the-art multi-modal geospatial foundation models, achieving superior performance with less computation and fewer parameters. The flexibility and extensibility of our framework make it a promising solution for future geospatial data analysis tasks that involve a wide range of modalities and dimensions.
+            Geospatial imagery data holds immense potential for enbaling extensive diverse high-impace downstream applications by providing spatial, temporal, and spectral information across multiple modalities. Recent work adapting existing self-supervised learning (SSL) approaches for geospatial data, they fall shorts of tailored model architectures and training objects. To address these limitations and better take advantage of geospatial data, we introduce <a href="#less-vit">LESS ViT</a>, a Vision Transformer architecture variant specifically deisgned for hyperspectral geospatial data, and Hyper-MAE, a Masked Auto Encoder based pre-training framework that employs a <a href="#less-vit">LESS ViT</a> encoder-decoder architecture and incorporates decoupled spatial and spectral masking to create a more challenging self-supervised pre-training objective. To evaluate empirical performance, we construct a benchmark, <a href="#gfm-bench">GFM-Bench</a>, which serves as a comprehensive benchmark over geospatial data. Experimental results demonstrate that our proposed method surpasses current state-of-the-art multi-modal geospatial foundation models, achieving superior performance with less computation and fewer parameters. The flexibility and extensibility of our framework make it a promising solution for future geospatial data analysis tasks that involve a wide range of modalities and dimensions.
           </p>
         </div>
       </div>
@@ -334,45 +360,84 @@
   </div>
 </section>
 
-<section class="section">
+<section id="less-vit" class="section">
   <div class="container is-max-desktop">
     <!-- PAC-Net. -->
     <div class="columns is-centered">
       <div class="column is-full-width">
-        <h2 class="title is-3">Proposed Framework</h2>
-
-        <h3 class="title is-4">DAIF-Net</h3>
+        <h2 class="title is-3">Low-rank Efficient Spatial-Spectral ViT</h2>
         <div class="content has-text-justified">
           <p>
-            To predict the depth and AIF image from the focal stack, we proposed the <b>D</b>epth<b>AIF</b>-<b>Net</b> (<b>DAIF-Net</b>). This architecture takes a focal stack of arbitrary size and estimates the depth map and AIF image. The parameters of encoders and bottlenecks are shared across all branches. We adopt the global pooling and fuse the branches by selecting the maxima of their features.
+            Our <strong>Low-rank Efficient Spatial-Spectral (LESS) ViT</strong> architecture consists of three key components: (1) <a href="#patch-embed">Hyperspectral Patch Embedding Block</a>, (2) <a href="#attention-block">LESS Attention Block</a>, and (3) <a href="#mask">Perception Field Mask</a>.
           </p>
         </div>
-        <div class="columns is-vcentered">
+
+        <h3 id="patch-embed" class="title is-4">Hyperspectral Patch Embedding</h3>
+        <div class="content has-text-justified">
+          <p>
+            Hyperspectral images can contain tens to thousands of channels, distinguishing them from natural images that typically have three (RGB) channels. The rich spectral information encoded in these channels exhibits strong physical correlations that must be effectively leveraged. To exploit these spectral dependencies in subsequent attention blocks, we adopt a Tied Patch Embedding Layer that maintains spectral fidelity by explicitly embedding each channel information, and incorporate a continuous positional-channel embedding to capture both spatial and spectral relationships.
+          </p>
+        </div>
+        <!-- <div class="columns is-vcentered">
           <div class="column has-text-centered">
-            <img src="./static/images/FUNet.svg"
-            alt="The DAIF-Net architecture."/>
-            <p>The DAIF-Net architecture.</p>
+            <img src="./static/images/hpe.svg"
+            alt="PatchEmbed."/>
+            <p>Hyperspectral Patch Embedding.</p>
+          </div>
+        </div> -->
+
+        <div class="columns is-vcentered">
+          <!-- First Image -->
+          <div class="column has-text-centered">
+            <img src="./static/images/hpe.svg"
+                 alt="PatchEmbed."
+                 style="width: 100%; height: auto;"/>
+            <p>Hyperspectral Patch Embedding Block</p>
+          </div>
+        
+          <!-- Second Image -->
+          <div class="column has-text-centered">
+            <img src="./static/images/less_vit.svg"
+                 alt="LESSViT."
+                 style="width: 50%; height: auto;"/>
+            <p>LESS&nbsp;ViT</p>
           </div>
         </div>
 
-        <h3 class="title is-4">Defocus Map Generation</h3>
+        <h3 id="attention-block" class="title is-4">LESS Attention Block</h3>
         <div class="content has-text-justified">
           <p>
-            To quantitatively measure the defocus blur in an image, we introduce the defocus map. Given an optical system, the defocus map can be calculated from the depth map once we establish the relationship between depth and defocus. As illustrated in the figure, when a point light source is out-of-focus, the
-            light rays will converge either in front of or behind the image plane, and form a blurry circle on the image plane. The circle of confusion (<i>CoC</i>) measures the diameter of such a blurry circle. If the point light source is in focus, it will form an infinitely small point on the image plane, making it the sharpest projection with the minimum <i>CoC</i>. Therefore, <i>CoC</i> describes the level of blurriness, in another word, the amount of defocus. We adopt the Thin Lens Equation to calculate the <i>CoC</i>.
+            Given the computation inefficiency of applying standard attention mechanism on spatial-spectral tokens, we address this limitation by proposing LESS attention block specifically deisgned for spatial-spectral tokens. To efficiently model spatial-spectral interactions, our LESS attention block approximates the full spatial-spectral attention matrix using a Kronecker product of separate spatial and spectral attention matrices. This approximation makes the attention block more scalable to larger numbers of channels while still capturing spatial-spectral interactions.
           </p>
         </div>
+        <!-- <div class="columns is-vcentered">
+          <div class="column has-text-centered">
+            <img src="./static/images/less_vit.svg"
+            alt="LESSViT."
+            style="width: 40%; height: auto;"/>
+            <p>LESSViT.</p>
+          </div>
+        </div> -->
+
         <div class="columns is-vcentered">
           <div class="column has-text-centered">
-            <img src="./static/images/defocus.svg" width="400"
-            alt="Illustration of the thin-lens equation."/>
-            <p>Illustration of the thin-lens equation.</p>
+            <img src="static/images/perception_field_mask_visualization.svg"
+              alt="PerceptionMask."
+              style="width: 100%; height: auto;"/>
+            <p>Perception Field Mask</p>
           </div>
         </div>
-        <h3 class="title is-4">Focal Stack Reconstruction</h3>
+
+        <h3 id="mask" class="title is-4">Perception Field Mask</h3>
         <div class="content has-text-justified">
+          <blockquote>
+            <p>
+              <em>"Everything is related to everything else, but near things are more related than distant things."</em>
+            </p>
+            <footer>— Tobler, First Law of Geography</footer>
+          </blockquote>
           <p>
-            Given the defocus map and the AIF image, we can explicitly model the generation process of the defocus image. Taking advantage of the deterministic relationship, our predicted depth and AIF image can be supervised by reconstructing the input focal stack. To render a defocus image, we convolve the AIF image with the point spread function (PSF). PSF describes the pattern of a point light source transmitting to the image plane through the camera lens. In practice, we calculate the defocus blur using a simplified disc-shaped PSF, i.e., a Gaussian kernel, following previous works.
+            To explicitly model spatial autocorrelation in geospatial data, we introduce the Perception Field Mask. The Perception Field Mask constrains the spatial attention computation by allowing each token to attend only to patches within a specified distance threshold. We define this threshold in meters rather than pixels, ensuring consistent spatial relationships across different image resolutions. This distance-based masking mechanism offers two key advantages: (1) it enforces locality in the attention computation, aligning with Tobler’s law, and (2) it enables the model to process images of varying sizes without downsampling, as the attention field remains spatially consistent regardless of resolution.
           </p>
         </div>
         <br/>
@@ -383,48 +448,100 @@
     <!-- Dataset. -->
     <div class="columns is-centered">
       <div class="column is-full-width">
-        <h2 class="title">Focal Stack Dataset</h2>
+        <h2 id="gfm-bench" class="title">GFM-Bench</h2>
+
+        <div class="columns is-vcentered">
+          <div class="column has-text-centered">
+            <img src="static/images/gfm-bench.png"
+              alt="GFM-Bench"
+              style="width: 100%; height: auto;"/>
+            <p>GFM-Bench</p>
+          </div>
+        </div>
+
+        <p>
+          To encourage the usage of consistent evaluation protocol, we introduce <strong>GFM-Bench</strong>, a benchmark implemented using the HuggingFace framework for ease of use and providing standardized evaluation protocols. The current version of GFM-Bench consists three classification tasks (EuroSAT, BigEarthNet,and So2Sat) and four segmentation tasks (SegMunich, DFC2020, MARIDA, NLCD-L).
+        </p>
+        <br>
+        <p>
+          For more detailed information about GFM-Bench, please refer to our <a href="https://huggingface.co/GFM-Bench">GFM-Bench</a> page.
+        </p>
       </div>
     </div>
-    <div class="columns is-centered">
-      <!-- Synthetic Data -->
+    
+    <!-- <div class="columns is-centered">
       <div class="column is-full-width">
         <div class="content">
-          <h3 class="title is-4">Synthetic Dataset</h3>
+          <h3 class="title is-4">EuroSat</h3>
           <p class="has-text-justified">
-            DefocusNet Dataset is a synthetic dataset rendered using <a href="http://blender.org" target="_blank">Blender</a>. The dataset consists of random objects distributed in front of a wall. A virtual optical camera takes five images of the scene with varying focus distances and forms a focal stack. The original dataset is wildly used in supervised methods. However, the focus distances of the focal stacks are overly concentrated, causing indistinguishable defocus blur. Therefore, to perform an experiment in a similar setting, we regenerate the dataset with a set of more distributed focus distances using the code provided by the dataset author.
+            EuroSAT is a land cover and land use classification dataset containing 13 MSI bands. It consists of 16,200 training samples, 5,400 test samples and 5,400 validation sample. Images of EuroSAT are 64 x 64 pixels.
           </p>
         </div>
       </div>
-    </div>
-      <!--/ Synthetic Data -->
+    </div> -->
 
-      <!-- Real-shot Data. -->
-    <div class="columns is-centered">
+    <!-- <div class="columns is-centered">
       <div class="column is-full-width">
-      <h3 class="title is-4">Real Image with Synthetic Defocus Blur</h3>
-      <div class="columns is-centered">
-        <div class="column content">
-          <p class="has-text-justified">
-            To acquire sufficient realistic defocus images for model training and evaluation, we render the focal stack datasets from RGB-D datasets using the thin-lens equation and PSF convolution layers. The RGB-D datasets we use is NYUv2 dataset. NYUv2 dataset with synthetic defocus blur is also commonly used in DFD tasks. The dataset consists of 1449 pairs of aligned RGB images and depth maps. We train our model on the 795 training pairs and evaluate on the 654 testing pairs.
-          </p>
-        </div>
-      </div>
-    </div>
-    <!--/ Real-shot Data. -->
-    </div>
-
-    <div class="columns is-centered">
-        <!-- Synthetic Data -->
-        <div class="column is-full-width">
-          <div class="content">
-            <h3 class="title is-4">Real Focal Stack Dataset</h3>
+        <h3 class="title is-4">BigEarthNet</h3>
+        <div class="columns is-centered">
+          <div class="column content">
             <p class="has-text-justified">
-              Mobile Depth is a real-world DFD dataset captured by a Samsung Galaxy S3 mobile phone. It consists of 11 aligned focal stacks with 14 to 33 images per stack. Since neither depth ground-truth nor camera parameters are provided, we only perform qualitative evaluation and comparison on this dataset with no further finetuning.
+              BigEarthNet is a multi-label classification dataset consisting of 12 MSI bands and 2 SAR bands. The complete training set, validation set and test set we use consist of 269,695 samples, 123,723 samples and 125,866 samples respectively, and we only use 10% of the samples for fine-tuning and 10% of the samples for validation. Notice that we adopt the dataset from TorchGeo, which provides a different data split from the one used in previous works (354,196 training samples and 118,065 test samples). All images in the BigEarthNet dataset are 120 x 120 pixels.
             </p>
           </div>
         </div>
       </div>
+    </div> -->
+
+    <!-- <div class="columns is-centered">
+      <div class="column is-full-width">
+        <div class="content">
+          <h3 class="title is-4">So2Sat</h3>
+          <p class="has-text-justified">
+            So2Sat is a local climate zone (LCZ) classification task consisting of 10 MSI bands. We reserve 10% of the training set as the validation set, resulting in 31,713 training samples, 3,523 validation samples and 48,307 test samples. Same as BigEarthNet, we use 10% of the complete training set and validation set during fine-tuning. Images are 32 x 32 pixels.
+          </p>
+        </div>
+      </div>
+    </div> -->
+
+    <!-- <br/> -->
+
+    <!-- <div class="columns is-centered">
+      <div class="column is-full-width">
+        <div class="content">
+          <h3 class="title is-4">SegMunich</h3>
+          <p class="has-text-justified">
+            SegMunich is a land use and land cover segmentation dataset consisting of 10 MSI bands. This is a new Semantic Segmentation dataset collected by [36]. Images of SegMunich are 128 x 128 pixels.
+          </p>
+        </div>
+      </div>
+    </div> -->
+
+    <!-- <br/> -->
+
+    <!-- <div class="columns is-centered">
+      <div class="column is-full-width">
+        <div class="content">
+          <h3 class="title is-4">DFC2020</h3>
+          <p class="has-text-justified">
+            DFC2020 is a dataset that includes 13 MSI bands along with VV and VH polarization channels. The original DFC2020 dataset contains only a validation set of 986 samples and a test set of 5,128 samples. To better utilize this dataset, we treat the original test set (5,128 samples) as our training and validation sets, and the original validation set (986 samples) as our test set. In addition, since the image resolution is 256 x 256 pixels, we follow CROMA’s method, further dividing each image of 256 ˆ 256 pixels into 9 smaller patches of 96 x 96 pixels with the overlap of 16 pixels. As a result, our final training set contains 41,537 training samples, the final validation set contains 4,615 samples and the final test set consists of 8,874 samples. All images are 96 x 96 pixels.
+          </p>
+        </div>
+      </div>
+    </div> -->
+
+    <!-- <br/> -->
+
+    <!-- <div class="columns is-centered">
+      <div class="column is-full-width">
+        <div class="content">
+          <h3 class="title is-4">MARIDA</h3>
+          <p class="has-text-justified">
+            Mobile Depth is a real-world DFD dataset captured by a Samsung Galaxy S3 mobile phone. It consists of 11 aligned focal stacks with 14 to 33 images per stack. Since neither depth ground-truth nor camera parameters are provided, we only perform qualitative evaluation and comparison on this dataset with no further finetuning.
+          </p>
+        </div>
+      </div>
+    </div> -->
 
     <br/>
     <!--/ Dataset. -->
@@ -435,58 +552,74 @@
         <h2 class="title is-3">Evaluation</h2>
 
         <!-- Results on Synthetic Data. -->
-        <h3 class="title is-4">Results on Synthetic Data</h3>
+        <h3 class="title is-4">Quantitative Results</h3>
         <div class="content has-text-justified">
           <p>
-            We split the 1000 focal stacks into 500 training focal stacks and 500 testing focal stacks. For a fair comparison, we trained our method, along with the open-source state-of-the-art DFD methods, on our new training set. It is expected that our method does not perform as well as the supervised methods. This is because the DefocusNet dataset is texture-less, and our self-supervised framework is less sensitive to backgrounds, where defocus change is less obvious. Such issues do not exist for supervised methods because they always have access to the depth ground-truth. Meanwhile, we observe that our method is on par with the supervised methods when counting the results only for depths less than 0.5m, which indicates that our self-supervised method has higher accuracy in closer ranges.
+            Our LESS ViT is pretrained on the SSL4EO-S12 dataset, which is a large-scale multi-modal geospatial dataset containing spatially and temporally aligned MSI with 13 channels and SAR imagery with 2 channels. We compare LESS ViT-Base with SoTA geospatial representation learning methods on our GFM-Bench.
           </p>
         </div>
         <div class="columns is-vcentered">
           <div class="column has-text-centered">
-            <img src="./static/images/table1.svg" width="600"
-                 alt="Quantitative results for synthetic data"/>
-            <p>Evaluation results on DefocusNet test set. Regular means all results are considered; <0.5 m only counts results for depth less than 0.5 meters.
+            <img src="static/images/results1.png"
+                 alt="Quantitative results for synthetic data"
+                 style="width: 100%; height: auto;"/>
+            <p>Quantitative results on seven datasets in the GFM-Bench under Fine-tuning (FT) and Linear Probing (LP).
             </p>
           </div>
         </div>
-        <div class="columns is-vcentered">
+        <!-- <div class="columns is-vcentered">
           <div class="column has-text-centered">
             <img src="./static/images/defocusnet.svg" width="600"
                  alt="Qualitative results for synthetic data"/>
             <p>Some examples of the framework outputs comparing with the state-of-the-art supervised works. The outputs are produced from the input focal stacks with 5 images. For the depth map, lighter colors indicate farther distances.
             </p>
           </div>
-        </div>
+        </div> -->
         <br/>
         <!--/ Results on Synthetic Data. -->
 
         <!-- Results on Real-shot Data. -->
-        <h3 class="title is-4">Results on Real Image with Synthetic Defocus Blur</h3>
+        <h3 class="title is-4">Visualization</h3>
         <div class="content has-text-justified">
           <p>
-            We present the results of our framework trained on the NYUv2 dataset with the synthetic focal stacks. We evaluate our models on the sparse testing focal stacks and compare our results to other DFD methods. The table shows that in sceneries with complex textures, our method is on par with the state-of-the-art on the majority of the metrics.
+            Here are some examples of the hyperspectral and multi-modal images reconstructed by Hyper-MAE. <em>OC</em> means optical channels, <em>RC</em> means radar channels. <em>MSI Recon</em>, <em>SAR Recon</em>, and <em>MM Recon</em> means reconstruction results from MSI, SAR, and multi-modal input respectively. The images bounded by the read-dashed boxes are the reconstructed masked channels. The ones bounded by the blue-dashed boxes are cross-modal reconstruction results.
           </p>
         </div>
         <div class="columns is-vcentered">
           <div class="column has-text-centered">
-            <img src="./static/images/table2.svg" width="600"
-                 alt="Quantitative results for nyuv2"/>
-            <p>Evaluation results on NYUv2 test set. Self-sup w/ AIF means that the method is self-supervised but utilizes AIF ground-truth. Results show that our method is on par with the state-of-the-art on NYUv2 dataset for the depth-from-defocus task.
+            <img src="./static/images/mae_recon.png" width="600"
+                 alt="PCA-Vis"
+                 style="width: 100%; height: auto;"/>
+            <p>
+              Visualization of top PCA components on BigEarthNet.
             </p>
           </div>
         </div>
+        <div class="content has-text-justified">
+          <p>
+            We also perform principal component analysis (PCA) on the extracted patch features of each modal input. The top three principal components are visualized using three distinct colors. We interpolate the resulting image back to the original input size for better interpretation.
+          </p>
+        </div>
         <div class="columns is-vcentered">
+          <div class="column has-text-centered">
+            <img src="./static/images/pcas.svg" width="600"
+                 alt="PCA-Vis"
+                 style="width: 100%; height: auto;"/>
+            <p>
+              Visualization of top PCA components on BigEarthNet.
+            </p>
+          </div>
+        </div>
+        <!-- <div class="columns is-vcentered">
           <div class="column has-text-centered">
             <img src="./static/images/nyuv2.svg" width="600"
                  alt="Qualitative results for nyuv2"/>
             <p>Some examples of the framework outputs. The outputs are produced from the input focal stacks with 5 images. For the depth map, lighter colors indicate farther distances.
             </p>
           </div>
-        </div>
-        <br/>
-        <!--/ Results on Synthetic Data. -->
+        </div> -->
 
-        <h3 class="title is-4">Results on Real Focal Stack Dataset</h3>
+        <!-- <h3 class="title is-4">Results on Real Focal Stack Dataset</h3>
         <div class="content has-text-justified">
           <p>
             To evaluate our model on real focal stacks, qualitative experiments are performed on the Mobile Depth dataset. We compare our model with MobileDFF AiFDepthNet, DDF-DFV/FV and the finetuned AiFDepthNet using AIF ground-truth. While most of the deep methods give reasonable depth estimation, we claim that our framework is more advantageous since it is fully self-supervised.
@@ -501,7 +634,7 @@
             </p>
           </div>
         </div>
-        <br/>
+        <br/> -->
 
       </div>
     </div>

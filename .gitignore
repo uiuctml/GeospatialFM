@@ -175,3 +175,6 @@ data/
 
 pg.py
 pg.ipynb
+
+.vscode
+app.py
