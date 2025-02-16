@@ -94,8 +94,10 @@ def generate_finetune_command(
     per_device_batch_size: Optional[int] = None,
     modal: str = "optical",
     dataset_version: Optional[str] = None,
+    use_optuna: bool = False,
 ) -> str:
-    script = "linear_probe.py" if linear_probe else "finetune.py"
+    # script = "linear_probe.py" if linear_probe else "finetune.py"
+    script = "finetune.py"
     dataset_config.batch_size = per_device_batch_size if per_device_batch_size else dataset_config.batch_size
     batch_size = 1024 if linear_probe else dataset_config.batch_size
     grad_accum_steps = 1 if linear_probe else dataset_config.effective_batch_size // n_gpus // dataset_config.batch_size
@@ -143,6 +145,10 @@ def generate_finetune_command(
         "--init_values 1",
     ])
     
+    if linear_probe:
+        cmd.append("--lp")
+        cmd.append("--freeze_encoder")
+
     if regenerate_embeddings:
         cmd.append("--regenerate_embeddings")
     
@@ -163,6 +169,9 @@ def generate_finetune_command(
         cmd.append(f"--train_frac {dataset_config.train_frac}")
     if dataset_config.val_frac:
         cmd.append(f"--val_frac {dataset_config.val_frac}")
+        
+    if use_optuna:
+        cmd.append("--use_optuna")
 
     return " \\\n    ".join(cmd)
 
@@ -175,12 +184,13 @@ def main():
     parser.add_argument("--lp", action="store_true", help="Run in linear probe mode")
     parser.add_argument("--moe", default=0, type=int, help="Number of experts")
     parser.add_argument("--regenerate_embeddings", action="store_true", help="Regenerate embeddings")
-    parser.add_argument("--checkpoint", default=24600, type=int, help="Checkpoint to load")
+    parser.add_argument("--checkpoint", default=73800, type=int, help="Checkpoint to load")
     parser.add_argument("--per_device_batch_size", "-b", default=None, type=int, help="Per device batch size")
     parser.add_argument("--scale", default=None, type=int, help="Scale of the model")
     parser.add_argument("--topk", default=3, type=int, help="Topk for MoE")
     parser.add_argument("--modal", default="optical", type=str, help="Modal to finetune")
     parser.add_argument("--attention_radius", default=640, type=int, help="Attention radius for perception field mask")
+    parser.add_argument("--use_optuna", action="store_true", help="Use Optuna to find the best hyper-parameters")
     # reproduce hyper-parameters
     parser.add_argument("--lr", default=None, type=float, help="Override learning rate")
     
@@ -192,7 +202,7 @@ def main():
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_devices
 
     dataset_config = DATASET_CONFIGS[args.dataset]
-    accelerator_config = "--config_file ~/.cache/huggingface/accelerate/lp_config.yaml" if (args.lp or len(args.gpu_devices.split(",")) == 1) else ""
+    accelerator_config = "--config_file ~/.cache/huggingface/accelerate/single_gpu_config.yaml" if (args.lp or len(args.gpu_devices.split(",")) == 1) else ""
     
     # sweep fields
     if args.lp:
@@ -204,7 +214,7 @@ def main():
         learning_rates = [args.lr]
     
     embed_dims_list = [2]  # Modify as needed
-    depth_list = [4]    # Modify as needed
+    depth_list = [8]    # Modify as needed
     # adjustable parameters
     moe = args.moe
     scale = args.scale if args.scale else dataset_config.scale

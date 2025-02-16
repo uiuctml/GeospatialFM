@@ -64,13 +64,7 @@ def model_init(trial):
     model = get_task_model(args, metadata["num_classes"], metadata["size"])
     # load from checkpoint if provided
     if args.pretrained_model_path:
-        from safetensors import safe_open
-        with safe_open(args.pretrained_model_path, framework="pt", device="cpu") as f:
-            # Load only encoder weights
-            for key in f.keys():
-                if key.startswith("encoder."):
-                    param = f.get_tensor(key)
-                    model.state_dict()[key].copy_(param)
+        model.load_pretrained_encoder(args.pretrained_model_path)
     
     if args.freeze_encoder:
         for param in model.encoder.parameters():
@@ -81,7 +75,6 @@ def model_init(trial):
 def optuna_hp_space(trial):
     return {
         "learning_rate": trial.suggest_float("learning_rate", 1e-3, 1e-1, log=True),
-        "weight_decay": trial.suggest_float("weight_decay", 0.01, 0.1, log=True),
     }
 
 def main(args):    

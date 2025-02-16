@@ -78,6 +78,7 @@ def parse_args(sys_args=None):
     parser.add_argument("--wandb_dir", type=str, default="wandb", help="Directory to save wandb logs")
     
     # Other arguments
+    parser.add_argument("--lp", action="store_true", help="Whether to use linear probe")
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training")
     parser.add_argument("--mixed_precision", type=str, default=None, choices=[None, "fp16", "bf16"], help="Whether to use mixed precision. Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >= 1.10 and an Nvidia Ampere GPU")
     parser.add_argument("--resume_from_checkpoint", type=str, default=None, help="If the training should continue from a checkpoint folder")
