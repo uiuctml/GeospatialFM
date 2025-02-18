@@ -13,7 +13,7 @@ import transformers
 from transformers import is_wandb_available
 from transformers import TrainingArguments, Trainer
 from transformers import EarlyStoppingCallback
-from safetensors import Hasher
+from datasets.fingerprint import Hasher
 from typing import Dict
 import numpy as np
 import json
@@ -55,7 +55,7 @@ def compute_encoding(batch, model, task_type, modal='optical'):
 
     return {"features": features, "labels": labels}
 
-def model_init(trial, lp=False):
+def model_init_template(trial, lp=False):
     args = parse_args()
     metadata = get_metadata(args.dataset_name, args.dataset_version)
     # Initialize model
@@ -110,7 +110,7 @@ def main(args):
     dataset = get_dataset(args, train_transform, eval_transform)
     
     if args.lp:
-        model = model_init(None, lp=False)
+        model = model_init_template(None, lp=False)
         
         if args.gradient_checkpointing:
             model.gradient_checkpointing_enable()
@@ -134,9 +134,10 @@ def main(args):
             
         del encoder
         del model.encoder
-        model_init = partial(model_init, lp=True)
+        model_init = partial(model_init_template, lp=True)
         collate_fn = linear_probe_collate_fn
     else:
+        model_init = partial(model_init_template, lp=False)
         collate_fn = partial(modal_specific_collate_fn, modal=args.modal)
     
     # get loss function and metric

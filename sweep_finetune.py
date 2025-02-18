@@ -36,7 +36,7 @@ DATASET_CONFIGS = {
         name="segmunich",
         task_type="segmentation",
         crop_size=128,
-        batch_size=16,
+        batch_size=32,
     ),
     "eurosat": DatasetConfig(
         name="eurosat",
@@ -113,7 +113,7 @@ def generate_finetune_command(
     
     cmd.extend([
         f"GeospatialFM/finetune/{script}",
-        f"--data_dir {root_dir}/data/geospatial-2/",
+        f"--data_dir {root_dir}/data/geospatial/",
         f"--dataset_name {dataset_config.name}",
         f"--task_type {dataset_config.task_type}",
         f"--scale {scale}",
@@ -180,11 +180,11 @@ def main():
     parser.add_argument("--dataset", required=True, choices=list(DATASET_CONFIGS.keys()))
     parser.add_argument("--dataset_version", "-v", default=None, type=str, help="Data version")
     parser.add_argument("--root_dir", default="/home/haozhesi/GeospatialFM")
-    parser.add_argument("--gpu_devices", default="0,1,2,3")
+    parser.add_argument("--gpu_devices", "-d", default="0,1,2,3")
     parser.add_argument("--lp", action="store_true", help="Run in linear probe mode")
     parser.add_argument("--moe", default=0, type=int, help="Number of experts")
     parser.add_argument("--regenerate_embeddings", action="store_true", help="Regenerate embeddings")
-    parser.add_argument("--checkpoint", default=73800, type=int, help="Checkpoint to load")
+    parser.add_argument("--checkpoint", default=94200, type=int, help="Checkpoint to load")
     parser.add_argument("--per_device_batch_size", "-b", default=None, type=int, help="Per device batch size")
     parser.add_argument("--scale", default=None, type=int, help="Scale of the model")
     parser.add_argument("--topk", default=3, type=int, help="Topk for MoE")
@@ -202,7 +202,7 @@ def main():
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_devices
 
     dataset_config = DATASET_CONFIGS[args.dataset]
-    accelerator_config = "--config_file ~/.cache/huggingface/accelerate/single_gpu_config.yaml" if (args.lp or len(args.gpu_devices.split(",")) == 1) else ""
+    accelerator_config = "--config_file ~/.cache/huggingface/accelerate/single_gpu_config.yaml"
     
     # sweep fields
     if args.lp:
@@ -220,6 +220,7 @@ def main():
     scale = args.scale if args.scale else dataset_config.scale
     # random port
     port = random.randint(10000, 65535)
+    command_list = []
 
     for embed_dims in embed_dims_list:
         for depth in depth_list:
