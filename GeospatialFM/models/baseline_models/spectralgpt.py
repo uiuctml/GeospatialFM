@@ -406,6 +406,7 @@ class VisionTransformer(nn.Module):
         self.num_features = embed_dim
 
         # torch.nn.init.normal_(self.head.weight, std=0.02)
+        self.fc = nn.Sequential(nn.Linear(4, 1))
 
     @torch.jit.ignore
     def no_weight_decay(self):
@@ -469,8 +470,11 @@ class VisionTransformer(nn.Module):
         if requires_t_shape:
             x = x.view([N, T * L, C])
 
+        patch_encodings = x[:, 1:, :] if self.cls_embed else x
+        patch_encodings = patch_encodings.view(N, T, L, C).permute(0, 2, 3, 1)
+        patch_encodings = self.fc(patch_encodings).squeeze(dim=-1)
+
         # classifier
-        patch_encodings = x[:, 1:, :]
         x = x[:, 1:, :].mean(dim=1)  # global pool
         x = self.norm(x)
         # x = self.fc_norm(x)
