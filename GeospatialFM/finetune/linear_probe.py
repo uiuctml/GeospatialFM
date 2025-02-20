@@ -45,7 +45,9 @@ def compute_encoding_baseline(batch, model, task_type, modal='optical'):
     labels = None if labels is None else torch.tensor(labels)
 
     with torch.no_grad(): # TODO: make it compatible with other baseline models
-        output = model(optical_images=optical)['optical_GAP'] # CROMA
+        # output = model(optical_images=optical)['optical_GAP'] # CROMA optical
+        # output = model(SAR_images=radar)['SAR_GAP'] # CROMA radar
+        output = model(SAR_images=radar, optical_images=optical)['joint_GAP'] # CROMA multi
         # output = model(optical)['outcome'] # SatMAE
     
     features = output.cpu()
@@ -130,7 +132,8 @@ def main(args):
     
     optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"]
     radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"]
-    data_bands = metadata["s2c"]["bands"]
+    # data_bands = metadata["s2c"]["bands"]
+    data_bands = {"optical": metadata["s2c"]["bands"], "radar": metadata["s1"]["bands"]}
     
     train_transform, eval_transform = get_transform(args.task_type, args.crop_size, args.scale, args.random_rotation, 
                                                     optical_mean, optical_std, radar_mean, radar_std, data_bands=data_bands, model_bands=get_baseline_metadata(args))

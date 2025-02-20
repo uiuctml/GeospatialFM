@@ -1,30 +1,8 @@
-#!/bin/bash
-#SBATCH --mem=64g
-#SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=4    # <- match to OMP_NUM_THREADS
-#SBATCH --partition=gpuA40x4      # <- or one of: gpuA100x4 gpuA40x4 gpuA100x8 gpuMI100x8
-#SBATCH --account=bdmr-delta-gpu   # <- match to a "Project" returned by the "accounts" command
-#SBATCH --job-name=ft_gpt_ben
-#SBATCH --time=48:00:00      # hh:mm:ss for the job
-#SBATCH --constraint="scratch"
-#SBATCH -e slurm-%j.err
-#SBATCH -o slurm-%j.out
-### GPU options ###
-#SBATCH --gpus-per-node=1
-#SBATCH --gpu-bind=none     # <- or closest
-#SBATCH --mail-user=yuxuanw8@illinois.edu
-#SBATCH --mail-type="BEGIN,END" # See sbatch or srun man pages for more email options
-
-# # Load necessary modules
-# module reset
-# module load python  # Adjust this as needed to load your Python environment
-
 # Set up environment variables
 export ROOT_DIR="."
 export PYTHONPATH=$PYTHONPATH:$ROOT_DIR
 export TORCH_NCCL_BLOCKING_WAIT=1
-export CUDA_VISIBLE_DEVICES=0,1,2,3  # Ensure all GPUs are available
+export CUDA_VISIBLE_DEVICES=2,3  # Ensure all GPUs are available
 
 # Set parameters
 DATASET="bigearthnet"
@@ -34,16 +12,16 @@ SCALE=1
 # 1e-3 8e-4 5e-4 3e-4 1e-4 8e-5 5e-5 3e-5 1e-5
 
 # Loop through learning rates and fine-tune
-for LR in 3e-4; do
-    srun accelerate launch --num_processes=1 GeospatialFM/finetune/finetune.py \
-        --data_dir /scratch/bdmr/ywan1/data/geospatial \
+for LR in 1e-3 8e-4 5e-4 3e-4 1e-4 8e-5 5e-5 3e-5 1e-5; do
+    accelerate launch --num_processes=2 GeospatialFM/finetune/finetune.py \
+        --data_dir /data-4/common/geospatial \
         --dataset_name $DATASET \
         --task_type multilabel \
         --scale $SCALE \
         --modal optical \
         --return_dict \
         --per_device_train_batch_size 16 \
-        --gradient_accumulation_steps 4 \
+        --gradient_accumulation_steps 8 \
         --num_train_epochs 10 \
         --learning_rate $LR \
         --weight_decay $WD \

@@ -58,7 +58,6 @@ class GroupChannelsVisionTransformer(timm.models.vision_transformer.VisionTransf
 
     def forward_features(self, x):
         b, c, h, w = x.shape
-        # print(f"1.in satmae.py, x have shape {x.shape}")
 
         x_c_embed = []
         for i, group in enumerate(self.channel_groups):
@@ -66,7 +65,6 @@ class GroupChannelsVisionTransformer(timm.models.vision_transformer.VisionTransf
             x_c_embed.append(self.patch_embed[i](x_c))  # (N, L, D)
 
         x = torch.stack(x_c_embed, dim=1)  # (N, G, L, D)
-        # print(f"2.in satmae.py, x have shape {x.shape}")
         _, G, L, D = x.shape
 
         # add channel embed
@@ -81,7 +79,6 @@ class GroupChannelsVisionTransformer(timm.models.vision_transformer.VisionTransf
         # add pos embed w/o cls token
         x = x + pos_channel  # (N, G, L, D)
         x = x.view(b, -1, D)  # (N, G*L, D)
-        # print(f"3.in satmae.py, x have shape {x.shape}")
 
         cls_pos_channel = torch.cat((self.pos_embed[:, :1, :], self.channel_cls_embed), dim=-1)  # (1, 1, D)
         # stole cls_tokens impl from Phil Wang, thanks

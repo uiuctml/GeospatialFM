@@ -11,17 +11,16 @@ SCALE=1
 
 WD=0.01
 # 8e-4 5e-4 3e-4 1e-4 8e-5 5e-5 3e-5 1e-5
-
-for LR in 3e-4; do
-    accelerate launch --num_processes=1 --main_process_port=10080 GeospatialFM/finetune/finetune.py \
+for LR in 5e-5; do
+    accelerate launch --num_processes=1 --main_process_port=10087 GeospatialFM/finetune/finetune.py \
         --data_dir /data-4/common/geospatial \
         --dataset_name $DATASET \
         --task_type multilabel \
         --scale $SCALE \
-        --modal optical \
+        --modal radar \
         --return_dict \
-        --per_device_train_batch_size 4 \
-        --gradient_accumulation_steps 64 \
+        --per_device_train_batch_size 64 \
+        --gradient_accumulation_steps 4 \
         --num_train_epochs 10 \
         --learning_rate $LR \
         --weight_decay $WD \
@@ -36,10 +35,10 @@ for LR in 3e-4; do
         --output_dir $ROOT_DIR/results_wyx/models \
         --logging_dir $ROOT_DIR/results_wyx/logs \
         --wandb_dir $ROOT_DIR/results_wyx/ \
-        --run_name SatMAE_${DATASET}_lr${LR}_wd${WD} \
+        --run_name CROMA_${DATASET}_lr${LR}_wd${WD}_radar \
         --lr_scheduler_type cosine \
-        --crop_size 96 \
-        --model_name satmae \
+        --crop_size 120 \
+        --model_name croma \
         --train_frac 0.1 \
         --val_frac 0.1
 

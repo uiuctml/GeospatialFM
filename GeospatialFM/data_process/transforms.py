@@ -148,7 +148,9 @@ def segmentation_transform_one_sample(optical, radar, label, spatial_resolution,
         if random_rotation:
             optical, radar, label = RandomRotationAll(optical, radar, label)
     
-    optical = Maybe_pad_optical(optical, data_bands, model_bands)
+    if model_bands and data_bands:
+        optical = Maybe_pad_image(optical, data_bands["optical"], model_bands["optical"])
+        radar = Maybe_pad_image(radar, data_bands["radar"], model_bands["radar"])
     
     if scale is not None:
         optical, radar = ResizeAll(optical, radar, scale, crop_size)
@@ -240,7 +242,9 @@ def classification_transform_one_sample(optical, radar, spatial_resolution, crop
         if random_rotation:
             optical, radar, _ = RandomRotationAll(optical, radar)
     
-    optical = Maybe_pad_optical(optical, data_bands, model_bands)
+    if model_bands and data_bands:
+        optical = Maybe_pad_image(optical, data_bands["optical"], model_bands["optical"])
+        radar = Maybe_pad_image(radar, data_bands["radar"], model_bands["radar"])
 
     if scale is not None:
         optical, radar = ResizeAll(optical, radar, scale, crop_size)
@@ -311,7 +315,7 @@ def landsat_transform_one_sample(optical, radar, label, spatial_resolution, crop
         if random_rotation:
             optical, radar, label = RandomRotationAll(optical, radar, label)
     
-    optical = Maybe_pad_optical(optical, data_bands, model_bands)
+    optical = Maybe_pad_image(optical, data_bands, model_bands)
     
     if scale is not None:
         optical, radar = ResizeAll(optical, radar, scale, crop_size)
@@ -393,7 +397,7 @@ def get_transform(task_type, crop_size=None, scale=None, random_rotation=True, o
     
     return train_transform, eval_transform
 
-def Maybe_pad_optical(optical, data_bands, model_bands) -> torch.Tensor:
+def Maybe_pad_image(optical, data_bands, model_bands) -> torch.Tensor:
     """
     Adjusts the input optical tensor to match the required model bands by either removing or padding bands.
 
@@ -405,6 +409,8 @@ def Maybe_pad_optical(optical, data_bands, model_bands) -> torch.Tensor:
     Returns:
         torch.Tensor: Adjusted tensor with the channels aligned to `model_bands`.
     """
+    if data_bands is None or model_bands is None:
+        return optical
     if optical.shape[0] != len(data_bands):
         raise ValueError("The number of channels in `optical` does not match the length of `data_bands`.")
 

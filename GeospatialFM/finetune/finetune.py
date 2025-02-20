@@ -5,6 +5,7 @@ from pathlib import Path
 from datetime import timedelta
 import math
 import optuna
+import time
 
 import torch
 from accelerate.logging import get_logger
@@ -73,7 +74,7 @@ def main(args):
         os.makedirs(args.logging_dir, exist_ok=True)
 
     # Load dataset
-    metadata = get_metadata(args.dataset_name)
+    metadata = get_metadata(args.dataset_name, args.dataset_version)
     args.crop_size = metadata["size"] if args.crop_size is None else args.crop_size
 
     if args.dataset_name.lower().strip() == "landsat":
@@ -83,7 +84,8 @@ def main(args):
     else:
         optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"] 
         radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"]
-        data_bands = metadata["s2c"]["bands"] 
+        # data_bands = metadata["s2c"]["bands"] 
+        data_bands = {"optical": metadata["s2c"]["bands"], "radar": metadata["s1"]["bands"]}
     
     collate_fn = partial(modal_specific_collate_fn, modal=args.modal)
     
@@ -206,4 +208,8 @@ def main(args):
     
 if __name__ == "__main__":
     args = parse_args()
+    start_time = time.perf_counter()
     main(args)
+    end_time = time.perf_counter()
+    elapsed_time = end_time - start_time
+    print(f"Training completed in {elapsed_time:.2f} seconds.")

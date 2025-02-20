@@ -1,7 +1,7 @@
 ROOT_DIR="."
 export PYTHONPATH=$PYTHONPATH:$ROOT_DIR
 export TORCH_NCCL_BLOCKING_WAIT=1
-export CUDA_VISIBLE_DEVICES=2
+export CUDA_VISIBLE_DEVICES=0,1
 
 DATASET="landsat"
 ATTENTION_RADIUS=640
@@ -10,19 +10,20 @@ MOE=0
 SCALE=1
 
 WD=0.01
-FRAC=0.1
+# FRAC=0.1
 
-for FRAC in 1.0 0.5 0.3; do
-    for LR in 1e-3 8e-4 5e-4 3e-4 1e-4 8e-5 5e-5 3e-5 1e-5; do
-        accelerate launch --num_processes=1 --main_process_port=10089 GeospatialFM/finetune/finetune.py \
+# 1e-3 8e-4 5e-4 3e-4 1e-4 8e-5 5e-5 3e-5 1e-5
+for FRAC in 1.0; do
+    for LR in 5e-5 3e-5; do
+        accelerate launch --num_processes=2 --main_process_port=10079 GeospatialFM/finetune/finetune.py \
             --data_dir /data-4/common/yuxuanwan/geospatial \
             --dataset_name $DATASET \
             --task_type segmentation \
             --scale $SCALE \
             --modal optical \
             --return_dict \
-            --per_device_train_batch_size 64 \
-            --gradient_accumulation_steps 4 \
+            --per_device_train_batch_size 1 \
+            --gradient_accumulation_steps 128 \
             --eval_steps 2000 \
             --num_train_epochs 10 \
             --learning_rate $LR \
@@ -38,13 +39,14 @@ for FRAC in 1.0 0.5 0.3; do
             --output_dir $ROOT_DIR/results_wyx/models \
             --logging_dir $ROOT_DIR/results_wyx/logs \
             --wandb_dir $ROOT_DIR/results_wyx/ \
-            --run_name CROMA_${DATASET}_lr${LR}_wd${WD}_frac${FRAC}_fz \
+            --run_name CViT_${DATASET}_lr${LR}_wd${WD}_frac${FRAC} \
             --lr_scheduler_type cosine \
-            --crop_size 120 \
-            --model_name croma_landsat \
+            --crop_size 224 \
+            --model_name channelvit_landsat \
             --dataset_version etm_oli_toa_nlcd \
             --train_frac $FRAC \
-            --val_frac $FRAC \
-    
+            --val_frac 0.75 \
+            --per_device_eval_batch_size 1 \
+
     done
 done
