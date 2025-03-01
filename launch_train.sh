@@ -5,6 +5,7 @@ export PYTHONPATH=$PYTHONPATH:$ROOT_DIR
 DECODER_DEPTH=4
 EMBED_DIMS=2
 RANK=2
+
 accelerate launch GeospatialFM/scripts/train.py \
     --data_dir $ROOT_DIR/data/geospatial/SSL4EO \
     --per_device_train_batch_size 128 \
