@@ -28,7 +28,7 @@ DATASET = {
 def get_metadata(dataset_name, dataset_version=None):
     dataset = DATASET[dataset_name.lower()]
     config_name = dataset_version if dataset_version else "default"
-    infos = get_dataset_infos(dataset, trust_remote_code=True)
+    infos = get_dataset_infos(dataset, trust_remote_code=True, download_mode="force_redownload")
     return json.loads(infos[config_name].description)
 
 def get_dataset(args, train_transform, eval_transform):
