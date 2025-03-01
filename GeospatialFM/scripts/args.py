@@ -28,6 +28,7 @@ def parse_args():
     parser.add_argument("--proj_drop", type=float, default=0.0, help="Projection dropout rate")
     parser.add_argument("--mask_ratio", type=float, default=0.75, help="Mask ratio for MAE")
     parser.add_argument("--channel_mask_ratio", type=float, default=0.5, help="Channel mask ratio for MAE")
+    parser.add_argument("--rank", type=int, default=1, help="Rank for LowRankAttention")
     
     # AdditionalModel arguments
     parser.add_argument("--return_dict", type=bool, default=False, help="Return a dictionary instead of a tuple")

@@ -31,6 +31,7 @@ class SpatialSpectralLowRankViTConfig(PretrainedConfig):
         mask_ratio: float = 0.75,
         channel_mask_ratio: float = 0.5,
         pos_chan_embed_residual: bool = True,
+        rank: int = 1,
         # Decoder-specific parameters
         decoder_embed_dim: int = 512,
         decoder_depth: int = 8,
@@ -64,7 +65,7 @@ class SpatialSpectralLowRankViTConfig(PretrainedConfig):
         self.mask_ratio = mask_ratio
         self.channel_mask_ratio = channel_mask_ratio
         self.pretrain = True
-
+        self.rank = rank
         # Decoder-specific attributes
         self.decoder_embed_dim = decoder_embed_dim
         self.decoder_channel_dim = decoder_channel_embed_dims_per_head * decoder_num_heads
@@ -146,6 +147,7 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
                 drop_path=dpr[i],
                 init_values=config.init_values,
                 norm_layer=norm_layer,
+                rank=config.rank,
             )
             for i in range(config.depth)
         ])
@@ -577,6 +579,7 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
                 init_values=config.init_values,
                 norm_layer=norm_layer,
                 skip_pool=False,
+                rank=config.rank,
             )
             for i in range(config.decoder_depth)
         ])

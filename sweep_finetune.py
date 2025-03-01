@@ -113,7 +113,7 @@ def generate_finetune_command(
     
     cmd.extend([
         f"GeospatialFM/finetune/{script}",
-        f"--data_dir {root_dir}/data/geospatial/",
+        f"--data_dir {root_dir}/data/geospatial-2/",
         f"--dataset_name {dataset_config.name}",
         f"--task_type {dataset_config.task_type}",
         f"--scale {scale}",

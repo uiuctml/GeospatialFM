@@ -204,6 +204,7 @@ class AttentionBranch(nn.Module):
             qk_norm: bool = False,
             attn_drop: float = 0.,
             norm_layer: nn.Module = nn.LayerNorm,
+            rank: int = 1,
     ) -> None:
         super().__init__()
         assert dim % num_heads == 0, 'dim should be divisible by num_heads'
@@ -212,22 +213,26 @@ class AttentionBranch(nn.Module):
         self.scale = head_dim ** -0.5
         self.fused_attn = use_fused_attn() 
 
-        self.qkv = nn.Linear(dim, num_heads * head_dim * 3, bias=qkv_bias)
+        self.qk = nn.Linear(dim, num_heads * head_dim * rank * 2, bias=qkv_bias)
+        self.v = nn.Linear(dim, num_heads * head_dim, bias=qkv_bias)
         self.q_norm = norm_layer(head_dim) if qk_norm else nn.Identity()
         self.k_norm = norm_layer(head_dim) if qk_norm else nn.Identity()
         self.attn_drop = nn.Dropout(attn_drop)
-
+        self.rank = rank
+        
     def forward(self, x: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
         B, N, D = x.shape
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv.unbind(0)
-        q, k = self.q_norm(q), self.k_norm(k)
-
+        v = self.v(x).reshape(B, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3) # B, num_heads, N, D
+        qk = self.qk(x).reshape(B, N, 2, self.num_heads, self.rank, self.head_dim).permute(2, 0, 4, 3, 1, 5) # 2, B, rank, num_heads, N, head_dim
+        q, k = qk.unbind(0)
+        q, k = self.q_norm(q), self.k_norm(k) #B, rank, num_heads, N, head_dim
+        v = v.unsqueeze(1).expand(-1, self.rank, -1, -1, -1) # B, rank, num_heads, N, D
+    
         if self.fused_attn:
             x = F.scaled_dot_product_attention(
                 q, k, v, attn_mask=mask,
                 dropout_p=self.attn_drop.p if self.training else 0.,
-            ) # B, num_heads, N, D
+            ) # B, rank, num_heads, N, D
         else:
             L, S = q.shape[-2], k.shape[-2]
             attn = (q @ k.transpose(-2, -1)) * self.scale
@@ -237,9 +242,9 @@ class AttentionBranch(nn.Module):
                 attn = attn + atten_bias
             attn = attn.softmax(dim=-1)
             attn = self.attn_drop(attn)
-            x = attn @ v # B, num_heads, N, D
+            x = attn @ v # B, rank, num_heads, N, D
 
-        return x # B, num_heads, N, D
+        return x # B, rank, num_heads, N, D
 
 class LowRankAttention(nn.Module):
     def __init__(
@@ -253,6 +258,7 @@ class LowRankAttention(nn.Module):
             attn_drop: float = 0.,
             proj_drop: float = 0.,
             norm_layer: nn.Module = nn.LayerNorm,
+            rank: int = 1,
     ) -> None:
         """
         LowRankAttention module for low-rank attention in vision transformers.
@@ -288,10 +294,12 @@ class LowRankAttention(nn.Module):
         self.s_head_dim = self.spatial_dim // num_heads
         self.head_dim = self.dim // num_heads
         
+        self.rank = rank
+        
         assert self.head_dim == self.c_head_dim * self.s_head_dim, 'head_dim should be equal to c_head_dim * s_head_dim'
 
-        self.channel_branch = AttentionBranch(channel_dim, num_heads, self.c_head_dim, qkv_bias, qk_norm, attn_drop, norm_layer)
-        self.spatial_branch = AttentionBranch(spatial_dim, num_heads, self.s_head_dim, qkv_bias, qk_norm, attn_drop, norm_layer)
+        self.channel_branch = AttentionBranch(channel_dim, num_heads, self.c_head_dim, qkv_bias, qk_norm, attn_drop, norm_layer, rank)
+        self.spatial_branch = AttentionBranch(spatial_dim, num_heads, self.s_head_dim, qkv_bias, qk_norm, attn_drop, norm_layer, rank)
 
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
@@ -300,9 +308,10 @@ class LowRankAttention(nn.Module):
         B, C, D = x_c.shape
         HW = x_s.shape[1]
         
-        xc = self.channel_branch(x_c)  # B, num_heads, C, c_head_dim
-        xs = self.spatial_branch(x_s, spatial_mask)  # B, num_heads, HW, s_head_dim
-        x = torch.einsum('...ca,...nb->...cnab', xc, xs).flatten(-2) # B, num_heads, C, HW, D
+        xc = self.channel_branch(x_c)  # B, rank, num_heads, C, c_head_dim
+        xs = self.spatial_branch(x_s, spatial_mask)  # B, rank, num_heads, HW, s_head_dim
+        x = torch.einsum('...ca,...nb->...cnab', xc, xs).flatten(-2) # B, rank, num_heads, C, HW, D
+        x = x.sum(dim=1) # B, num_heads, C, HW, D
         x = x.permute(0, 2, 3, 1, 4).reshape(B, C, HW, -1) # B, C, HW, D
         x = self.proj(x) # B, C, HW, D
         x = self.proj_drop(x) # B, C, HW, D
@@ -340,6 +349,7 @@ class LowRankBlock(nn.Module):
             norm_layer: nn.Module = nn.LayerNorm,
             mlp_layer: nn.Module = Mlp,
             skip_pool: bool = False,
+            rank: int = 1,
     ) -> None:
         super().__init__()
         self.norm1 = norm_layer(dim)
@@ -370,6 +380,7 @@ class LowRankBlock(nn.Module):
             attn_drop=attn_drop,
             proj_drop=proj_drop,
             norm_layer=norm_layer,
+            rank=rank,
         )
         self.ls1 = LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
         self.drop_path1 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
