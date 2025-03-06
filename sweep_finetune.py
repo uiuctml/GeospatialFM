@@ -95,6 +95,7 @@ def generate_finetune_command(
     modal: str = "optical",
     dataset_version: Optional[str] = None,
     use_optuna: bool = False,
+    rank: int = 1,
 ) -> str:
     # script = "linear_probe.py" if linear_probe else "finetune.py"
     script = "finetune.py"
@@ -110,10 +111,14 @@ def generate_finetune_command(
     ]
     if accelerator_config:
         cmd.append(accelerator_config)
+        
+    model_name = f"LESSVIT_b{embed_dims}_d{depth}"
+    if rank > 1:
+        model_name += f"_r{rank}"
     
     cmd.extend([
         f"GeospatialFM/finetune/{script}",
-        f"--data_dir {root_dir}/data/geospatial-2/",
+        f"--data_dir {root_dir}/data/geospatial/",
         f"--dataset_name {dataset_config.name}",
         f"--task_type {dataset_config.task_type}",
         f"--scale {scale}",
@@ -139,10 +144,11 @@ def generate_finetune_command(
         "--lr_scheduler_type cosine",
         f"--channel_embed_dims_per_head {embed_dims}",
         "--use_perception_field_mask",
-        f"--pretrained_model_path {root_dir}/results/models/LESSVIT_b{embed_dims}_d{depth}/checkpoint-{checkpoint}/model.safetensors",
+        f"--pretrained_model_path {root_dir}/results/models/{model_name}/checkpoint-{checkpoint}/model.safetensors",
         f"--attention_radius {attention_radius}",
         f"--crop_size {dataset_config.crop_size}",
         "--init_values 1",
+        f"--rank {rank}",
     ])
     
     if linear_probe:
@@ -184,13 +190,14 @@ def main():
     parser.add_argument("--lp", action="store_true", help="Run in linear probe mode")
     parser.add_argument("--moe", default=0, type=int, help="Number of experts")
     parser.add_argument("--regenerate_embeddings", action="store_true", help="Regenerate embeddings")
-    parser.add_argument("--checkpoint", default=94200, type=int, help="Checkpoint to load")
+    parser.add_argument("--checkpoint", default=24600, type=int, help="Checkpoint to load")
     parser.add_argument("--per_device_batch_size", "-b", default=None, type=int, help="Per device batch size")
     parser.add_argument("--scale", default=None, type=int, help="Scale of the model")
     parser.add_argument("--topk", default=3, type=int, help="Topk for MoE")
     parser.add_argument("--modal", default="optical", type=str, help="Modal to finetune")
     parser.add_argument("--attention_radius", default=640, type=int, help="Attention radius for perception field mask")
     parser.add_argument("--use_optuna", action="store_true", help="Use Optuna to find the best hyper-parameters")
+    parser.add_argument("--rank", default=1, type=int, help="Rank of the model")
     # reproduce hyper-parameters
     parser.add_argument("--lr", default=None, type=float, help="Override learning rate")
     
@@ -214,7 +221,7 @@ def main():
         learning_rates = [args.lr]
     
     embed_dims_list = [2]  # Modify as needed
-    depth_list = [8]    # Modify as needed
+    depth_list = [4]    # Modify as needed
     # adjustable parameters
     moe = args.moe
     scale = args.scale if args.scale else dataset_config.scale
@@ -226,7 +233,7 @@ def main():
         for depth in depth_list:
             regenerate_embeddings = args.regenerate_embeddings
             for lr in learning_rates:
-                run_name = f"LESSVIT_b{embed_dims}_d{depth}_{dataset_config.name}_lr{lr}_scale{scale}"
+                run_name = f"LESSVIT_b{embed_dims}_d{depth}_r{args.rank}_{dataset_config.name}_lr{lr}_scale{scale}"
                 if args.dataset_version:
                     run_name += f"_{args.dataset_version}"
                 if args.moe > 0:
@@ -271,6 +278,7 @@ def main():
                     modal=args.modal,
                     dataset_version=args.dataset_version,
                     attention_radius=args.attention_radius,
+                    rank=args.rank,
                 )
                 
                 print(f"Running command:\n{cmd}")
