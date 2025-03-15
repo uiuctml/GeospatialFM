@@ -5,6 +5,9 @@ from typing import List, Optional
 import subprocess
 import random
 import shutil
+import torch
+import time
+
 @dataclass
 class DatasetConfig:
     name: str
@@ -18,6 +21,7 @@ class DatasetConfig:
     val_frac: Optional[float] = None
     scale: int = 1
     dataset_version: Optional[str] = None
+    
 # Dataset-specific configurations
 DATASET_CONFIGS = {
     "bigearthnet": DatasetConfig(
@@ -74,6 +78,17 @@ DATASET_CONFIGS = {
     ),
 }
 
+@dataclass
+class ModelConfig:
+    embed_dims: int
+    depth: int
+    num_heads: int
+
+MODEL_CONFIGS = {
+    "LESSVIT-S": ModelConfig(embed_dims=384, depth=12, num_heads=6),
+    "LESSVIT-B": ModelConfig(embed_dims=768, depth=12, num_heads=12),
+}
+
 def generate_finetune_command(
     root_dir: str,
     run_name: str,
@@ -96,6 +111,7 @@ def generate_finetune_command(
     dataset_version: Optional[str] = None,
     use_optuna: bool = False,
     rank: int = 1,
+    model: str = "LESSVIT-B",
 ) -> str:
     # script = "linear_probe.py" if linear_probe else "finetune.py"
     script = "finetune.py"
@@ -104,6 +120,14 @@ def generate_finetune_command(
     grad_accum_steps = 1 if linear_probe else dataset_config.effective_batch_size // n_gpus // dataset_config.batch_size
     num_epochs = 100 if linear_probe else dataset_config.num_epochs
     dataset_version = dataset_config.dataset_version if not dataset_version else dataset_version
+    model_config = MODEL_CONFIGS[model.upper()]
+    
+    if "lessvit-s" in model.lower():
+        prefix = "s"
+    elif "lessvit-b" in model.lower():
+        prefix = "b"
+    else:
+        raise ValueError(f"Invalid model: {model}")
     
     cmd = [
         "accelerate launch",
@@ -112,18 +136,19 @@ def generate_finetune_command(
     if accelerator_config:
         cmd.append(accelerator_config)
         
-    model_name = f"LESSVIT_b{embed_dims}_d{depth}"
-    if rank > 1:
-        model_name += f"_r{rank}"
+    model_name = f"LESSVIT_{prefix}{embed_dims}_d{depth}_r{rank}"
     
     cmd.extend([
         f"GeospatialFM/finetune/{script}",
-        f"--data_dir {root_dir}/data/geospatial/",
+        f"--data_dir {root_dir}/data/geospatial-2/",
         f"--dataset_name {dataset_config.name}",
         f"--task_type {dataset_config.task_type}",
         f"--scale {scale}",
         f"--modal {modal}",
         "--return_dict",
+        f"--embed_dim {model_config.embed_dims}",
+        f"--depth {model_config.depth}",
+        f"--num_heads {model_config.num_heads}",
         f"--per_device_train_batch_size {batch_size}",
         f"--gradient_accumulation_steps {grad_accum_steps}",
         f"--num_train_epochs {num_epochs}",
@@ -198,6 +223,7 @@ def main():
     parser.add_argument("--attention_radius", default=640, type=int, help="Attention radius for perception field mask")
     parser.add_argument("--use_optuna", action="store_true", help="Use Optuna to find the best hyper-parameters")
     parser.add_argument("--rank", default=1, type=int, help="Rank of the model")
+    parser.add_argument("--model", default="LESSVIT-S", type=str, help="Model to use")
     # reproduce hyper-parameters
     parser.add_argument("--lr", default=None, type=float, help="Override learning rate")
     
@@ -222,6 +248,8 @@ def main():
     
     embed_dims_list = [2]  # Modify as needed
     depth_list = [4]    # Modify as needed
+    rank_list = [1, 2, 4, 8]
+
     # adjustable parameters
     moe = args.moe
     scale = args.scale if args.scale else dataset_config.scale
@@ -229,66 +257,117 @@ def main():
     port = random.randint(10000, 65535)
     command_list = []
 
-    for embed_dims in embed_dims_list:
-        for depth in depth_list:
-            regenerate_embeddings = args.regenerate_embeddings
-            for lr in learning_rates:
-                run_name = f"LESSVIT_b{embed_dims}_d{depth}_r{args.rank}_{dataset_config.name}_lr{lr}_scale{scale}"
-                if args.dataset_version:
-                    run_name += f"_{args.dataset_version}"
-                if args.moe > 0:
-                    run_name += f"_moe{args.moe}"
-                if args.topk != 3:
-                    run_name += f"_topk{args.topk}"
-                if args.lp:
-                    run_name += "_lp"
-                if args.modal != "optical":
-                    run_name += f"_{args.modal}"
-                if args.checkpoint != 24600:
-                    run_name += f"_ckpt{args.checkpoint}"    
-                if args.attention_radius != 640:
-                    run_name += f"_ar{args.attention_radius}"
-                # check if the run_name already exists and completed
-                if os.path.exists(f"{args.root_dir}/results/models/{dataset_config.name}/{run_name}/test_results.json"):
-                    if args.regenerate_embeddings:
-                        print(f"Redo the experiment for {run_name}")
-                        shutil.rmtree(f"{args.root_dir}/results/models/{dataset_config.name}/{run_name}")
-                    else:
-                        print(f"Run {run_name} already exists and completed")
-                        continue
+    regenerate_embeddings = args.regenerate_embeddings
+    for lr in learning_rates:
+        # loop over all the combinations of the model parameters
+        for embed_dims in embed_dims_list:
+            for depth in depth_list:
+                for rank in rank_list:
+                    run_name = f"{args.model}{embed_dims}_d{depth}_r{rank}_{dataset_config.name}_lr{lr}_scale{scale}"
+                    if args.dataset_version:
+                        run_name += f"_{args.dataset_version}"
+                    if args.moe > 0:
+                        run_name += f"_moe{args.moe}"
+                    if args.topk != 3:
+                        run_name += f"_topk{args.topk}"
+                    if args.lp:
+                        run_name += "_lp"
+                    if args.modal != "optical":
+                        run_name += f"_{args.modal}"
+                    if args.checkpoint != 24600:
+                        run_name += f"_ckpt{args.checkpoint}"    
+                    if args.attention_radius != 640:
+                        run_name += f"_ar{args.attention_radius}"
+                    # check if the run_name already exists and completed
+                    if os.path.exists(f"{args.root_dir}/results/models/{dataset_config.name}/{run_name}/test_results.json"):
+                        if args.regenerate_embeddings:
+                            print(f"Redo the experiment for {run_name}")
+                            shutil.rmtree(f"{args.root_dir}/results/models/{dataset_config.name}/{run_name}")
+                        else:
+                            print(f"Run {run_name} already exists and completed")
+                            continue
+                        
+                    cmd = generate_finetune_command(
+                        root_dir=args.root_dir,
+                        dataset_config=dataset_config,
+                        embed_dims=embed_dims,
+                        depth=depth,
+                        learning_rate=lr,
+                        port=port,
+                        run_name=run_name,
+                        checkpoint=args.checkpoint,
+                        n_gpus=1,
+                        per_device_batch_size=args.per_device_batch_size,
+                        topk=args.topk,
+                        # adjustable parameters
+                        moe=moe,
+                        scale=scale,
+                        linear_probe=args.lp,
+                        accelerator_config=accelerator_config,
+                        regenerate_embeddings=regenerate_embeddings,
+                        modal=args.modal,
+                        dataset_version=args.dataset_version,
+                        attention_radius=args.attention_radius,
+                        rank=args.rank,
+                        model=args.model,
+                    )
                     
-                cmd = generate_finetune_command(
-                    root_dir=args.root_dir,
-                    dataset_config=dataset_config,
-                    embed_dims=embed_dims,
-                    depth=depth,
-                    learning_rate=lr,
-                    port=port,
-                    run_name=run_name,
-                    checkpoint=args.checkpoint,
-                    n_gpus=len(args.gpu_devices.split(",")),
-                    per_device_batch_size=args.per_device_batch_size,
-                    topk=args.topk,
-                    # adjustable parameters
-                    moe=moe,
-                    scale=scale,
-                    linear_probe=args.lp,
-                    accelerator_config=accelerator_config,
-                    regenerate_embeddings=regenerate_embeddings,
-                    modal=args.modal,
-                    dataset_version=args.dataset_version,
-                    attention_radius=args.attention_radius,
-                    rank=args.rank,
-                )
-                
+                    # print(f"Running command:\n{cmd}")
+                    command_list.append(cmd)
+                    
+                    # subprocess.run(cmd, shell=True)
+                    
+                    
+                    # save the command to a file
+                    # create the directory if it doesn't exist
+                    os.makedirs(f"{args.root_dir}/results/models/{dataset_config.name}/{run_name}", exist_ok=True)
+                    with open(f"{args.root_dir}/results/models/{dataset_config.name}/{run_name}/launch_finetune.sh", "w") as f:
+                        f.write(cmd)
+        regenerate_embeddings = False
+                        
+    # run the commands in parallel
+    if len(args.gpu_devices.split(",")) > 1:
+        multi_gpu_launcher(command_list)
+    else:
+        local_launcher(command_list)
+
+def multi_gpu_launcher(commands):
+    """
+    Launch commands on the local machine, using all GPUs in parallel.
+    """
+    print('WARNING: using experimental multi_gpu_launcher.')
+    try:
+        # Get list of GPUs from env, split by ',' and remove empty string ''
+        # To handle the case when there is one extra comma: `CUDA_VISIBLE_DEVICES=0,1,2,3, python3 ...`
+        available_gpus = [x for x in os.environ['CUDA_VISIBLE_DEVICES'].split(',') if x != '']
+    except Exception:
+        # If the env variable is not set, we use all GPUs
+        available_gpus = [str(x) for x in range(torch.cuda.device_count())]
+    n_gpus = len(available_gpus)
+    procs_by_gpu = [None]*n_gpus
+
+    while len(commands) > 0:
+        for idx, gpu_idx in enumerate(available_gpus):
+            proc = procs_by_gpu[idx]
+            if (proc is None) or (proc.poll() is not None):
+                # Nothing is running on this GPU; launch a command.
+                cmd = commands.pop(0)
                 print(f"Running command:\n{cmd}")
-                subprocess.run(cmd, shell=True)
-                
-                regenerate_embeddings = False
-                
-                # save the command to a file
-                with open(f"{args.root_dir}/results/models/{dataset_config.name}/{run_name}/launch_finetune.sh", "w") as f:
-                    f.write(cmd)
+                new_proc = subprocess.Popen(
+                    f'CUDA_VISIBLE_DEVICES={gpu_idx} {cmd}', shell=True)
+                procs_by_gpu[idx] = new_proc
+                break
+        time.sleep(1)
+
+    # Wait for the last few tasks to finish before returning
+    for p in procs_by_gpu:
+        if p is not None:
+            p.wait()
+
+def local_launcher(commands):
+    """Launch commands serially on the local machine."""
+    for cmd in commands:
+        subprocess.call(cmd, shell=True)
 
 if __name__ == "__main__":
     main()
