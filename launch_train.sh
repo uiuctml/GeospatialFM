@@ -1,6 +1,6 @@
-ROOT_DIR="/home/haozhesi/GeospatialFM"
+ROOT_DIR="/home/user/GeospatialFM"
 export PYTHONPATH=$PYTHONPATH:$ROOT_DIR
-# export TORCH_NCCL_BLOCKING_WAIT=1
+export TORCH_NCCL_BLOCKING_WAIT=1
 
 DECODER_DEPTH=4
 EMBED_DIMS=2

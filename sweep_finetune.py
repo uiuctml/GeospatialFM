@@ -113,7 +113,6 @@ def generate_finetune_command(
     rank: int = 1,
     model: str = "LESSVIT-B",
 ) -> str:
-    # script = "linear_probe.py" if linear_probe else "finetune.py"
     script = "finetune.py"
     dataset_config.batch_size = per_device_batch_size if per_device_batch_size else dataset_config.batch_size
     batch_size = 1024 if linear_probe else dataset_config.batch_size
@@ -312,11 +311,7 @@ def main():
                         model=args.model,
                     )
                     
-                    # print(f"Running command:\n{cmd}")
                     command_list.append(cmd)
-                    
-                    # subprocess.run(cmd, shell=True)
-                    
                     
                     # save the command to a file
                     # create the directory if it doesn't exist
