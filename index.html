@@ -31,7 +31,8 @@
   <link rel="stylesheet" href="./static/css/fontawesome.all.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
   <link rel="stylesheet" href="./static/css/index.css">
-  <link rel="icon" href="./static/images/render-scene.svg">
+  <!-- <link rel="icon" href="./static/images/render-scene.svg"> -->
+  <link rel="icon" href="./static/logo/logo.svg", type="image/x-icon">
 
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
   <script defer src="./static/js/fontawesome.all.min.js"></script>
@@ -56,11 +57,22 @@
   
   <style>
     blockquote footer {
-    font-style: normal;
-    text-align: right;
-    margin-top: 5px;
-    display: block;
-  }
+      font-style: normal;
+      text-align: right;
+      margin-top: 5px;
+      display: block;
+    }
+
+    .logo {
+      width: 45px;   /* try smaller values like 50px or 60px */
+      height: auto;  /* auto keeps aspect ratio */
+      cursor: pointer;
+    }
+
+    /* .navbar-dropdown .navbar-item {
+      text-align: center;
+      display: block;
+    } */
   </style>
 
 </head>
@@ -84,11 +96,14 @@
 
       <div class="navbar-item has-dropdown is-hoverable">
         <a class="navbar-link">
-          More Research
+          <img src="./static/logo/logo.svg" alt="My Logo" class="logo"> More Research
         </a>
         <div class="navbar-dropdown">
+          <a class="navbar-item" href="https://github.com/uiuctml">
+            About Us
+          </a>
           <a class="navbar-item" href="https://github.com/uiuctml/SpatialTemporalGFM">
-            SpatialTemporal-GFM (TODO)
+            Temporal-GFM (Coming Soon)
           </a>
           <a class="navbar-item" href="https://huggingface.co/GFM-Bench">
             GFM-Bench
@@ -134,7 +149,7 @@
               <a>Han Zhao</a><sup>1</sup>,
             </span>
             <span class="author-block">
-              <a>Hendrik F. Hamann</a><sup>1,2</sup>,
+              <a>Hendrik F. Hamann</a><sup>2</sup>,
             </span>
           </div>
 
@@ -152,7 +167,7 @@
             <div class="publication-links">
               <!-- PDF Link. -->
               <span class="link-block">
-                <a href="https://arxiv.org/pdf/2303.10752.pdf"
+                <a href="https://arxiv.org/pdf/2503.12843"
                   class="external-link button is-normal is-rounded is-dark"
                   target="_blank">
                   <span class="icon">
@@ -162,7 +177,7 @@
                 </a>
               </span>
               <span class="link-block">
-                <a href="https://arxiv.org/pdf/2303.10752"
+                <a href="https://arxiv.org/abs/2503.12843"
                   class="external-link button is-normal is-rounded is-dark"
                   target="_blank">
                   <span class="icon">
@@ -173,7 +188,7 @@
               </span>
               <!-- Code Link. -->
               <span class="link-block">
-                <a href="https://github.com/Ehzoahis/DEReD"
+                <a href="https://github.com/uiuctml/GeospatialFM"
                   class="external-link button is-normal is-rounded is-dark"
                   target="_blank">
                   <span class="icon">
@@ -335,7 +350,7 @@
         <h2 class="title is-3">Abstract</h2>
         <div class="content has-text-justified">
           <p>
-            Geospatial imagery data holds immense potential for enbaling extensive diverse high-impace downstream applications by providing spatial, temporal, and spectral information across multiple modalities. Recent work adapting existing self-supervised learning (SSL) approaches for geospatial data, they fall shorts of tailored model architectures and training objects. To address these limitations and better take advantage of geospatial data, we introduce <a href="#less-vit">LESS ViT</a>, a Vision Transformer architecture variant specifically deisgned for hyperspectral geospatial data, and Hyper-MAE, a Masked Auto Encoder based pre-training framework that employs a <a href="#less-vit">LESS ViT</a> encoder-decoder architecture and incorporates decoupled spatial and spectral masking to create a more challenging self-supervised pre-training objective. To evaluate empirical performance, we construct a benchmark, <a href="#gfm-bench">GFM-Bench</a>, which serves as a comprehensive benchmark over geospatial data. Experimental results demonstrate that our proposed method surpasses current state-of-the-art multi-modal geospatial foundation models, achieving superior performance with less computation and fewer parameters. The flexibility and extensibility of our framework make it a promising solution for future geospatial data analysis tasks that involve a wide range of modalities and dimensions.
+            Geospatial raster (imagery) data holds immense potential for enbaling extensive diverse high-impace downstream applications by providing spatial, temporal, and spectral information across multiple channels (e.g., spectral bands, polarizations) and sensing modalities. Recent work adapting existing self-supervised learning (SSL) approaches for geospatial data, they fall shorts of tailored model architectures and training objects. To address these limitations and better take advantage of geospatial data, we introduce <a href="#less-vit">LESS ViT</a>, a Vision Transformer architecture variant specifically deisgned for hyperspectral geospatial data, and Hyper-MAE, a Masked Auto Encoder based pre-training framework that employs a <a href="#less-vit">LESS ViT</a> encoder-decoder architecture and incorporates decoupled spatial and spectral masking to create a more challenging self-supervised pre-training objective. To evaluate empirical performance, we construct a benchmark, <a href="#gfm-bench">GFM-Bench</a>, which serves as a comprehensive benchmark over geospatial data. Experimental results demonstrate that our proposed method surpasses current state-of-the-art multi-modal geospatial foundation models, achieving superior performance with less computation and fewer parameters. The flexibility and extensibility of our framework make it a promising solution for future geospatial data analysis tasks that involve a wide range of modalities and channels.
           </p>
         </div>
       </div>
@@ -560,7 +575,7 @@
         </div>
         <div class="columns is-vcentered">
           <div class="column has-text-centered">
-            <img src="static/images/results1.png"
+            <img src="static/images/main_table.png"
                  alt="Quantitative results for synthetic data"
                  style="width: 100%; height: auto;"/>
             <p>Quantitative results on seven datasets in the GFM-Bench under Fine-tuning (FT) and Linear Probing (LP).
@@ -671,7 +686,7 @@
 </section>
 
 
-<section class="section" id="BibTeX">
+<!-- <section class="section" id="BibTeX">
   <div class="container is-max-desktop content">
     <h2 class="title">BibTeX</h2>
     <pre><code>@article{si2023fully,
@@ -682,19 +697,34 @@
     }
 </code></pre>
   </div>
-</section>
+</section> -->
 
+<section class="section" id="BibTeX">
+  <div class="container is-max-desktop content">
+    <h2 class="title">BibTeX</h2>
+    <pre><code>@misc{si2025scalablefoundationmodelmultimodal,
+      title={Towards Scalable Foundation Model for Multi-modal and Hyperspectral Geospatial Data}, 
+      author={Haozhe Si and Yuxuan Wan and Minh Do and Deepak Vasisht and Han Zhao and Hendrik F. Hamann},
+      year={2025},
+      eprint={2503.12843},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2503.12843}, 
+    }   
+</code></pre>
+  </div>
+</section>
 
 <footer class="footer">
   <div class="container">
     <div class="content has-text-centered">
       <a class="icon-link"
-         href="https://arxiv.org/pdf/2303.10752.pdf"
+         href="https://arxiv.org/pdf/2503.12843"
          target="_blank">
         <i class="fas fa-file-pdf"></i>
       </a>
       <a class="icon-link" 
-         href="https://github.com/Ehzoahis/DEReD/" 
+         href="https://github.com/uiuctml/GeospatialFM" 
          class="external-link" 
          disabled 
          target="_blank">
@@ -712,14 +742,12 @@
             </a>.
           </p>
           <p>
-            This means you are free to borrow the 
+            This website is borrowed from the 
             <a
-              href="https://github.com/Ehzoahis/DEReD/" 
+              href="https://github.com/nerfies/nerfies.github.ioM" 
               target="_blank">source code
             </a> of this website,
-            we just ask that you link back to this page in the footer.
-            Please remember to remove the analytics code included in the header of the website which
-            you do not want on your website.
+            of the Nerfies website.
           </p>
         </div>
       </div>
