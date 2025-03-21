@@ -24,10 +24,11 @@ Hendrik F. Hamann.
 <sup>\*</sup> Address correspondence to: Haozhe Si (haozhes3@illinois.edu) and Han Zhao (hanzhao@illinois.edu).</sup>
 
 ## Overview
-
-![LESSViT](./assets/less_vit.png)
-
-This repository provides the implementation of **the Low-rank Efficient Spatial-Spectral Vision Transformer (LESS ViT)**. **LESS ViT** is a scalable, efficient vision transformer designed specifically for multi-modal and hyperspectral geospatial raster data.
+This repository provides the implementation of **the Low-rank Efficient Spatial-Spectral Vision Transformer (LESS ViT)**. LESS ViT is a scalable, efficient vision transformer designed specifically for multi-modal and hyperspectral geospatial raster data.
+<div align="center">
+<img src="./assets/less_vit.png" alt="workflow" width="300"/>
+    <p>LESS ViT</p>
+</div>
 
 ## GFM-Bench
 We also constructed a comprehensive benchmark for geospatial raster data, **GFM-Bench**, which incorporates 3 classification datasets and 4 semantic segmentation datasets. For more detailed information about GFM-Bench, please see [![Hugging Face](https://img.shields.io/badge/HuggingFace-GFMBench-purple?logo=huggingface&logoColor=yellow)](https://huggingface.co/GFM-Bench) and also our GitHub repository     [![GitHub](https://img.shields.io/badge/GitHub-GFMBench-green?logo=github&logoColor=white)](https://github.com/uiuctml/GFM-Bench).
