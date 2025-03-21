@@ -34,7 +34,7 @@ This repository provides the implementation of **the Low-rank Efficient Spatial-
 We also constructed a comprehensive benchmark for geospatial raster data, **GFM-Bench**, which incorporates 3 classification datasets and 4 semantic segmentation datasets. For more detailed information about GFM-Bench, please see [![Hugging Face](https://img.shields.io/badge/HuggingFace-GFMBench-purple?logo=huggingface&logoColor=yellow)](https://huggingface.co/GFM-Bench) and also our GitHub repository     [![GitHub](https://img.shields.io/badge/GitHub-GFMBench-green?logo=github&logoColor=white)](https://github.com/uiuctml/GFM-Bench).
 
 ## Pre-training
-We pre-trained the **LESS ViT** model using **Hyper-MAE** on the SSL4EO-S12 dataset for 300 epochs (on 8 x NVIDIA A6000 GPUs).
+We pre-trained the **LESS ViT** model using **Hyper-MAE** on the SSL4EO-S12 dataset for 300 epochs (on 8 &times; NVIDIA A6000 GPUs).
 
 To launch pre-training, use `launch_train.sh` script by running:
 ```shell
