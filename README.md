@@ -82,4 +82,4 @@ If you found our project helpful, please cite our paper:
 ```
 
 ## Contact Authors
-[Haozhe S](haozhes3@illinois.edu), [Han Zhao](hanzhao@illinois.edu)
+[Haozhe Si](haozhes3@illinois.edu), [Han Zhao](hanzhao@illinois.edu)
