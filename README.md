@@ -4,7 +4,6 @@
 
 [![Project Page](https://img.shields.io/badge/Project-Page-blue)](https://github.com/uiuctml/GeospatialFM)
 [![arXiv](https://img.shields.io/badge/arXiv-Paper-red?logo=arxiv)](https://github.com/uiuctml/GeospatialFM)
-[![Hugging Face](https://img.shields.io/badge/HuggingFace-Model-yellow?logo=huggingface&logoColor=yellow)](https://github.com/uiuctml/GeospatialFM)
 [![Hugging Face](https://img.shields.io/badge/HuggingFace-GFMBench-purple?logo=huggingface&logoColor=yellow)](https://huggingface.co/GFM-Bench)
 [![GitHub](https://img.shields.io/badge/GitHub-GFMBench-green?logo=github&logoColor=white)](https://github.com/uiuctml/GFM-Bench)
 
