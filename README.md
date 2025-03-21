@@ -14,14 +14,12 @@ This is the official repository for the paper
 "_Towards Scalable Foundation Model for Multi-modal and Hyperspectral Geospatial Data_".  
 
 Authors: 
-[Haozhe Si](https://ehzoahis.github.io/)<sup>\*</sup>,
+[Haozhe Si](https://ehzoahis.github.io/),
 Yuxuan Wan, 
 [Minh Do](https://minhdo.ece.illinois.edu/), 
 [Deepak Vasisht](https://deepakv.web.illinois.edu/), 
-[Han Zhao](https://hanzhaoml.github.io/)<sup>\*</sup>, 
+[Han Zhao](https://hanzhaoml.github.io/), 
 Hendrik F. Hamann.
-
-<sup>\*</sup> Address correspondence to: Haozhe Si (haozhes3@illinois.edu) and Han Zhao (hanzhao@illinois.edu).</sup>
 
 ## Overview
 This repository provides the implementation of **the Low-rank Efficient Spatial-Spectral Vision Transformer (LESS ViT)**. LESS ViT is a scalable, efficient vision transformer designed specifically for multi-modal and hyperspectral geospatial raster data.
@@ -82,3 +80,6 @@ If you found our project helpful, please cite our paper:
       url={https://arxiv.org/abs/2503.12843}, 
 }
 ```
+
+## Contact Authors
+[Haozhe S](haozhes3@illinois.edu), [Han Zhao](hanzhao@illinois.edu)
