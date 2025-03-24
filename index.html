@@ -32,7 +32,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
   <link rel="stylesheet" href="./static/css/index.css">
   <!-- <link rel="icon" href="./static/images/render-scene.svg"> -->
-  <link rel="icon" href="./static/logo/logo.svg", type="image/x-icon">
+  <link rel="icon" href="./static/logo/geospatial_logo.png", type="image/x-icon">
 
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
   <script defer src="./static/js/fontawesome.all.min.js"></script>
@@ -95,8 +95,9 @@
       </a> -->
 
       <div class="navbar-item has-dropdown is-hoverable">
-        <a class="navbar-link">
-          <img src="./static/logo/logo.svg" alt="My Logo" class="logo"> More Research
+        <a class="navbar-link" style="display: flex; align-items: center; gap: 8px;">
+          <img src="./static/logo/geospatial_logo.png" alt="My Logo" class="logo" style="width: 33px; height: auto;">
+          More Research
         </a>
         <div class="navbar-dropdown">
           <a class="navbar-item" href="https://github.com/uiuctml">
@@ -559,15 +560,14 @@
     </div> -->
 
     <br/>
-    <!--/ Dataset. -->
 
     <!-- Animation. -->
     <div class="columns is-centered">
       <div class="column is-full-width">
-        <h2 class="title is-3">Evaluation</h2>
+        <h2 class="title is-3">Quantitative Results</h2>
 
         <!-- Results on Synthetic Data. -->
-        <h3 class="title is-4">Quantitative Results</h3>
+        <h3 class="title is-4">Hyperspectral Optical Experiments</h3>
         <div class="content has-text-justified">
           <p>
             Our LESS ViT is pretrained on the SSL4EO-S12 dataset, which is a large-scale multi-modal geospatial dataset containing spatially and temporally aligned MSI with 13 channels and SAR imagery with 2 channels. We compare LESS ViT-Base with SoTA geospatial representation learning methods on our GFM-Bench.
@@ -576,40 +576,45 @@
         <div class="columns is-vcentered">
           <div class="column has-text-centered">
             <img src="static/images/main_table.png"
-                 alt="Quantitative results for synthetic data"
-                 style="width: 100%; height: auto;"/>
+                  alt="Quantitative results for synthetic data"
+                  style="width: 100%; height: auto;"/>
             <p>Quantitative results on seven datasets in the GFM-Bench under Fine-tuning (FT) and Linear Probing (LP).
             </p>
           </div>
         </div>
-        <!-- <div class="columns is-vcentered">
-          <div class="column has-text-centered">
-            <img src="./static/images/defocusnet.svg" width="600"
-                 alt="Qualitative results for synthetic data"/>
-            <p>Some examples of the framework outputs comparing with the state-of-the-art supervised works. The outputs are produced from the input focal stacks with 5 images. For the depth map, lighter colors indicate farther distances.
-            </p>
-          </div>
-        </div> -->
         <br/>
         <!--/ Results on Synthetic Data. -->
 
         <!-- Results on Real-shot Data. -->
-        <h3 class="title is-4">Visualization</h3>
+        <h3 class="title is-4">Cross-Satellite Generalization</h3>
         <div class="content has-text-justified">
           <p>
-            Here are some examples of the hyperspectral and multi-modal images reconstructed by Hyper-MAE. <em>OC</em> means optical channels, <em>RC</em> means radar channels. <em>MSI Recon</em>, <em>SAR Recon</em>, and <em>MM Recon</em> means reconstruction results from MSI, SAR, and multi-modal input respectively. The images bounded by the read-dashed boxes are the reconstructed masked channels. The ones bounded by the blue-dashed boxes are cross-modal reconstruction results.
+            To also demonstrate the flexibility of our LESS ViT architecture in handling satellites with varying channels counts without architecture modifications, we evaluate our model on the NLCD-L dataset from GFM-Bench and compare our model against two baseline architectures. We also analyze computational efficiency by comparing encoder parameter counts, floating point operations (FLOPs) during fine-tuning, and both fine-tuning and inference latency on NLCD-L (20 channels) and BigEarthNet (12 channels). Performance is reported as mIoU for NLCD-L and mAP for BigEarthNet. To enable direct comparison, we normalize both FLOPs and wall-clock times relative to LESS ViT's baseline measurements.
           </p>
         </div>
         <div class="columns is-vcentered">
           <div class="column has-text-centered">
-            <img src="./static/images/mae_recon.png" width="600"
-                 alt="PCA-Vis"
-                 style="width: 100%; height: auto;"/>
+            <img src="./static/images/results2.png" width="600"
+                  alt="PCA-Vis"
+                  style="width: 100%; height: auto;"/>
             <p>
-              Visualization of top PCA components on BigEarthNet.
+              Cross Satellite Generalization to Landsat and Model Efficiency.
             </p>
           </div>
         </div>
+
+      </div>
+    </div>
+      
+    <br/>
+
+    <!-- Animation. -->
+    <div class="columns is-centered">
+      <div class="column is-full-width">
+        <h2 class="title is-3">Qualitative Evaluation</h2>
+
+        <!-- Results on Real-shot Data. -->
+        <h3 class="title is-4">Visualization</h3>
         <div class="content has-text-justified">
           <p>
             We also perform principal component analysis (PCA) on the extracted patch features of each modal input. The top three principal components are visualized using three distinct colors. We interpolate the resulting image back to the original input size for better interpretation.
@@ -625,62 +630,14 @@
             </p>
           </div>
         </div>
-        <!-- <div class="columns is-vcentered">
-          <div class="column has-text-centered">
-            <img src="./static/images/nyuv2.svg" width="600"
-                 alt="Qualitative results for nyuv2"/>
-            <p>Some examples of the framework outputs. The outputs are produced from the input focal stacks with 5 images. For the depth map, lighter colors indicate farther distances.
-            </p>
-          </div>
-        </div> -->
-
-        <!-- <h3 class="title is-4">Results on Real Focal Stack Dataset</h3>
         <div class="content has-text-justified">
           <p>
-            To evaluate our model on real focal stacks, qualitative experiments are performed on the Mobile Depth dataset. We compare our model with MobileDFF AiFDepthNet, DDF-DFV/FV and the finetuned AiFDepthNet using AIF ground-truth. While most of the deep methods give reasonable depth estimation, we claim that our framework is more advantageous since it is fully self-supervised.
+            There are three key observations. First, the multi-modal patch features are mainly influenced by optical features, which is expected given the higher number of optical channels compared to radar channels. Second, for both the optical and multi-modal patch features, the principal components of similar land cover types have consistent color patterns. For instance, in optical feature visualizations, water bodies (Row 1) are highlighted in green, woodlands (Row 2) are represented by purple, and farmlands (Row 3) are primarily marked in yellow. Third, despite the presence of salt-and-pepper noise, the radar patch features demonstrate a correspondence between surfaces with similar textures. Smooth surfaces (water) tend to be marked in pink, while rough surfaces (woodlands and farmlands) are generally highlighted in green.
           </p>
         </div>
-
-        <div class="columns is-vcentered">
-          <div class="column has-text-centered">
-            <img src="./static/images/mobiledfd.svg"
-                 alt="Qualitative results for mobiledfd"/>
-            <p>Qualitative depth estimation and AIF prediction results on the Mobile Depth dataset. The warmer color indicates a larger depth. Note that AiFDepthNet* is the finetuned model using AIF information.
-            </p>
-          </div>
-        </div>
-        <br/> -->
 
       </div>
     </div>
-    <!--/ Animation. -->
-
-    <!-- Concurrent Work. -->
-    <!-- <div class="columns is-centered">
-      <div class="column is-full-width">
-        <h2 class="title is-3">Related Links</h2>
-
-        <div class="content has-text-justified">
-          <p>
-            There's a lot of excellent work that was introduced around the same time as ours.
-          </p>
-          <p>
-            <a href="https://arxiv.org/abs/2104.09125">Progressive Encoding for Neural Optimization</a> introduces an idea similar to our windowed position encoding for coarse-to-fine optimization.
-          </p>
-          <p>
-            <a href="https://www.albertpumarola.com/research/D-NeRF/index.html">D-NeRF</a> and <a href="https://gvv.mpi-inf.mpg.de/projects/nonrigid_nerf/">NR-NeRF</a>
-            both use deformation fields to model non-rigid scenes.
-          </p>
-          <p>
-            Some works model videos with a NeRF by directly modulating the density, such as <a href="https://video-nerf.github.io/">Video-NeRF</a>, <a href="https://www.cs.cornell.edu/~zl548/NSFF/">NSFF</a>, and <a href="https://neural-3d-video.github.io/">DyNeRF</a>
-          </p>
-          <p>
-            There are probably many more by the time you are reading this. Check out <a href="https://dellaert.github.io/NeRF/">Frank Dellart's survey on recent NeRF papers</a>, and <a href="https://github.com/yenchenlin/awesome-NeRF">Yen-Chen Lin's curated list of NeRF papers</a>.
-          </p>
-        </div>
-      </div>
-    </div> -->
-    <!--/ Concurrent Work. -->
 
     </div>
 </section>
