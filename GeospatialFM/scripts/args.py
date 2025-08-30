@@ -37,6 +37,8 @@ def parse_args():
     parser.add_argument("--attention_radius", type=int, default=640, help="Attention radius for perception field mask")
     parser.add_argument("--loss_type", type=str, default="mse", help="Type of loss function")
     parser.add_argument("--random_crop", action="store_true", help="Use random crop")
+    parser.add_argument("--use_rope_embed", action="store_true", help="Use RoPe positional embedding")
+    parser.add_argument("--rope_embed_base", type=float, default=100.0, help="Base value for RoPe positional embedding")
     
     # Task Model arguments
     parser.add_argument("--task_type", type=str, choices=["classification", "multilabel", "segmentation", "Pretraining"], default="Pretraining", help="Task type")

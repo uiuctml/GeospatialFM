@@ -6,7 +6,7 @@ from typing import Optional, Tuple, Dict, Any, List
 from functools import partial
 import numpy as np
 from .hyperspectral_patch_embed import HyperspectralPatchEmbed
-from .pos_chan_embed import PositionalChannelEmbedding
+from .pos_chan_embed import PositionalChannelEmbedding, RopePositionChannelEmbedding
 from .low_rank_attention import LowRankBlock, get_perception_field_mask
 from timm.models.vision_transformer import Block
 import torch.nn.functional as F
@@ -43,6 +43,8 @@ class SpatialSpectralLowRankViTConfig(PretrainedConfig):
         norm_pix_loss: bool = True,
         use_perception_field_mask: bool = False,
         attention_radius: int = 640,
+        use_rope_embed: bool = False,
+        rope_embed_base: float = 100.0,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -83,6 +85,10 @@ class SpatialSpectralLowRankViTConfig(PretrainedConfig):
         
         # Positional channel embedding residual
         self.pos_chan_embed_residual = pos_chan_embed_residual
+
+        # RoPe embedding
+        self.use_rope_embed = use_rope_embed
+        self.rope_embed_base = rope_embed_base
 
     @property
     def encoder_config(self):
@@ -125,7 +131,16 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         self.cls_token = nn.Parameter(torch.zeros(1, 1, config.embed_dim))
         self.spatial_cls_token = nn.Parameter(torch.zeros(1, 1, config.embed_dim))
         self.channel_cls_token = nn.Parameter(torch.zeros(1, 1, config.embed_dim))
-        self.pos_chan_embed = PositionalChannelEmbedding(config.embed_dim)
+        if not config.use_rope_embed:
+            self.pos_chan_embed = PositionalChannelEmbedding(config.embed_dim)
+        else:
+            self.pos_chan_embed = RopePositionChannelEmbedding(
+                # embed_dim=config.embed_dim,
+                spatial_dim=config.spatial_dim,
+                channel_dim=config.channel_dim,
+                num_heads=config.num_heads,
+                base=config.rope_embed_base if hasattr(config, 'rope_embed_base') else 100.0
+            )
         
         if config.drop_path_uniform is True:
             dpr = [config.drop_path_rate] * config.depth
@@ -148,6 +163,7 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
                 init_values=config.init_values,
                 norm_layer=norm_layer,
                 rank=config.rank,
+                use_rope_emebd=config.use_rope_embed,
             )
             for i in range(config.depth)
         ])
@@ -165,6 +181,9 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         
         # wr = self.radar_patch_embed.proj.weight.data
         # torch.nn.init.xavier_uniform_(wr.view([wr.shape[0], -1]))
+        if self.config.use_rope_embed:
+            assert isinstance(self.pos_chan_embed, RopePositionChannelEmbedding)
+            self.pos_chan_embed._init_weights()
 
         torch.nn.init.normal_(self.cls_token, std=.02)
         torch.nn.init.normal_(self.spatial_cls_token, std=.02)
@@ -218,6 +237,7 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
             perception_field_mask = None
         
         B, C, HW, D = x.shape
+        H = W = int(HW ** 0.5)
         # Create cls tokens for both Cin and HW dimensions
         channel_cls_token = self.channel_cls_token.expand(B, 1, HW, D)
         spatial_cls_token = self.spatial_cls_token.expand(B, C, 1, D)
@@ -232,27 +252,33 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         hidden_states.append(x.detach().cpu())
         
         # Add positional and channel embedding
-        pos_chan_embed = self.pos_chan_embed(x[:, 1:, 1:, :], channel_ids=channel_ids, spatial_resolution=spatial_resolution, cls_token=True).to(x.device, dtype=x.dtype)
-        pos_chan_embed = pos_chan_embed.repeat(B, 1, 1, 1)
+        if not self.config.use_rope_embed:
+            pos_chan_embed = self.pos_chan_embed(x[:, 1:, 1:, :], channel_ids=channel_ids, spatial_resolution=spatial_resolution, cls_token=True).to(x.device, dtype=x.dtype)
+            pos_chan_embed = pos_chan_embed.repeat(B, 1, 1, 1)
+        else:
+            pos_chan_embed = self.pos_chan_embed(H=H, W=W, C=C)
+            # below is current walkaround to make RoPE compatibale with masking
+            pos_chan_embed = [embed.repeat(B, 1, 1) for embed in pos_chan_embed]
         
         # Apply masks after positional embedding
         if self.training and self.config.pretrain:
             # mask the channel
             x_ = x[:, 1:, :, :] # B C HW+1 D
-            pos_chan_embed_ = pos_chan_embed[:, 1:, :, :]
-            x_, pos_chan_embed_, channel_mask, channel_ids_restore = self.random_channel_masking(x_, pos_chan_embedding=pos_chan_embed_, channel_mask_ratio=channel_mask_ratio) # B N HW+1 D, B C, B C
+            pos_chan_embed_ = pos_chan_embed[:, 1:, :, :] if not self.config.use_rope_embed else pos_chan_embed
+            x_, pos_chan_embed_, channel_mask, channel_ids_restore = self.random_channel_masking(x_, pos_chan_embedding=pos_chan_embed_, channel_mask_ratio=channel_mask_ratio, use_rope_embed=self.config.use_rope_embed) # B N HW+1 D, B C, B C
             x = torch.cat((x[:, :1, :, :], x_), dim=1) # B N+1 HW+1 D
-            pos_chan_embed = torch.cat((pos_chan_embed[:, :1, :, :], pos_chan_embed_), dim=1) # B N+1 HW+1 D
+            pos_chan_embed = torch.cat((pos_chan_embed[:, :1, :, :], pos_chan_embed_), dim=1) if not self.config.use_rope_embed else pos_chan_embed_ # B N+1 HW+1 D
             # mask the position
             x_ = x[:, :, 1:, :] # B N+1 HW D
-            pos_chan_embed_ = pos_chan_embed[:, :, 1:, :]
-            x_, pos_chan_embed_, pos_mask, pos_ids_restore, perception_field_mask = self.random_pos_masking(x_, pos_chan_embedding=pos_chan_embed_, mask_ratio=mask_ratio, perception_field_mask=perception_field_mask) # B N+1 L D, B HW, B HW, L L
+            pos_chan_embed_ = pos_chan_embed[:, :, 1:, :] if not self.config.use_rope_embed else pos_chan_embed
+            x_, pos_chan_embed_, pos_mask, pos_ids_restore, perception_field_mask = self.random_pos_masking(x_, pos_chan_embedding=pos_chan_embed_, mask_ratio=mask_ratio, perception_field_mask=perception_field_mask, use_rope_embed=self.config.use_rope_embed) # B N+1 L D, B HW, B HW, L L
             x = torch.cat((x[:, :, :1, :], x_), dim=2) # B N+1 L+1 D
-            pos_chan_embed = torch.cat((pos_chan_embed[:, :, :1, :], pos_chan_embed_), dim=2) # B N+1 L+1 D
+            pos_chan_embed = torch.cat((pos_chan_embed[:, :, :1, :], pos_chan_embed_), dim=2) if not self.config.use_rope_embed else pos_chan_embed_ # B N+1 L+1 D
         else:
             channel_mask = pos_mask = channel_ids_restore = pos_ids_restore = None
             
-        x = x + pos_chan_embed # B N+1 L+1 D
+        x = x + pos_chan_embed if not self.config.use_rope_embed else x # B N+1 L+1 D
+        pos_chan_embed = tuple(pos_chan_embed) if self.config.use_rope_embed else pos_chan_embed
             
         if perception_field_mask is not None:
             # append cls token
@@ -267,7 +293,10 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         
         # Apply transformer blocks
         for i,blk in enumerate(self.blocks):
-            pos_chan_embedding = pos_chan_embed*2**(-i) if self.config.pos_chan_embed_residual else pos_chan_embed
+            if not self.config.use_rope_embed:
+                pos_chan_embedding = pos_chan_embed*2**(-i) if self.config.pos_chan_embed_residual else pos_chan_embed
+            else:
+                pos_chan_embedding = pos_chan_embed
             x = blk(x, spatial_mask=perception_field_mask, pos_chan_embedding=pos_chan_embedding)
             hidden_states.append(x.detach().cpu())
 
@@ -296,7 +325,7 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         elif y is not None:
             return y
         
-    def random_pos_masking(self, x, pos_chan_embedding=None, mask_ratio=0.75, batch_wise_mask=False, perception_field_mask=None):
+    def random_pos_masking(self, x, pos_chan_embedding=None, mask_ratio=0.75, batch_wise_mask=False, perception_field_mask=None, use_rope_embed=False):
         """
         Perform per-sample random masking by per-sample shuffling.
         Per-sample shuffling is done by argsort random noise.
@@ -333,9 +362,14 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, C, D)) # B, L, C, D
         
         if pos_chan_embedding is not None:
-            pos_chan_embedding = pos_chan_embedding.permute(0, 2, 1, 3) # B, HW, C, D
-            pos_chan_embed_masked = torch.gather(pos_chan_embedding, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, C, D)) # B, L, C, D
-            pos_chan_embed_masked = pos_chan_embed_masked.permute(0, 2, 1, 3) # B, C, L, D
+            if use_rope_embed:
+                pos_chan_embedding[0] = torch.gather(pos_chan_embedding[0], dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, pos_chan_embedding[0].shape[-1])) # B, L, D
+                pos_chan_embedding[1] = torch.gather(pos_chan_embedding[1], dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, pos_chan_embedding[1].shape[-1])) # B, L, D
+                pos_chan_embed_masked = pos_chan_embedding
+            else:
+                pos_chan_embedding = pos_chan_embedding.permute(0, 2, 1, 3) # B, HW, C, D
+                pos_chan_embed_masked = torch.gather(pos_chan_embedding, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, C, D)) # B, L, C, D
+                pos_chan_embed_masked = pos_chan_embed_masked.permute(0, 2, 1, 3) # B, C, L, D
         
         if perception_field_mask is not None:
             # remove the corresponding ids in perception_field_mask
@@ -355,7 +389,7 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         else:
             return x_masked, mask, ids_restore, perception_field_mask
     
-    def random_channel_masking(self, x, pos_chan_embedding=None, channel_mask_ratio=0.5, batch_wise_mask=False):
+    def random_channel_masking(self, x, pos_chan_embedding=None, channel_mask_ratio=0.5, batch_wise_mask=False, use_rope_embed=False):
         """
         Perform per-sample random masking by per-sample shuffling.
         Per-sample shuffling is done by argsort random noise.
@@ -391,8 +425,13 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         ids_keep = ids_shuffle[:, :len_keep]
         x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, HW, D)) # B, N, HW, D
         if pos_chan_embedding is not None:
-            pos_chan_embed_masked = torch.gather(pos_chan_embedding, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, HW, D)) # B, N, HW, D
-        
+            if use_rope_embed:
+                pos_chan_embedding[2] = torch.gather(pos_chan_embedding[2], dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, pos_chan_embedding[2].shape[-1])) # B, L, D
+                pos_chan_embedding[3] = torch.gather(pos_chan_embedding[3], dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, pos_chan_embedding[3].shape[-1])) # B, L, D
+                pos_chan_embed_masked = pos_chan_embedding
+            else:
+                pos_chan_embed_masked = torch.gather(pos_chan_embedding, dim=1, index=ids_keep.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, HW, D)) # B, N, HW, D
+
         # generate the binary mask: 0 is keep, 1 is remove
         mask = torch.ones([B, C], device=x.device) # B C
         mask[:, :len_keep] = 0

@@ -10,8 +10,11 @@
 from typing import Any
 import numpy as np
 
+import math
 import torch
 import torch.nn as nn
+from torch import Tensor, nn
+from typing import Literal
 
 
 class PositionalChannelEmbedding():
@@ -180,3 +183,178 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
 
     emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
     return emb
+
+
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+#
+# This software may be used and distributed in accordance with
+# the terms of the DINOv3 License Agreement.
+# --------------------------------------------------------
+# RoPE positional embedding with no mixing of coordinates (axial) and no learnable weights
+# Supports two parametrizations of the rope parameters: either using `base` or `min_period` and `max_period`.
+class RopePositionChannelEmbedding(nn.Module):
+    def __init__(
+        self,
+        # embed_dim: int,
+        spatial_dim: int,
+        channel_dim: int,
+        *,
+        num_heads: int,
+        base: float | None = 100.0,
+        min_period: float | None = None,
+        max_period: float | None = None,
+        normalize_coords: Literal["min", "max", "separate"] = "separate",
+        shift_coords: float | None = None,
+        jitter_coords: float | None = None,
+        rescale_coords: float | None = None,
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
+    ):
+        super().__init__()
+        assert spatial_dim % (4 * num_heads) == 0 and spatial_dim % (4 * num_heads) == 0
+        both_periods = min_period is not None and max_period is not None
+        if (base is None and not both_periods) or (base is not None and both_periods):
+            raise ValueError("Either `base` or `min_period`+`max_period` must be provided.")
+
+        D_head_hw = spatial_dim // num_heads
+        D_head_c = channel_dim // num_heads
+        self.base = base
+        self.min_period = min_period
+        self.max_period = max_period
+        self.D_head_hw = D_head_hw
+        self.D_head_c = D_head_c
+        self.normalize_coords = normalize_coords
+        self.shift_coords = shift_coords
+        self.jitter_coords = jitter_coords
+        self.rescale_coords = rescale_coords
+
+        # Needs persistent=True because we do teacher.load_state_dict(student.state_dict()) to initialize the teacher
+        self.dtype = dtype  # Don't rely on self.periods.dtype
+        self.register_buffer(
+            "periods_hw",
+            torch.empty(D_head_hw // 4, device=device, dtype=dtype),
+            persistent=True,
+        )
+        self.register_buffer(
+            "periods_c",
+            torch.empty(D_head_c // 2, device=device, dtype=dtype),
+            persistent=True,
+        )
+        self._init_weights()
+
+    def forward(self, *, H: int, W: int, C: int) -> list[Tensor, ...]:
+        device = self.periods_hw.device
+        dtype = self.dtype
+        dd = {"device": device, "dtype": dtype}
+
+        # Prepare coords in range [-1, +1]
+        if self.normalize_coords == "max":
+            max_HW = max(H, W)
+            coords_h = torch.arange(0.5, H, **dd) / max_HW  # [H]
+            coords_w = torch.arange(0.5, W, **dd) / max_HW  # [W]
+        elif self.normalize_coords == "min":
+            min_HW = min(H, W)
+            coords_h = torch.arange(0.5, H, **dd) / min_HW  # [H]
+            coords_w = torch.arange(0.5, W, **dd) / min_HW  # [W]
+        elif self.normalize_coords == "separate":
+            coords_h = torch.arange(0.5, H, **dd) / H  # [H]
+            coords_w = torch.arange(0.5, W, **dd) / W  # [W]
+        else:
+            raise ValueError(f"Unknown normalize_coords: {self.normalize_coords}")
+        coords_hw = torch.stack(torch.meshgrid(coords_h, coords_w, indexing="ij"), dim=-1)  # [H, W, 2]
+        coords_hw = coords_hw.flatten(0, 1)  # [HW, 2]
+        coords_hw = 2.0 * coords_hw - 1.0  # Shift range [0, 1] to [-1, +1]
+
+        coords_c = torch.arange(0.5, C, **dd) / C # [C]
+        coords_c = 2.0 * coords_c - 1.0
+
+        # Shift coords by adding a uniform value in [-shift, shift]
+        if self.training and self.shift_coords is not None:
+            shift_hw = torch.empty(2, **dd).uniform_(-self.shift_coords, self.shift_coords)
+            coords_hw += shift_hw[None, :]
+            
+            shift_c = torch.empty(1, **dd).uniform_(-self.shift_coords, self.shift_coords)
+            coords_c += shift_c
+
+        # Jitter coords by multiplying the range [-1, 1] by a log-uniform value in [1/jitter, jitter]
+        if self.training and self.jitter_coords is not None:
+            jitter_max = np.log(self.jitter_coords)
+            jitter_min = -jitter_max
+            jitter_hw = torch.empty(2, **dd).uniform_(jitter_min, jitter_max).exp()
+            coords_hw *= jitter_hw[None, :]
+
+            jitter_c = torch.empty(1, **dd).uniform_(jitter_min, jitter_max).exp()
+            coords_c *= jitter_c
+
+        # Rescale coords by multiplying the range [-1, 1] by a log-uniform value in [1/rescale, rescale]
+        if self.training and self.rescale_coords is not None:
+            rescale_max = np.log(self.rescale_coords)
+            rescale_min = -rescale_max
+            rescale = torch.empty(1, **dd).uniform_(rescale_min, rescale_max).exp()
+            coords_hw *= rescale_hw
+            coords_c *= rescale_c
+
+        # Prepare angles and sin/cos
+        angles_hw = 2 * math.pi * coords_hw[:, :, None] / self.periods_hw[None, None, :]  # [HW, 2, D//4]
+        angles_hw = angles_hw.flatten(1, 2)  # [HW, D//2]
+        angles_hw = angles_hw.tile(2)  # [HW, D]
+        cos_hw = torch.cos(angles_hw)  # [HW, D]
+        sin_hw = torch.sin(angles_hw)  # [HW, D]
+
+        angles_c = 2 * math.pi * coords_c[:, None] / self.periods_c[None, :]  # [C, D//2]
+        angles_c = angles_c.tile(2)  # [C, D]
+        cos_c = torch.cos(angles_c)  # [C, D]
+        sin_c = torch.sin(angles_c)  # [C, D]
+
+        # rope = {
+        #     'spatial_rope': (sin_hw, cos_hw), # 2 * [HW, D]
+        #     'spectral_rope': (sin_c, cos_c) # 2 * [C, D]
+        # }
+        # return (sin, cos)  # 2 * [HW, D]
+        return [sin_hw, cos_hw, sin_c, cos_c]
+
+    def _init_weights(self):
+        device = self.periods_hw.device
+        dtype = self.dtype
+        if self.base is not None:
+            periods_hw = self.base ** (
+                2 * torch.arange(self.D_head_hw // 4, device=device, dtype=dtype) / (self.D_head_hw // 2)
+            )  # [D//4]
+        else:
+            base = self.max_period / self.min_period
+            exponents = torch.linspace(0, 1, self.D_head_hw // 4, device=device, dtype=dtype)  # [D//4] range [0, 1]
+            periods_hw = base**exponents  # range [1, max_period / min_period]
+            periods_hw = periods_hw / base  # range [min_period / max_period, 1]
+            periods_hw = periods_hw * self.max_period  # range [min_period, max_period]
+
+        if self.base is not None:
+            periods_c = self.base ** (
+                2 * torch.arange(self.D_head_c // 2, device=device, dtype=dtype) / (self.D_head_c)
+            )  # [D//2]
+        else:
+            base = self.max_period / self.min_period
+            exponents = torch.linspace(0, 1, self.D_head_c // 2, device=device, dtype=dtype)
+            periods_c = base**exponents
+            periods_c = periods_c / base
+            periods_c = periods_c * self.max_period
+
+        self.periods_hw.data = periods_hw
+        self.periods_c.data = periods_c
+
+# RoPE-related functions:
+def rope_rotate_half(x: Tensor) -> Tensor:
+    # x:   [ x0  x1  x2  x3  x4  x5]
+    # out: [-x3 -x4 -x5  x0  x1  x2]
+    x1, x2 = x.chunk(2, dim=-1)
+    return torch.cat([-x2, x1], dim=-1)
+
+
+def rope_apply(x: Tensor, sin: Tensor, cos: Tensor) -> Tensor:
+    # x:   [..., D], eg [x0,     x1,   x2,   x3,   x4,   x5]
+    # sin: [..., D], eg [sin0, sin1, sin2, sin0, sin1, sin2]
+    # cos: [..., D], eg [cos0, cos1, cos2, cos0, cos1, cos2]
+    x_ = x[:, :, :, 1:, :]
+    print(x_.shape, cos.unsqueeze(1).unsqueeze(1).shape)
+    x_ = (x_ * cos.unsqueeze(1).unsqueeze(1)) + (rope_rotate_half(x_) * sin.unsqueeze(1).unsqueeze(1))
+    x = torch.cat((x[:, :, :, :1, :], x_), dim=3)
+    return x

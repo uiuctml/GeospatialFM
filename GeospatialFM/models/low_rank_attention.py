@@ -7,6 +7,9 @@ import torch.utils.checkpoint
 
 from timm.layers import Mlp, DropPath, use_fused_attn
 from itertools import product
+from typing import Optional
+
+from .pos_chan_embed import rope_apply
 import math
 
 __all__ = ['AttentionPool', 'AttentionBranch', 'LowRankAttention', 'LayerScale', 'LowRankBlock']
@@ -219,12 +222,33 @@ class AttentionBranch(nn.Module):
         self.k_norm = norm_layer(head_dim) if qk_norm else nn.Identity()
         self.attn_drop = nn.Dropout(attn_drop)
         self.rank = rank
+    
+    def apply_rope(self, q: torch.Tensor, k: torch.Tensor, sin: Optional[torch.Tensor], cos: Optional[torch.Tensor]):
+        if sin is None and cos is None:
+            return q, k
         
-    def forward(self, x: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
+        assert sin is not None and cos is not None, "Both sin and cos must be provided for RoPE."
+        q_dtype = q.dtype
+        k_dtype = k.dtype
+        rope_dtype = sin.dtype
+
+        q = q.to(dtype=rope_dtype)
+        k = k.to(dtype=rope_dtype)
+
+        q = rope_apply(q, sin, cos)
+        k = rope_apply(k, sin, cos)
+
+        q = q.to(dtype=q_dtype)
+        k = k.to(dtype=k_dtype)
+
+        return q, k
+        
+    def forward(self, x: torch.Tensor, mask: torch.Tensor = None, sin: torch.Tensor = None, cos: torch.Tensor = None) -> torch.Tensor:
         B, N, D = x.shape
         v = self.v(x).reshape(B, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3) # B, num_heads, N, D
         qk = self.qk(x).reshape(B, N, 2, self.num_heads, self.rank, self.head_dim).permute(2, 0, 4, 3, 1, 5) # 2, B, rank, num_heads, N, head_dim
         q, k = qk.unbind(0)
+        q, k = self.apply_rope(q, k, sin, cos)
         q, k = self.q_norm(q), self.k_norm(k) #B, rank, num_heads, N, head_dim
         v = v.unsqueeze(1).expand(-1, self.rank, -1, -1, -1) # B, rank, num_heads, N, D
     
@@ -304,12 +328,14 @@ class LowRankAttention(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x_c: torch.Tensor, x_s: torch.Tensor, spatial_mask: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, x_c: torch.Tensor, x_s: torch.Tensor, spatial_mask: torch.Tensor = None, rope: tuple = None) -> torch.Tensor:
         B, C, D = x_c.shape
         HW = x_s.shape[1]
+
+        sin_hw, cos_hw, sin_c, cos_c = rope if rope is not None else (None, None, None, None)
         
-        xc = self.channel_branch(x_c)  # B, rank, num_heads, C, c_head_dim
-        xs = self.spatial_branch(x_s, spatial_mask)  # B, rank, num_heads, HW, s_head_dim
+        xc = self.channel_branch(x_c, sin=sin_c, cos=cos_c)  # B, rank, num_heads, C, c_head_dim
+        xs = self.spatial_branch(x_s, spatial_mask, sin=sin_hw, cos=cos_hw)  # B, rank, num_heads, HW, s_head_dim
         x = torch.einsum('...ca,...nb->...cnab', xc, xs).flatten(-2) # B, rank, num_heads, C, HW, D
         x = x.sum(dim=1) # B, num_heads, C, HW, D
         x = x.permute(0, 2, 3, 1, 4).reshape(B, C, HW, -1) # B, C, HW, D
@@ -350,6 +376,7 @@ class LowRankBlock(nn.Module):
             mlp_layer: nn.Module = Mlp,
             skip_pool: bool = False,
             rank: int = 1,
+            use_rope_emebd: bool = False,
     ) -> None:
         super().__init__()
         self.norm1 = norm_layer(dim)
@@ -395,8 +422,12 @@ class LowRankBlock(nn.Module):
         self.ls2 = LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
         self.drop_path2 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
+        self.use_rope_emebd = use_rope_emebd
+
     def forward(self, x: torch.Tensor, spatial_mask: torch.Tensor = None, pos_chan_embedding: torch.Tensor = None) -> torch.Tensor:
+        rope = pos_chan_embedding if self.use_rope_emebd else None
+
         x_c, x_s, _ = self.low_dim_pool(self.norm1(x), pos_chan_embedding)
-        x = x + self.drop_path1(self.ls1(self.attn(self.channel_norm(x_c), self.spatial_norm(x_s), spatial_mask)))
+        x = x + self.drop_path1(self.ls1(self.attn(self.channel_norm(x_c), self.spatial_norm(x_s), spatial_mask, rope)))
         x = x + self.drop_path2(self.ls2(self.mlp(self.norm2(x))))
         return x
