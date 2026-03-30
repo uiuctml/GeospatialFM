@@ -657,10 +657,13 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
         x = self.decoder_embed(x)  # B N+1 L+1 D
         # x = F.normalize(x, dim=-1)
 
-        channel_wv = torch.cat((optical_channel_wv, radar_channel_wv), dim=1)  # 1 C = Co + Cr or B C
-        
+        if radar_channel_wv is not None:
+            channel_wv = torch.cat((optical_channel_wv, radar_channel_wv), dim=1)  # 1 C = Co + Cr or B C
+            n_radar_channels = radar_channel_wv.shape[1]
+        else:
+            channel_wv = optical_channel_wv
+            n_radar_channels = None
         n_optical_channels = optical_channel_wv.shape[1]
-        n_radar_channels = radar_channel_wv.shape[1]
         
         # remove cls token
         B, N, L, D = x[:, 1:, 1:, :].shape
@@ -683,7 +686,7 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
         x_ = torch.gather(x_, dim=1, index=channel_ids_restore.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, HW + 1, D))  # unshuffle, B C HW+1 D
         x = torch.cat([x[:, :1], x_], dim=1)  # B C+1 HW+1 D, add cls token
         
-        if C == optical_channel_wv.shape[1]: 
+        if n_radar_channels is not None and C == optical_channel_wv.shape[1]: 
             # missing radar channels from encoder
             n_radar_channels = radar_channel_wv.shape[1]
             # extend x to C+n_radar_channels to the end
@@ -691,7 +694,7 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
             mask_tokens = self.mask_token.expand(B, n_radar_channels, HW, -1)  # B C HW D
             mask_tokens = torch.cat([spatial_mask_token, mask_tokens], dim=2)
             x = torch.cat([x, mask_tokens], dim=1)
-        elif C == radar_channel_wv.shape[1]:
+        elif n_optical_channels is not None and C == radar_channel_wv.shape[1]:
             # missing optical channels from encoder
             n_optical_channels = optical_channel_wv.shape[1]
             # extend x to C+n_optical_channels to the front behind the cls token

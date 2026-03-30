@@ -354,7 +354,7 @@ def rope_apply(x: Tensor, sin: Tensor, cos: Tensor) -> Tensor:
     # sin: [..., D], eg [sin0, sin1, sin2, sin0, sin1, sin2]
     # cos: [..., D], eg [cos0, cos1, cos2, cos0, cos1, cos2]
     x_ = x[:, :, :, 1:, :]
-    print(x_.shape, cos.unsqueeze(1).unsqueeze(1).shape)
+    # print(x_.shape, cos.unsqueeze(1).unsqueeze(1).shape)
     x_ = (x_ * cos.unsqueeze(1).unsqueeze(1)) + (rope_rotate_half(x_) * sin.unsqueeze(1).unsqueeze(1))
     x = torch.cat((x[:, :, :, :1, :], x_), dim=3)
     return x

@@ -5,6 +5,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="GeospatialFM Training Arguments")
 
     # Dataset arguments
+    parser.add_argument("--dataset_name", type=str, choices=["ssl4eo", "enmap"], help="Dataset to run")
     parser.add_argument("--data_dir", type=str, required=True, help="Path to the SSL4EO dataset")
     parser.add_argument("--dataloader_num_workers", type=int, default=4, help="Number of subprocesses to use for data loading")
     parser.add_argument("--dataloader_pin_memory", action="store_true", help="Whether to pin memory for data loading")
@@ -39,7 +40,8 @@ def parse_args():
     parser.add_argument("--random_crop", action="store_true", help="Use random crop")
     parser.add_argument("--use_rope_embed", action="store_true", help="Use RoPe positional embedding")
     parser.add_argument("--rope_embed_base", type=float, default=100.0, help="Base value for RoPe positional embedding")
-    
+    parser.add_argument("--channel_dropout", type=float, nargs='+', default=None, help="Channel dropout rate for training")
+
     # Task Model arguments
     parser.add_argument("--task_type", type=str, choices=["classification", "multilabel", "segmentation", "Pretraining"], default="Pretraining", help="Task type")
     parser.add_argument("--num_experts", type=int, default=None, help="Number of experts, -1 for all channels, None for CLS token only")

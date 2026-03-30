@@ -4,6 +4,50 @@ import numpy as np
 from functools import partial
 from .transforms import ResizeAll
 
+def unimodal_collate_fn(batch, modal='optical', transform=None, random_crop=False, scale=None, crop_size=None, normalize_wv=False, wv_max=2365.20, wv_min=447.17):
+    data_list = []
+    channel_wv = None
+    spatial_resolution = None
+
+    if random_crop:
+        crop_scale = np.random.choice([1, 2])
+        crop_size = crop_size // crop_scale
+        scale = scale * crop_scale
+    
+    for example in batch:
+        assert modal in example, f"{modal} is not available in the example"
+        example[modal] = torch.tensor(example[modal])
+        if normalize_wv:
+            example[f'{modal}_channel_wv'] = ((torch.tensor(example[f'{modal}_channel_wv']) - wv_min) / (wv_max - wv_min)).unsqueeze(0)
+        else:
+            example[f'{modal}_channel_wv'] = torch.tensor(example[f'{modal}_channel_wv']).unsqueeze(0)
+        # example[f'{modal}_channel_wv'] = torch.tensor(example[f'{modal}_channel_wv']).unsqueeze(0)
+
+        if transform is not None:
+            example = transform(example, crop_size=crop_size, scale=scale)
+        
+        if channel_wv is None:
+            channel_wv = example[f'{modal}_channel_wv']
+        else:
+            # ensure the same channel wv across the batch
+            assert (example[f'{modal}_channel_wv'] == channel_wv).all()
+        
+        if spatial_resolution is None:
+            spatial_resolution = example['spatial_resolution']
+        else:
+            assert example['spatial_resolution'] == spatial_resolution
+        
+        data_list.append(example[modal])
+    
+    assert channel_wv is not None
+    assert spatial_resolution is not None
+
+    return {
+        modal: torch.stack(data_list),
+        f'{modal}_channel_wv': channel_wv,
+        'spatial_resolution': spatial_resolution
+    }
+
 # collate function for dataloader of multimodal data
 def multimodal_collate_fn(batch, transform=None, random_crop=False, scale=None, crop_size=None):
     optical_list, radar_list = [], []

@@ -36,6 +36,7 @@ class LESSViTEncoderConfig(PretrainedConfig):
         num_experts: int = None,
         use_moe: bool = False,
         topk: int = None,
+        channel_dropout: Optional[List[float]] = None,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -68,6 +69,8 @@ class LESSViTEncoderConfig(PretrainedConfig):
         
         # Positional channel embedding residual
         self.pos_chan_embed_residual = pos_chan_embed_residual
+
+        self.channel_dropout = channel_dropout
 
 class LESSWithProjectionConfig(LESSViTEncoderConfig):
     model_type = "less_with_projection"

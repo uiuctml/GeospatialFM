@@ -1,6 +1,7 @@
 import os
 import logging
 import math
+import numpy as np
 from functools import partial
 
 from accelerate.logging import get_logger
@@ -8,11 +9,12 @@ from transformers import is_wandb_available
 from transformers import TrainingArguments
 
 from GeospatialFM.datasets.ssl4eo import get_ssl4eo_metadata, SSL4EODataset
-from GeospatialFM.data_process import pretrain_transform, multimodal_collate_fn
+from GeospatialFM.datasets.enmap import get_enmap_metadata, SpectralEarthDataset
+from GeospatialFM.data_process import pretrain_transform, multimodal_collate_fn, unimodal_collate_fn
 from GeospatialFM.models import SpatialSpectralLowRankViTConfig, SpatialSpectralMAEViT
 from GeospatialFM.scripts.trainer import MAETrainer
 from GeospatialFM.scripts.args import parse_args
-from GeospatialFM.scripts.utils import calculate_modal_loss, get_lasted_checkpoint
+from GeospatialFM.scripts.utils import calculate_modal_loss, calculate_unimodal_loss, get_lasted_checkpoint
 
 logger = get_logger(__name__)
 
@@ -35,16 +37,27 @@ def main(args):
     if args.gradient_checkpointing:
         model.gradient_checkpointing_enable()
 
-    metadata = get_ssl4eo_metadata()
+    if args.dataset_name == "ssl4eo":
+        metadata = get_ssl4eo_metadata()
+    elif args.dataset_name == "enmap":
+        metadata = get_enmap_metadata()
     optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"]
     radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"]
     
     transform = partial(pretrain_transform, optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std)
-    collate_fn = partial(multimodal_collate_fn, transform=transform, random_crop=args.random_crop, scale=args.scale, crop_size=args.crop_size)
-    
-    dataset = dict(train=SSL4EODataset(root=args.data_dir))
 
-    custom_loss_function = partial(calculate_modal_loss, loss_type=args.loss_type)
+    if args.dataset_name == "ssl4eo":
+        collate_fn = partial(multimodal_collate_fn, transform=transform, random_crop=args.random_crop, scale=args.scale, crop_size=args.crop_size)
+        dataset = dict(train=SSL4EODataset(root=args.data_dir))
+        custom_loss_function = partial(calculate_modal_loss, loss_type=args.loss_type)
+    elif args.dataset_name == "enmap":
+        dataset = dict(train=SpectralEarthDataset(root=args.data_dir))
+        custom_loss_function = partial(calculate_unimodal_loss, loss_type=args.loss_type)
+        channel_wv = np.array(metadata['s2c']['channel_wv'])
+        wv_max = channel_wv.max()
+        wv_min = channel_wv.min()
+        collate_fn = partial(unimodal_collate_fn, modal=args.modal_mode, transform=transform, random_crop=args.random_crop, \
+        scale=args.scale, crop_size=args.crop_size, normalize_wv=args.use_rope_embed, wv_max=wv_max, wv_min=wv_min)
     
     if args.resume_from_checkpoint == "latest":
         args.resume_from_checkpoint = get_lasted_checkpoint(args)

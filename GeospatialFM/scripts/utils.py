@@ -7,7 +7,61 @@ def get_lasted_checkpoint(args):
     if checkpoints:
         return max(checkpoints, key=os.path.getctime)  # Get the most recent checkpoint
     return None
-  
+
+def calculate_unimodal_loss(outputs: Dict[str, torch.Tensor], loss_type: str = 'mse') -> torch.Tensor:
+    loss = {}
+    total_loss = 0.
+    target = outputs['target']
+    for modal in ['optical']:
+        if f'{modal}_recon' in outputs:
+            recon = outputs[f'{modal}_recon'] # B, C, HW, D
+            channel_mask = outputs[f'{modal}_channel_mask'] # B, C
+            pos_mask = outputs[f'{modal}_pos_mask'] # B, HW
+            nondata_mask = (target != 0).float() 
+       
+            if loss_type == 'mse':
+                patch_error = ((recon - target) ** 2) * nondata_mask  # B, C, HW, D - apply mask
+                patch_error = patch_error.sum(dim=-1) / (nondata_mask.sum(dim=-1) + 1e-8) 
+            else:
+                patch_error = ((recon - target).abs()) * nondata_mask  # B, C, HW, D
+                patch_error = patch_error.sum(dim=-1) / (nondata_mask.sum(dim=-1) + 1e-8)
+                
+            optical_error = patch_error
+            optical_channel_mask = channel_mask
+            
+            pos_loss, channel_loss = [], []
+
+            spatial_valid_mask = (nondata_mask.sum(dim=(1, -1)) > 0).float()  # B, HW
+            channel_valid_mask = (nondata_mask.sum(dim=(2, -1)) > 0).float()
+
+            # for each modal
+            for modal_error, modal_channel_mask in zip([optical_error], [optical_channel_mask]):
+                modal_pos_loss = torch.mean(modal_error, dim=1) # B, HW
+                modal_channel_loss = torch.mean(modal_error, dim=2) # B, C
+                    
+                if pos_mask.sum() != 0:
+                    combined_pos_mask = pos_mask * spatial_valid_mask  # B, HW
+                    if combined_pos_mask.sum() > 0:
+                        pos_loss.append((modal_pos_loss * combined_pos_mask).sum() / combined_pos_mask.sum())
+                    # pos_loss.append((modal_pos_loss * pos_mask).sum() / pos_mask.sum())
+                    
+                if modal_channel_mask.sum() != 0:
+                    combined_channel_mask = modal_channel_mask * channel_valid_mask  # B, C
+                    if combined_channel_mask.sum() > 0:
+                        channel_loss.append((modal_channel_loss * combined_channel_mask).sum() / combined_channel_mask.sum())
+                    # channel_loss.append((modal_channel_loss * modal_channel_mask).sum() / modal_channel_mask.sum())
+            assert len(pos_loss) > 0 and len(channel_loss) > 0
+
+            pos_loss = sum(pos_loss) / len(pos_loss)
+            channel_loss = sum(channel_loss) / len(channel_loss)
+            
+            loss[f"{modal}_pos_loss"] = pos_loss
+            loss[f"{modal}_channel_loss"] = channel_loss
+            loss[f"{modal}_loss"] = pos_loss + channel_loss
+            total_loss += loss[f"{modal}_loss"]
+    loss['total_loss'] = total_loss
+    return loss['total_loss']
+
 def calculate_modal_loss(outputs: Dict[str, torch.Tensor], loss_type: str = 'mse') -> torch.Tensor:
     loss = {}
     total_loss = 0.
