@@ -22,9 +22,12 @@ from functools import partial
 
 from GeospatialFM.finetune.args import parse_args
 from GeospatialFM.datasets.GFMBench.utils import get_dataset, get_metadata
-from GeospatialFM.data_process.transforms import get_transform
+from GeospatialFM.datasets.enmap import get_enmap_downstream_metadata, get_enmap_downstream_dataset, ENMAP_DATASET
+from GeospatialFM.data_process.transforms import get_transform, get_enmap_transform
 from GeospatialFM.data_process.collate_func import modal_specific_collate_fn, linear_probe_collate_fn
 from GeospatialFM.finetune.utils import get_loss_fn, get_metric, get_task_model
+
+ENMAP_DATASET_NAMES = list(ENMAP_DATASET.keys())
 
 logger = get_logger(__name__)
 
@@ -57,7 +60,10 @@ def compute_encoding(batch, model, task_type, modal='optical'):
 
 def model_init_template(trial, lp=False):
     args = parse_args()
-    metadata = get_metadata(args.dataset_name, args.dataset_version)
+    if args.dataset_name in ENMAP_DATASET_NAMES:
+        metadata = get_enmap_downstream_metadata(args.dataset_name, args.dataset_version)
+    else:
+        metadata = get_metadata(args.dataset_name, args.dataset_version)
     # Initialize model
     model = get_task_model(args, metadata["num_classes"], args.crop_size)
     # load from checkpoint if provided
@@ -94,20 +100,31 @@ def main(args):
         os.makedirs(args.logging_dir, exist_ok=True)
 
     # Load dataset
-    metadata = get_metadata(args.dataset_name, args.dataset_version)
-    args.crop_size = metadata["size"] if args.crop_size is None else args.crop_size
-    
-    try: # for sentinel-2 and sentinel-1
-        optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"]
-        radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"]
-    except: # for landsat and other datasets
-        optical_mean, optical_std = metadata['mean'], metadata['std']
-        radar_mean, radar_std = None, None
-        
-    train_transform, eval_transform = get_transform(args.task_type, args.crop_size, args.scale, args.random_rotation, 
+    if args.dataset_name in ENMAP_DATASET_NAMES:
+        metadata = get_enmap_downstream_metadata(args.dataset_name, args.dataset_version)
+        args.crop_size = metadata["size"] if args.crop_size is None else args.crop_size
+        try: # for sentinel-2 and sentinel-1
+            optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"]
+            radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"]
+        except: # for landsat and other datasets
+            optical_mean, optical_std = metadata['mean'], metadata['std']
+            radar_mean, radar_std = None, None
+        train_transform, eval_transform = get_enmap_transform(args.task_type, args.crop_size, args.scale, args.random_rotation, 
+                                                    optical_mean, optical_std, radar_mean, radar_std, args.dataset_name)
+        dataset = get_enmap_downstream_dataset(args, train_transform, eval_transform)
+    else:
+        metadata = get_metadata(args.dataset_name, args.dataset_version)
+        args.crop_size = metadata["size"] if args.crop_size is None else args.crop_size
+        try: # for sentinel-2 and sentinel-1
+            optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"]
+            radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"]
+        except: # for landsat and other datasets
+            optical_mean, optical_std = metadata['mean'], metadata['std']
+            radar_mean, radar_std = None, None
+        train_transform, eval_transform = get_transform(args.task_type, args.crop_size, args.scale, args.random_rotation, 
                                                     optical_mean, optical_std, radar_mean, radar_std, args.dataset_name)
     
-    dataset = get_dataset(args, train_transform, eval_transform)
+        dataset = get_dataset(args, train_transform, eval_transform)
     
     if args.lp:
         model = model_init_template(None, lp=False)
@@ -141,14 +158,15 @@ def main(args):
         collate_fn = partial(modal_specific_collate_fn, modal=args.modal)
     
     # get loss function and metric
-    custom_loss_function = get_loss_fn(args.task_type)
-    compute_metrics, metric_name = get_metric(args.task_type, metadata["num_classes"])
+    ignore_index = metadata.get("ignore_index", 255)
+    custom_loss_function = get_loss_fn(args.task_type, ignore_index=ignore_index)
+    compute_metrics, metric_name = get_metric(args.task_type, metadata["num_classes"], ignore_index=ignore_index)
 
     # Create TrainingArguments with evaluation settings
     training_args = TrainingArguments(
         **{k: v for k, v in vars(args).items() if k in TrainingArguments.__dataclass_fields__},
         full_determinism=False,
-        dispatch_batches=None,
+        # dispatch_batches=None,
         fp16=(args.mixed_precision == "fp16"),
         bf16=(args.mixed_precision == "bf16"),
         load_best_model_at_end=True if not args.lp else False,

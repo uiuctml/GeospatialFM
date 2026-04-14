@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, List
 import torch
 import torch.nn as nn
 from transformers import PreTrainedModel
@@ -8,6 +8,8 @@ from .spatial_spectral_low_rank_vit import SpatialSpectralLowRankViTEncoder
 import torch.nn.functional as F
 from typing import Dict, Any
 import logging
+from .conv_head import ConvHead
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +38,8 @@ class LESSViTEncoderConfig(PretrainedConfig):
         num_experts: int = None,
         use_moe: bool = False,
         topk: int = None,
+        use_rope_embed: bool = False,
+        rope_embed_base: float = 100.0,
         channel_dropout: Optional[List[float]] = None,
         **kwargs
     ):
@@ -70,6 +74,9 @@ class LESSViTEncoderConfig(PretrainedConfig):
         # Positional channel embedding residual
         self.pos_chan_embed_residual = pos_chan_embed_residual
 
+        # RoPe embedding
+        self.use_rope_embed = use_rope_embed
+        self.rope_embed_base = rope_embed_base
         self.channel_dropout = channel_dropout
 
 class LESSWithProjectionConfig(LESSViTEncoderConfig):
@@ -252,6 +259,11 @@ class LESSWithUPerNet(LESSWithTaskHead):
                 image_size=config.image_size,
                 debug=False
             ) 
+            # self.decoder = ConvHead(
+            #     embedding_size=config.embed_dim,
+            #     num_classes=config.num_labels,
+            #     patch_size=config.patch_size
+            # )
         
         # Initialize weights
         self.apply(self._init_weights)
@@ -277,6 +289,13 @@ class LESSWithUPerNet(LESSWithTaskHead):
         if isinstance(self.decoder, UPerNet):
             # Get segmentation logits
             logits = self.decoder(hidden_states[:, 0, 1:]) # [batch_size, num_patches, embed_dim]
+        elif isinstance(self.decoder, ConvHead):
+            # Get classification logits
+            x = hidden_states[:, 0, 1:] # [batch_size, num_patches, embed_dim]
+            B, N, D = x.shape
+            H = W = int(math.sqrt(N))
+            x = x.transpose(1, 2).reshape(B, D, H, W) # [batch_size, embed_dim, H, W]
+            logits = self.decoder(x) # [batch_size, num_labels]
         else:
             # Get segmentation logits
             logits = self.decoder(hidden_states) # [batch_size, num_channels, num_patches, embed_dim]

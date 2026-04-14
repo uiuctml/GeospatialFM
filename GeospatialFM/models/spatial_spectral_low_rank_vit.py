@@ -1,4 +1,5 @@
 import torch
+import random
 import torch.nn as nn
 from transformers import PretrainedConfig, PreTrainedModel
 from transformers.modeling_outputs import BaseModelOutput
@@ -45,6 +46,7 @@ class SpatialSpectralLowRankViTConfig(PretrainedConfig):
         attention_radius: int = 640,
         use_rope_embed: bool = False,
         rope_embed_base: float = 100.0,
+        channel_dropout: Optional[List[float]] = None,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -89,6 +91,8 @@ class SpatialSpectralLowRankViTConfig(PretrainedConfig):
         # RoPe embedding
         self.use_rope_embed = use_rope_embed
         self.rope_embed_base = rope_embed_base
+
+        self.channel_dropout = channel_dropout
 
     @property
     def encoder_config(self):
@@ -163,7 +167,7 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
                 init_values=config.init_values,
                 norm_layer=norm_layer,
                 rank=config.rank,
-                use_rope_emebd=config.use_rope_embed,
+                use_rope_embed=config.use_rope_embed,
             )
             for i in range(config.depth)
         ])
@@ -201,6 +205,26 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
             nn.init.constant_(m.weight, 1.0)
 
     def forward(self, optical=None, radar=None, optical_channel_wv=None, radar_channel_wv=None, spatial_resolution=10, mask_ratio=None, channel_mask_ratio=None):
+        if self.config.channel_dropout is not None and (not self.training):
+            assert len(self.config.channel_dropout) in [1, 2], f"channel_dropout should be a float or a list of two floats, but got {self.config.channel_dropout}"
+            for i in range(len(self.config.channel_dropout)):
+                assert 0.0 <= self.config.channel_dropout[i] < 1.0, f"channel_dropout should be between 0 and 1, but got {self.config.channel_dropout}"
+            channel_dropout = sorted(self.config.channel_dropout)
+            num_channels = optical.shape[1] if optical is not None else radar.shape[1]
+            
+            if len(channel_dropout) == 1:
+                C = max(1, int(num_channels * (1 - channel_dropout[0])))
+            else:
+                C_min = max(1, int(num_channels * (1 - channel_dropout[1])))
+                C_max = max(1, int(num_channels * (1 - channel_dropout[0])))
+                C = random.randint(C_min, C_max)
+            idx_to_keep = sorted(random.sample(range(num_channels), C))
+            if optical is not None:
+                optical = optical[:, idx_to_keep, :, :]
+                optical_channel_wv = optical_channel_wv[:, idx_to_keep]
+            if radar is not None:
+                radar = radar[:, idx_to_keep, :, :]
+                radar_channel_wv = radar_channel_wv[:, idx_to_keep]
         assert optical is not None or radar is not None, "At least one of optical and radar should be provided"
         assert optical_channel_wv is None or len(optical_channel_wv.shape) == 2, "If optical ids are provided, they should be a 2D tensor"
         assert radar_channel_wv is None or len(radar_channel_wv.shape) == 2, "If radar ids are provided, they should be a 2D tensor"
@@ -249,7 +273,7 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         
         # Append cls token to HW dimension
         x = torch.cat((spatial_cls_token, x), dim=2)
-        hidden_states.append(x.detach().cpu())
+        # hidden_states.append(x.detach().cpu())
         
         # Add positional and channel embedding
         if not self.config.use_rope_embed:
@@ -289,7 +313,7 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
             perception_field_mask = torch.cat([new_col, perception_field_mask], dim=0)
             perception_field_mask = perception_field_mask > 0 # L L bool
         
-        hidden_states.append(x.detach().cpu())
+        # hidden_states.append(x.detach().cpu())
         
         # Apply transformer blocks
         for i,blk in enumerate(self.blocks):
@@ -298,11 +322,11 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
             else:
                 pos_chan_embedding = pos_chan_embed
             x = blk(x, spatial_mask=perception_field_mask, pos_chan_embedding=pos_chan_embedding)
-            hidden_states.append(x.detach().cpu())
+            # hidden_states.append(x.detach().cpu())
 
         # Apply final layer norm
         x = self.norm(x)  # B N+1 L+1 D
-        hidden_states.append(x.detach().cpu())
+        # hidden_states.append(x.detach().cpu())
         cls_token = x[:, 0, 0]
         patch_tokens = x[:, 1:, 1:] # B N+1 L+1 D -> B N L D
 
@@ -694,7 +718,7 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
             mask_tokens = self.mask_token.expand(B, n_radar_channels, HW, -1)  # B C HW D
             mask_tokens = torch.cat([spatial_mask_token, mask_tokens], dim=2)
             x = torch.cat([x, mask_tokens], dim=1)
-        elif n_optical_channels is not None and C == radar_channel_wv.shape[1]:
+        elif n_radar_channels is not None and C == radar_channel_wv.shape[1]:
             # missing optical channels from encoder
             n_optical_channels = optical_channel_wv.shape[1]
             # extend x to C+n_optical_channels to the front behind the cls token
@@ -703,14 +727,14 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
             mask_tokens = torch.cat([spatial_mask_token, mask_tokens], dim=2)
             x = torch.cat([x[:, :1, :, :], mask_tokens, x[:, 1:, :, :]], dim=1)
             
-        hidden_states.append(x.detach().cpu())
+        # hidden_states.append(x.detach().cpu())
         
         # add positional and channel embedding
         pos_chan_embed = self.pos_chan_embed(x[:, 1:, 1:, :], channel_ids=channel_wv, spatial_resolution=spatial_resolution, cls_token=True).to(x.device, dtype=x.dtype)
-        hidden_states.append(pos_chan_embed.detach().cpu())
+        # hidden_states.append(pos_chan_embed.detach().cpu())
         x = x + pos_chan_embed
 
-        hidden_states.append(x.detach().cpu())
+        # hidden_states.append(x.detach().cpu())
         num_patches = x.shape[2] - 1
         if self.config.use_perception_field_mask:
             perception_field_mask = get_perception_field_mask(num_patches, self.config.patch_size, spatial_resolution, attention_radius=self.config.attention_radius, cls_token=True).to(x.device)
@@ -722,7 +746,7 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
         for i, blk in enumerate(self.decoder_blocks):
             pos_chan_embedding = pos_chan_embed*2**(-i) if self.config.pos_chan_embed_residual else None
             x = blk(x, spatial_mask=perception_field_mask, pos_chan_embedding=pos_chan_embedding)
-            hidden_states.append(x.detach().cpu())
+            # hidden_states.append(x.detach().cpu())
             
         x = self.decoder_norm(x)
         

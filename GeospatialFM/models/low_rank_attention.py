@@ -376,7 +376,7 @@ class LowRankBlock(nn.Module):
             mlp_layer: nn.Module = Mlp,
             skip_pool: bool = False,
             rank: int = 1,
-            use_rope_emebd: bool = False,
+            use_rope_embed: bool = False,
     ) -> None:
         super().__init__()
         self.norm1 = norm_layer(dim)
@@ -422,10 +422,10 @@ class LowRankBlock(nn.Module):
         self.ls2 = LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
         self.drop_path2 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
-        self.use_rope_emebd = use_rope_emebd
+        self.use_rope_embed = use_rope_embed
 
     def forward(self, x: torch.Tensor, spatial_mask: torch.Tensor = None, pos_chan_embedding: torch.Tensor = None) -> torch.Tensor:
-        rope = pos_chan_embedding if self.use_rope_emebd else None
+        rope = pos_chan_embedding if self.use_rope_embed else None
 
         x_c, x_s, _ = self.low_dim_pool(self.norm1(x), pos_chan_embedding)
         x = x + self.drop_path1(self.ls1(self.attn(self.channel_norm(x_c), self.spatial_norm(x_s), spatial_mask, rope)))

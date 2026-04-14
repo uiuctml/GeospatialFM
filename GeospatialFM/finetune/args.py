@@ -44,6 +44,9 @@ def parse_args(sys_args=None):
     parser.add_argument("--return_dict", action="store_true", help="Return a dictionary instead of a tuple")
     parser.add_argument("--use_perception_field_mask", action="store_true", help="Use perception field mask")
     parser.add_argument("--attention_radius", type=int, default=640, help="Attention radius for perception field mask")
+    parser.add_argument("--use_rope_embed", action="store_true", help="Use RoPe positional embedding")
+    parser.add_argument("--rope_embed_base", type=float, default=100.0, help="Base value for RoPe positional embedding")
+    parser.add_argument("--channel_dropout", type=float, nargs='+', default=None, help="Channel dropout rate for training")
 
     # Training arguments
     parser.add_argument("--run_name", type=str, required=True, help="Name of the run")

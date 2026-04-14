@@ -107,9 +107,20 @@ def pretrain_transform(example, crop_size=None, scale=None, optical_mean=None, o
 def segmentation_transform_one_sample(optical, radar, label, spatial_resolution, crop_size=None, scale=None, is_train=True, random_rotation=True, 
                                        optical_mean=None, optical_std=None, radar_mean=None, radar_std=None, random_crop=False):
     # Convert lists directly to tensors
-    optical = None if optical is None else torch.tensor(optical, dtype=torch.float32)
-    radar = None if radar is None else torch.tensor(radar, dtype=torch.float32)
-    label = torch.tensor(label, dtype=torch.int64).unsqueeze(0)
+    if optical is not None and not isinstance(optical, torch.Tensor):
+        optical = torch.tensor(optical, dtype=torch.float32)
+    else:
+        optical = optical
+    
+    if radar is not None and not isinstance(radar, torch.Tensor):
+        radar = torch.tensor(radar, dtype=torch.float32)
+    else:
+        radar = radar
+        
+    if not isinstance(label, torch.Tensor):
+        label = torch.tensor(label, dtype=torch.int64).unsqueeze(0)
+    else:
+        label = label.unsqueeze(0)
     
     # normalize
     optical, radar = NormalizeAll(optical, radar, optical_mean, optical_std, radar_mean, radar_std)
@@ -270,6 +281,23 @@ def get_transform(task_type, crop_size=None, scale=None, random_rotation=True, o
         train_transform = partial(classification_transform, crop_size=crop_size, scale=scale, random_rotation=random_rotation, is_train=True, 
                                   optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std)
         eval_transform = partial(classification_transform, crop_size=crop_size, scale=scale, is_train=False, 
+                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std)
+    else:
+        raise NotImplementedError
+    
+    return train_transform, eval_transform
+
+def get_enmap_transform(task_type, crop_size=None, scale=None, random_rotation=True, optical_mean=None, optical_std=None, radar_mean=None, radar_std=None, dataset_name=None):
+    
+    if task_type == "segmentation":
+        train_transform = partial(segmentation_transform_one_sample, crop_size=crop_size, scale=scale, random_rotation=random_rotation, is_train=True, 
+                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, random_crop=True)
+        eval_transform = partial(segmentation_transform_one_sample, crop_size=crop_size, scale=scale, random_rotation=random_rotation, is_train=False, 
+                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std, random_crop=False)
+    elif task_type == "classification" or task_type == "multilabel":
+        train_transform = partial(classification_transform_one_sample, crop_size=crop_size, scale=scale, random_rotation=random_rotation, is_train=True, 
+                                  optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std)
+        eval_transform = partial(classification_transform_one_sample, crop_size=crop_size, scale=scale, random_rotation=random_rotation, is_train=False, 
                                   optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std)
     else:
         raise NotImplementedError
