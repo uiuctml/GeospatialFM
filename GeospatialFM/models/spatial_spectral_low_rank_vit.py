@@ -153,7 +153,7 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         
         # Create transformer blocks
         self.blocks = nn.ModuleList([
-            LowRankBlock(
+            torch.compile(LowRankBlock(
                 dim=config.embed_dim,
                 num_heads=config.num_heads,
                 channel_dim=config.channel_dim,
@@ -168,7 +168,7 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
                 norm_layer=norm_layer,
                 rank=config.rank,
                 use_rope_embed=config.use_rope_embed,
-            )
+            ), mode='max-autotune')
             for i in range(config.depth)
         ])
         
@@ -628,7 +628,7 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
             dpr = [x.item() for x in torch.linspace(0, config.drop_path_rate, config.decoder_depth)]
         
         self.decoder_blocks = nn.ModuleList([
-            LowRankBlock(
+            torch.compile(LowRankBlock(
                 dim=config.decoder_embed_dim,
                 num_heads=config.decoder_num_heads,
                 channel_dim=config.decoder_channel_dim,
@@ -643,7 +643,7 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
                 norm_layer=norm_layer,
                 skip_pool=False,
                 rank=config.rank,
-            )
+            ), mode='max-autotune')
             for i in range(config.decoder_depth)
         ])
         
