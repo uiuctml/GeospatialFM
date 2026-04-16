@@ -329,18 +329,26 @@ class LowRankAttention(nn.Module):
         self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(self, x_c: torch.Tensor, x_s: torch.Tensor, spatial_mask: torch.Tensor = None, rope: tuple = None) -> torch.Tensor:
-        B, C, D = x_c.shape
-        HW = x_s.shape[1]
+        _, _, D = x_c.shape
+        H, dc, ds = self.num_heads, self.c_head_dim, self.s_head_dim
 
         sin_hw, cos_hw, sin_c, cos_c = rope if rope is not None else (None, None, None, None)
-        
-        xc = self.channel_branch(x_c, sin=sin_c, cos=cos_c)  # B, rank, num_heads, C, c_head_dim
-        xs = self.spatial_branch(x_s, spatial_mask, sin=sin_hw, cos=cos_hw)  # B, rank, num_heads, HW, s_head_dim
-        x = torch.einsum('...ca,...nb->...cnab', xc, xs).flatten(-2) # B, rank, num_heads, C, HW, D
-        x = x.sum(dim=1) # B, num_heads, C, HW, D
-        x = x.permute(0, 2, 3, 1, 4).reshape(B, C, HW, -1) # B, C, HW, D
-        x = self.proj(x) # B, C, HW, D
-        x = self.proj_drop(x) # B, C, HW, D
+
+        xc = self.channel_branch(x_c, sin=sin_c, cos=cos_c).squeeze(1)  # B, H, C, dc
+        xs = self.spatial_branch(x_s, spatial_mask, sin=sin_hw, cos=cos_hw).squeeze(1)  # B, H, HW, ds
+
+        # Fuse outer product + projection into two sequential matmuls.
+        # Equivalent to: (xc ⊗ xs).flatten() @ W^T
+        # but avoids materializing the (B, H, C, HW, D) intermediate tensor.
+        # Step 1: absorb xc into W  →  (D, B, C, H, ds)  [contracts over dc]
+        # Step 2: contract with xs  →  (B, C, HW, D)     [contracts over H, ds]
+        W = self.proj.weight.reshape(D, H, dc, ds)  # view, no copy
+        W_xc = torch.einsum('khas,bhca->kbchs', W, xc)
+        x = torch.einsum('kbchs,bhws->bcwk', W_xc, xs)
+
+        if self.proj.bias is not None:
+            x = x + self.proj.bias
+        x = self.proj_drop(x)
         return x
 
 class LayerScale(nn.Module):
