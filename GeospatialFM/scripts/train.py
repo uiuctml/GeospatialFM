@@ -33,6 +33,7 @@ def main(args):
     # Initialize model
     model_config = SpatialSpectralLowRankViTConfig(**vars(args))
     model = SpatialSpectralMAEViT(model_config)
+    # model = SpatialSpectralMAEViT.from_pretrained("/home/yuxuanwan/GeospatialFM/results_wyx/models/LESSVIT_b4_d8_r1_v2/checkpoint-81400", config=model_config)
     
     if args.gradient_checkpointing:
         model.gradient_checkpointing_enable()
@@ -44,7 +45,7 @@ def main(args):
     optical_mean, optical_std = metadata["s2c"]["mean"], metadata["s2c"]["std"]
     radar_mean, radar_std = metadata["s1"]["mean"], metadata["s1"]["std"]
     
-    transform = partial(pretrain_transform, optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std)
+    transform = partial(pretrain_transform, crop_size=args.crop_size, optical_mean=optical_mean, optical_std=optical_std, radar_mean=radar_mean, radar_std=radar_std)
 
     if args.dataset_name == "ssl4eo":
         collate_fn = partial(multimodal_collate_fn, transform=transform, random_crop=args.random_crop, scale=args.scale, crop_size=args.crop_size)
@@ -70,6 +71,9 @@ def main(args):
         logging_strategy="steps",
         logging_steps=1,
         ddp_find_unused_parameters=False,
+        # torch_compile=True,
+        # torch_compile_backend="inductor",
+        # torch_compile_mode="default",
     )
     
     # Set up wandb first if using it

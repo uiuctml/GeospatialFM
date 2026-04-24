@@ -49,7 +49,7 @@ def unimodal_collate_fn(batch, modal='optical', transform=None, random_crop=Fals
     }
 
 # collate function for dataloader of multimodal data
-def multimodal_collate_fn(batch, transform=None, random_crop=False, scale=None, crop_size=None):
+def multimodal_collate_fn(batch, transform=None, random_crop=False, scale=None, crop_size=None, normalize_wv=False, wv_max=2365.20, wv_min=447.17):
     optical_list, radar_list = [], []
     optical_channel_wv, radar_channel_wv = None, None
     spatial_resolution = None
@@ -63,8 +63,12 @@ def multimodal_collate_fn(batch, transform=None, random_crop=False, scale=None, 
         # to tensor
         example['optical'] = torch.tensor(example['optical'])
         example['radar'] = torch.tensor(example['radar'])
-        example['optical_channel_wv'] = torch.tensor(example['optical_channel_wv']).unsqueeze(0)
-        example['radar_channel_wv'] = torch.tensor(example['radar_channel_wv']).unsqueeze(0)
+        if normalize_wv:
+            example['optical_channel_wv'] = ((torch.tensor(example['optical_channel_wv']) - wv_min) / (wv_max - wv_min)).unsqueeze(0)
+            example['radar_channel_wv'] = ((torch.tensor(example['radar_channel_wv']) - wv_min) / (wv_max - wv_min)).unsqueeze(0)
+        else:
+            example['optical_channel_wv'] = torch.tensor(example['optical_channel_wv']).unsqueeze(0)
+            example['radar_channel_wv'] = torch.tensor(example['radar_channel_wv']).unsqueeze(0)
         example['spatial_resolution'] = example['spatial_resolution']
         
         if transform is not None:
@@ -97,7 +101,7 @@ def multimodal_collate_fn(batch, transform=None, random_crop=False, scale=None, 
         'spatial_resolution': spatial_resolution
     }
 
-def modal_specific_collate_fn(batch, modal='optical'):
+def modal_specific_collate_fn(batch, modal='optical', normalize_wv=False, wv_max=2365.20, wv_min=447.17):
     data_list = {'optical': [], 'radar': []}
     channel_wv = {'optical': [], 'radar': []}
     spatial_resolution = []
@@ -112,9 +116,14 @@ def modal_specific_collate_fn(batch, modal='optical'):
             data_list[m].append(example[m])
             
             # example[f'{m}_channel_wv'] = torch.tensor(example[f'{m}_channel_wv']).unsqueeze(0)
-            example[f'{m}_channel_wv'] = torch.tensor(example[f'{m}_channel_wv']).unsqueeze(0) \
-                if not isinstance(example[f'{m}_channel_wv'], torch.Tensor) \
-                else example[f'{m}_channel_wv'].clone().detach().unsqueeze(0)
+            if normalize_wv:
+                example[f'{m}_channel_wv'] = ((torch.tensor(example[f'{m}_channel_wv']) - wv_min) / (wv_max - wv_min)).unsqueeze(0) \
+                    if not isinstance(example[f'{m}_channel_wv'], torch.Tensor) \
+                    else ((example[f'{m}_channel_wv'] - wv_min) / (wv_max - wv_min)).unsqueeze(0)
+            else:
+                example[f'{m}_channel_wv'] = torch.tensor(example[f'{m}_channel_wv']).unsqueeze(0) \
+                    if not isinstance(example[f'{m}_channel_wv'], torch.Tensor) \
+                    else example[f'{m}_channel_wv'].clone().detach().unsqueeze(0)
             channel_wv[m].append(example[f'{m}_channel_wv'])
 
         spatial_resolution.append(example['spatial_resolution'])

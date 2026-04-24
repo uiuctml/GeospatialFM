@@ -242,7 +242,7 @@ class RopePositionChannelEmbedding(nn.Module):
         )
         self._init_weights()
 
-    def forward(self, *, H: int, W: int, C: int) -> list[Tensor, ...]:
+    def forward(self, *, H: int, W: int, C: int, optical_channel_wv) -> list[Tensor, ...]:
         device = self.periods_hw.device
         dtype = self.dtype
         dd = {"device": device, "dtype": dtype}
@@ -265,8 +265,9 @@ class RopePositionChannelEmbedding(nn.Module):
         coords_hw = coords_hw.flatten(0, 1)  # [HW, 2]
         coords_hw = 2.0 * coords_hw - 1.0  # Shift range [0, 1] to [-1, +1]
 
-        coords_c = torch.arange(0.5, C, **dd) / C # [C]
-        coords_c = 2.0 * coords_c - 1.0
+        # coords_c = torch.arange(0.5, C, **dd) / C # [C]
+        # coords_c = 2.0 * coords_c - 1.0
+        coords_c = 2 * optical_channel_wv.squeeze() - 1.0 # [C]
 
         # Shift coords by adding a uniform value in [-shift, shift]
         if self.training and self.shift_coords is not None:

@@ -333,7 +333,7 @@ class LowRankAttention(nn.Module):
         HW = x_s.shape[1]
 
         sin_hw, cos_hw, sin_c, cos_c = rope if rope is not None else (None, None, None, None)
-
+        
         xc = self.channel_branch(x_c, sin=sin_c, cos=cos_c)  # B, rank, num_heads, C, c_head_dim
         xs = self.spatial_branch(x_s, spatial_mask, sin=sin_hw, cos=cos_hw)  # B, rank, num_heads, HW, s_head_dim
         x = torch.einsum('...ca,...nb->...cnab', xc, xs).flatten(-2) # B, rank, num_heads, C, HW, D
@@ -341,6 +341,7 @@ class LowRankAttention(nn.Module):
         x = x.permute(0, 2, 3, 1, 4).reshape(B, C, HW, -1) # B, C, HW, D
         x = self.proj(x) # B, C, HW, D
         x = self.proj_drop(x) # B, C, HW, D
+
         return x
 
 class LayerScale(nn.Module):

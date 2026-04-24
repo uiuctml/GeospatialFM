@@ -8,10 +8,32 @@ from .spatial_spectral_low_rank_vit import SpatialSpectralLowRankViTEncoder
 import torch.nn.functional as F
 from typing import Dict, Any
 import logging
-from .conv_head import ConvHead
+from .conv_head import ConvHead, MoEConvHead
 import math
 
+from .wrappers.specvit_wrapper import SpecViTEncoder, SpecViTConfig
+from .registry import ENCODER_CONFIGS, ENCODER_MODELS
+
 logger = logging.getLogger(__name__)
+
+def get_encoder(model_name, task_type=None, num_labels=None, config=None):
+    # if model_name == "lessvit":
+    #     assert config is not None, "Config is required for LESSViT"
+    #     return SpatialSpectralLowRankViTEncoder(config)
+    assert model_name in ENCODER_CONFIGS, f"Model {model_name} not supported"
+    config = ENCODER_CONFIGS[model_name](classes=num_labels)
+    
+    if model_name == "spatsigma":
+        assert task_type is not None, "Task type is required for SpatSigma"
+        if task_type in ["multilabel", "classification"]:
+            model_name = "spatsigma_cls"
+        elif task_type in ["segmentation", "regression"]:
+            model_name = "spatsigma_seg"
+        else:
+            raise NotImplementedError(f"Task type {task_type} not supported for SpatSigma")
+            
+    encoder = ENCODER_MODELS[model_name](config=config)
+    return encoder
 
 class LESSViTEncoderConfig(PretrainedConfig):
     model_type = "less_vit_encoder"
@@ -41,6 +63,8 @@ class LESSViTEncoderConfig(PretrainedConfig):
         use_rope_embed: bool = False,
         rope_embed_base: float = 100.0,
         channel_dropout: Optional[List[float]] = None,
+        model_name: str = "lessvit",
+        task_type: str = None,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -78,6 +102,9 @@ class LESSViTEncoderConfig(PretrainedConfig):
         self.use_rope_embed = use_rope_embed
         self.rope_embed_base = rope_embed_base
         self.channel_dropout = channel_dropout
+
+        self.model_name = model_name
+        self.task_type = task_type
 
 class LESSWithProjectionConfig(LESSViTEncoderConfig):
     model_type = "less_with_projection"
@@ -169,13 +196,16 @@ class LESSWithTaskHead(PreTrainedModel):
         return 0
     
     def load_pretrained_encoder(self, pretrained_model_path):
-        from safetensors import safe_open
-        with safe_open(pretrained_model_path, framework="pt", device="cpu") as f:
-            for key in f.keys():
-                if key.startswith("encoder."):
-                    # Get the corresponding key in target model
-                    param = f.get_tensor(key)
-                    self.state_dict()[key].copy_(param)
+        if isinstance(self.encoder, SpatialSpectralLowRankViTEncoder):
+            from safetensors import safe_open
+            with safe_open(pretrained_model_path, framework="pt", device="cpu") as f:
+                for key in f.keys():
+                    if key.startswith("encoder.") and key != "encoder.perception_field_mask":
+                        # Get the corresponding key in target model
+                        param = f.get_tensor(key)
+                        self.state_dict()[key].copy_(param)
+        else:
+            self.encoder.load_pretrained_weights(pretrained_model_path)
 
 class LESSWithProjection(LESSWithTaskHead):
     def __init__(self, config):
@@ -250,20 +280,28 @@ class LESSWithUPerNet(LESSWithTaskHead):
     def __init__(self, config):
         super().__init__(config)
         self.num_labels = config.num_labels
-        self.encoder = SpatialSpectralLowRankViTEncoder(config)
+        self.encoder = get_encoder(config.model_name, config.task_type, config.num_labels, config)
+
         if config.use_moe:
-            self.decoder = MoEUpperNet(config.num_labels, config.image_size, config.embed_dim, config.num_experts, config.topk)
-        else:
-            self.decoder = UPerNet(
+            # self.decoder = MoEUpperNet(config.num_labels, config.image_size, config.embed_dim, config.num_experts, config.topk)
+            self.decoder = MoEConvHead(
+                embedding_size=config.embed_dim,
                 num_classes=config.num_labels,
-                image_size=config.image_size,
-                debug=False
-            ) 
-            # self.decoder = ConvHead(
-            #     embedding_size=config.embed_dim,
+                patch_size=config.patch_size,
+                num_experts=config.num_experts,
+                topk=config.topk,
+            )
+        else:
+            # self.decoder = UPerNet(
             #     num_classes=config.num_labels,
-            #     patch_size=config.patch_size
-            # )
+            #     image_size=config.image_size,
+            #     debug=False
+            # ) 
+            self.decoder = ConvHead(
+                embedding_size=config.embed_dim,
+                num_classes=config.num_labels,
+                patch_size=config.patch_size
+            )
         
         # Initialize weights
         self.apply(self._init_weights)
@@ -279,19 +317,25 @@ class LESSWithUPerNet(LESSWithTaskHead):
         optical=None, radar=None, optical_channel_wv=None, radar_channel_wv=None, spatial_resolution=10, labels=None,
     ) -> Union[Tuple, dict]:
         # Get encoder outputs
-        outputs = self.encoder(optical, radar, optical_channel_wv, radar_channel_wv, spatial_resolution)
-        
-        if isinstance(outputs, tuple):
-            hidden_states = outputs[0]
+        wave_list = (optical_channel_wv.squeeze(dim=0) / 1000).cpu().tolist()
+        if isinstance(self.encoder, SpatialSpectralLowRankViTEncoder):
+            outputs = self.encoder(optical, radar, optical_channel_wv, radar_channel_wv, spatial_resolution)
+            if isinstance(outputs, tuple):
+                hidden_states = outputs[0]
+            else:
+                hidden_states = outputs.last_hidden_state
+            x = hidden_states[:, 0, 1:] 
         else:
-            hidden_states = outputs.last_hidden_state
+            hidden_states = self.encoder.forward_encoder(optical, wave_list=wave_list)
+            x = hidden_states[:, 1:]
         
         if isinstance(self.decoder, UPerNet):
             # Get segmentation logits
             logits = self.decoder(hidden_states[:, 0, 1:]) # [batch_size, num_patches, embed_dim]
         elif isinstance(self.decoder, ConvHead):
             # Get classification logits
-            x = hidden_states[:, 0, 1:] # [batch_size, num_patches, embed_dim]
+            # x = hidden_states[:, 0, 1:] # [batch_size, num_patches, embed_dim]
+            # x = hidden_states[:, 1:]
             B, N, D = x.shape
             H = W = int(math.sqrt(N))
             x = x.transpose(1, 2).reshape(B, D, H, W) # [batch_size, embed_dim, H, W]

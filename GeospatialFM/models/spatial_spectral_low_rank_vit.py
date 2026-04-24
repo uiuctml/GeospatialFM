@@ -47,6 +47,7 @@ class SpatialSpectralLowRankViTConfig(PretrainedConfig):
         use_rope_embed: bool = False,
         rope_embed_base: float = 100.0,
         channel_dropout: Optional[List[float]] = None,
+        classes: Optional[int] = None,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -153,7 +154,7 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
         
         # Create transformer blocks
         self.blocks = nn.ModuleList([
-            torch.compile(LowRankBlock(
+            LowRankBlock(
                 dim=config.embed_dim,
                 num_heads=config.num_heads,
                 channel_dim=config.channel_dim,
@@ -168,7 +169,7 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
                 norm_layer=norm_layer,
                 rank=config.rank,
                 use_rope_embed=config.use_rope_embed,
-            ), mode='max-autotune')
+            )
             for i in range(config.depth)
         ])
         
@@ -280,7 +281,7 @@ class SpatialSpectralLowRankViTEncoder(PreTrainedModel):
             pos_chan_embed = self.pos_chan_embed(x[:, 1:, 1:, :], channel_ids=channel_ids, spatial_resolution=spatial_resolution, cls_token=True).to(x.device, dtype=x.dtype)
             pos_chan_embed = pos_chan_embed.repeat(B, 1, 1, 1)
         else:
-            pos_chan_embed = self.pos_chan_embed(H=H, W=W, C=C)
+            pos_chan_embed = self.pos_chan_embed(H=H, W=W, C=C, optical_channel_wv=channel_ids)  # 
             # below is current walkaround to make RoPE compatibale with masking
             pos_chan_embed = [embed.repeat(B, 1, 1) for embed in pos_chan_embed]
         
@@ -628,7 +629,7 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
             dpr = [x.item() for x in torch.linspace(0, config.drop_path_rate, config.decoder_depth)]
         
         self.decoder_blocks = nn.ModuleList([
-            torch.compile(LowRankBlock(
+            LowRankBlock(
                 dim=config.decoder_embed_dim,
                 num_heads=config.decoder_num_heads,
                 channel_dim=config.decoder_channel_dim,
@@ -643,7 +644,7 @@ class SpatialSpectralLowRankViTDecoder(PreTrainedModel):
                 norm_layer=norm_layer,
                 skip_pool=False,
                 rank=config.rank,
-            ), mode='max-autotune')
+            )
             for i in range(config.decoder_depth)
         ])
         

@@ -6,6 +6,7 @@ from typing import Dict
 import numpy as np
 from transformers import EvalPrediction
 from sklearn.metrics import accuracy_score, average_precision_score, jaccard_score, f1_score
+from torchmetrics.classification import MulticlassJaccardIndex
 
 def get_task_model(args, num_classes=None, image_size=None):
     if args.task_type == "classification" or args.task_type == "multilabel":
@@ -72,35 +73,56 @@ def compute_metrics_mAP(eval_pred: EvalPrediction) -> Dict:
     # return {"macro_mAP": macro_mAP, "micro_mAP": micro_mAP}
     return {"micro_mAP": micro_mAP}
 
-def compute_metrics_IoU(eval_pred: EvalPrediction, ignore_index=None, num_classes=11) -> Dict:
-    # predictions = eval_pred.predictions
-    # labels = eval_pred.label_ids
+# def compute_metrics_IoU(eval_pred: EvalPrediction, ignore_index=None, num_classes=11) -> Dict:
+#     # predictions = eval_pred.predictions
+#     # labels = eval_pred.label_ids
 
-    # predictions = np.argmax(predictions, axis=1)
-    # IoU = jaccard_score(labels.flatten(), predictions.flatten(), average="macro")
-    predictions = torch.tensor(eval_pred.predictions)
-    labels = torch.tensor(eval_pred.label_ids)
+#     # predictions = np.argmax(predictions, axis=1)
+#     # IoU = jaccard_score(labels.flatten(), predictions.flatten(), average="macro")
+#     predictions = torch.tensor(eval_pred.predictions)
+#     labels = torch.tensor(eval_pred.label_ids)
+#     predictions = torch.argmax(predictions, dim=1)
+#     predictions = predictions.flatten()
+#     labels = labels.flatten()
+
+#     if ignore_index is not None:
+#         mask = labels != ignore_index
+#         predictions = predictions[mask]
+#         labels = labels[mask]
+
+#     n = num_classes
+#     mat = torch.zeros((n, n), dtype=torch.int64)
+#     with torch.no_grad():
+#         k = (labels >= 0) & (labels < n)
+#         inds = n * labels[k].to(torch.int64) + predictions[k]
+#         mat += torch.bincount(inds, minlength=n**2).reshape(n, n)
+#     mat_to_float = mat.to(torch.float32)
+#     iu = torch.diag(mat_to_float) / (mat_to_float.sum(dim=1) + mat_to_float.sum(dim=0) - torch.diag(mat_to_float))
+#     iu[torch.isnan(iu)] = 0.0
+#     IoU = torch.mean(iu).item()
+
+#     return {"IoU": IoU}
+
+def compute_metrics_IoU(
+    eval_pred: EvalPrediction,
+    ignore_index: int | None = None,
+    num_classes: int = 11,
+) -> Dict:
+    predictions = torch.as_tensor(eval_pred.predictions)
+    labels = torch.as_tensor(eval_pred.label_ids)
+
+    # logits/probs: (B, C, H, W) -> predicted class ids: (B, H, W)
     predictions = torch.argmax(predictions, dim=1)
-    predictions = predictions.flatten()
-    labels = labels.flatten()
 
-    if ignore_index is not None:
-        mask = labels != ignore_index
-        predictions = predictions[mask]
-        labels = labels[mask]
+    metric = MulticlassJaccardIndex(
+        num_classes=num_classes,
+        average="micro",      # this is mean IoU
+        ignore_index=ignore_index,
+    )
 
-    n = num_classes
-    mat = torch.zeros((n, n), dtype=torch.int64)
-    with torch.no_grad():
-        k = (labels >= 0) & (labels < n)
-        inds = n * labels[k].to(torch.int64) + predictions[k]
-        mat += torch.bincount(inds, minlength=n**2).reshape(n, n)
-    mat_to_float = mat.to(torch.float32)
-    iu = torch.diag(mat_to_float) / (mat_to_float.sum(dim=1) + mat_to_float.sum(dim=0) - torch.diag(mat_to_float))
-    iu[torch.isnan(iu)] = 0.0
-    IoU = torch.mean(iu).item()
+    iou = metric(predictions, labels)
 
-    return {"IoU": IoU}
+    return {"IoU": iou.item()}
 
 def get_metric(task_type, num_classes=None, ignore_index=None):
     if task_type == "classification":
@@ -109,6 +131,6 @@ def get_metric(task_type, num_classes=None, ignore_index=None):
         # return compute_metrics_mAP, "micro_mAP"
         return compute_metrics_f1, "micro_f1"
     elif task_type == "segmentation":
-        return partial(compute_metrics_IoU, num_classes=num_classes), "IoU"
+        return partial(compute_metrics_IoU, num_classes=num_classes, ignore_index=ignore_index), "IoU"
     else:
         raise NotImplementedError
